@@ -1,0 +1,42 @@
+[package]
+name = "tauri-app"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "tauri_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+notify = "6.1.1"
+gray_matter = "0.3.2"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["full"] }
+ort = { version = "2.0.0-rc.9", features = ["ndarray"] }
+tokenizers = { version = "0.19.1", default-features = false, features = [
+  "onig",
+] }
+ndarray = "0.15"
+ureq = { version = "2.9.6", features = ["json"] }
+boa_engine = "0.19.0"
+serde_yaml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+urlencoding = "2"
+reqwest = { version = "0.13.4", features = ["json"] }
+tiktoken-rs = "0.12.0"

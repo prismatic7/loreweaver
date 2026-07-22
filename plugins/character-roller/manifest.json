@@ -1,0 +1,8 @@
+{
+  "id": "character-roller",
+  "name": "Standard Ability Roller",
+  "version": "1.0.0",
+  "description": "Generates 5e ability scores (4d6 drop lowest) and formats stats sheet.",
+  "permissions": ["hooks"],
+  "entry": "index.js"
+}

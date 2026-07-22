@@ -1,0 +1,44 @@
+# Structure
+
+## Top Level
+
+- `src/` contains the React frontend.
+- `src-tauri/` contains the Rust backend and Tauri configuration.
+- `plugins/` contains repo-bundled plugin examples.
+- `public/` contains static frontend assets.
+- `dist/` exists in the workspace and is generated output from the frontend build.
+
+## Frontend Entry Points
+
+- `index.html` loads `/src/main.tsx`.
+- `src/main.tsx` mounts the React app.
+- `src/App.tsx` contains the full current UI and most of the client-side behavior.
+- `src/App.css` and `src/index.css` provide the visual system.
+
+## Backend Entry Points
+
+- `src-tauri/src/main.rs` is the binary entry and forwards to the library crate.
+- `src-tauri/src/lib.rs` defines application state, Tauri commands, and the `run()` bootstrap.
+- `src-tauri/src/db.rs`, `search.rs`, `ingest.rs`, `watcher.rs`, `agent.rs`, and `plugins.rs` hold the domain logic.
+
+## Plugin Layout
+
+- `plugins/character-roller/` contains a manifest and `index.js` implementation.
+- `plugins/threat-evaluator/` contains a manifest and `index.js` implementation.
+- The backend also seeds a `dice-bonus` plugin at runtime under the app data directory.
+
+## [TODO]
+
+- The repository README mentions a `docs/` tree, but no source docs directory is present in the workspace root listing I inspected.
+
+## Evidence
+
+- [index.html](/Users/chris/Development/loreweaver/index.html)
+- [src/main.tsx](/Users/chris/Development/loreweaver/src/main.tsx)
+- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
+- [src/App.css](/Users/chris/Development/loreweaver/src/App.css)
+- [src/index.css](/Users/chris/Development/loreweaver/src/index.css)
+- [src-tauri/src/main.rs](/Users/chris/Development/loreweaver/src-tauri/src/main.rs)
+- [src-tauri/src/lib.rs](/Users/chris/Development/loreweaver/src-tauri/src/lib.rs)
+- [plugins/character-roller/manifest.json](/Users/chris/Development/loreweaver/plugins/character-roller/manifest.json)
+- [plugins/threat-evaluator/manifest.json](/Users/chris/Development/loreweaver/plugins/threat-evaluator/manifest.json)

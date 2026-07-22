@@ -1,0 +1,8 @@
+{
+  "id": "threat-evaluator",
+  "name": "Encounter Threat Evaluator",
+  "version": "1.0.0",
+  "description": "Calculates CR threat levels for D&D combat encounters based on party sizes.",
+  "permissions": ["hooks"],
+  "entry": "index.js"
+}

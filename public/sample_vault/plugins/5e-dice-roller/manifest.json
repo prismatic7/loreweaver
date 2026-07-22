@@ -1,0 +1,8 @@
+{
+  "id": "5e-dice-roller",
+  "name": "5E Dice Roller & Advantage Helper",
+  "version": "1.0.0",
+  "description": "Sample plugin that rolls d20 checks with advantage/disadvantage.",
+  "permissions": ["hooks"],
+  "entry": "index.js"
+}
