@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use crate::db;
 use crate::search;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ChatMessage {
@@ -16,6 +16,7 @@ pub fn generate_response(
     provider: &str,
     model: &str,
     api_key: Option<&str>,
+    base_url: Option<&str>,
     active_note_id: Option<&str>,
 ) -> Result<String, String> {
     // 1. Gather Context via Hybrid Search (RAG)
@@ -45,9 +46,12 @@ pub fn generate_response(
             if let Ok((title, content)) = conn.query_row(
                 "SELECT title, content FROM notes WHERE id = ?1",
                 [note_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             ) {
-                active_note_context = format!("\nCurrently Open Note sheet (Title: {}):\n{}\n", title, content);
+                active_note_context = format!(
+                    "\nCurrently Open Note sheet (Title: {}):\n{}\n",
+                    title, content
+                );
             }
         }
     }
@@ -64,21 +68,60 @@ pub fn generate_response(
 
     // 4. Call LLM API Provider
     match provider {
-        "ollama" => call_ollama(model, &system_prompt, prompt),
-        "openai" => {
-            let key = api_key.ok_or("OpenAI API key missing")?;
-            call_openai(model, key, &system_prompt, prompt)
+        "ollama" => {
+            let base = base_url
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or("http://localhost:11434")
+                .trim()
+                .trim_end_matches('/');
+            call_ollama(model, &system_prompt, prompt, base)
+        }
+        "openai" | "openai-compatible" | "openrouter" | "copilot" | "z-ai" | "kilo"
+        | "huggingface" => {
+            let key = api_key
+                .filter(|k| !k.trim().is_empty())
+                .ok_or(format!("{} API key missing", provider))?;
+            let default_url = match provider {
+                "openrouter" => "https://openrouter.ai/api",
+                "copilot" => "https://api.githubcopilot.com",
+                "z-ai" => "https://api.z.ai/api",
+                "kilo" => "https://api.kilo.ai/api",
+                "huggingface" => "https://api-inference.huggingface.co",
+                _ => "https://api.openai.com",
+            };
+            let base = base_url
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or(default_url)
+                .trim()
+                .trim_end_matches('/');
+            call_openai_compatible(model, key, &system_prompt, prompt, base, provider)
         }
         "gemini" => {
             let key = api_key.ok_or("Gemini API key missing")?;
-            call_gemini(model, key, &system_prompt, prompt)
+            let base = base_url
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or("https://generativelanguage.googleapis.com")
+                .trim()
+                .trim_end_matches('/');
+            call_gemini(model, key, &system_prompt, prompt, base)
         }
-        _ => Err(format!("Unsupported LLM provider: {}", provider)),
+        "anthropic" => {
+            let key = api_key
+                .filter(|k| !k.trim().is_empty())
+                .ok_or("Anthropic API key missing")?;
+            let base = base_url
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or("https://api.anthropic.com")
+                .trim()
+                .trim_end_matches('/');
+            call_anthropic(model, key, &system_prompt, prompt, base)
+        }
+        other => Err(format!("Unsupported LLM provider: {}", other)),
     }
 }
 
-fn call_ollama(model: &str, system: &str, prompt: &str) -> Result<String, String> {
-    let url = "http://localhost:11434/api/chat";
+fn call_ollama(model: &str, system: &str, prompt: &str, base_url: &str) -> Result<String, String> {
+    let url = format!("{}/api/chat", base_url);
     let body = json!({
         "model": model,
         "messages": [
@@ -89,11 +132,18 @@ fn call_ollama(model: &str, system: &str, prompt: &str) -> Result<String, String
     });
 
     println!("Calling Ollama API (Model: {}) at {}...", model, url);
-    let response = ureq::post(url)
+    let response = ureq::post(&url)
+        .timeout(std::time::Duration::from_secs(60))
         .send_json(body)
-        .map_err(|e| format!("Ollama request failed: {:?}. Is Ollama running locally?", e))?;
+        .map_err(|e| {
+            format!(
+                "Ollama request failed: {:?}. Is Ollama running at {}?",
+                e, base_url
+            )
+        })?;
 
-    let res_json: serde_json::Value = response.into_json()
+    let res_json: serde_json::Value = response
+        .into_json()
         .map_err(|e| format!("Failed to parse Ollama JSON: {:?}", e))?;
 
     let content = res_json["message"]["content"]
@@ -103,8 +153,15 @@ fn call_ollama(model: &str, system: &str, prompt: &str) -> Result<String, String
     Ok(content.to_string())
 }
 
-fn call_openai(model: &str, api_key: &str, system: &str, prompt: &str) -> Result<String, String> {
-    let url = "https://api.openai.com/v1/chat/completions";
+fn call_openai_compatible(
+    model: &str,
+    api_key: &str,
+    system: &str,
+    prompt: &str,
+    base_url: &str,
+    provider: &str,
+) -> Result<String, String> {
+    let url = format!("{}/v1/chat/completions", base_url);
     let body = json!({
         "model": model,
         "messages": [
@@ -113,30 +170,75 @@ fn call_openai(model: &str, api_key: &str, system: &str, prompt: &str) -> Result
         ]
     });
 
-    println!("Calling OpenAI API (Model: {})...", model);
-    let response = ureq::post(url)
+    println!("Calling {} API (Model: {}) at {}...", provider, model, url);
+    let response = ureq::post(&url)
+        .timeout(std::time::Duration::from_secs(60))
         .set("Authorization", &format!("Bearer {}", api_key))
         .send_json(body)
-        .map_err(|e| format!("OpenAI request failed: {:?}", e))?;
+        .map_err(|e| format!("{} request failed: {:?}", provider, e))?;
 
-    let res_json: serde_json::Value = response.into_json()
-        .map_err(|e| format!("Failed to parse OpenAI response: {:?}", e))?;
+    let res_json: serde_json::Value = response
+        .into_json()
+        .map_err(|e| format!("Failed to parse {} response: {:?}", provider, e))?;
 
     let content = res_json["choices"][0]["message"]["content"]
         .as_str()
-        .ok_or("OpenAI returned empty response")?;
+        .ok_or(format!("{} returned empty response", provider))?;
 
     Ok(content.to_string())
 }
 
-fn call_gemini(model: &str, api_key: &str, system: &str, prompt: &str) -> Result<String, String> {
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model, api_key
-    );
-    
+fn call_anthropic(
+    model: &str,
+    api_key: &str,
+    system: &str,
+    prompt: &str,
+    base_url: &str,
+) -> Result<String, String> {
+    let url = format!("{}/v1/messages", base_url);
+    let body = json!({
+        "model": model,
+        "max_tokens": 4096,
+        "system": system,
+        "messages": [
+            { "role": "user", "content": prompt }
+        ]
+    });
+
+    println!("Calling Anthropic API (Model: {}) at {}...", model, url);
+    let response = ureq::post(&url)
+        .timeout(std::time::Duration::from_secs(60))
+        .set("x-api-key", api_key)
+        .set("anthropic-version", "2023-06-01")
+        .set("Content-Type", "application/json")
+        .send_json(body)
+        .map_err(|e| format!("Anthropic request failed: {:?}", e))?;
+
+    let res_json: serde_json::Value = response
+        .into_json()
+        .map_err(|e| format!("Failed to parse Anthropic response: {:?}", e))?;
+
+    let content = res_json["content"][0]["text"]
+        .as_str()
+        .ok_or("Anthropic returned empty response")?;
+
+    Ok(content.to_string())
+}
+
+fn call_gemini(
+    model: &str,
+    api_key: &str,
+    system: &str,
+    prompt: &str,
+    base_url: &str,
+) -> Result<String, String> {
+    let url = format!("{}/v1beta/models/{}:generateContent", base_url, model);
+
     // Combine system and prompt for Gemini structures
-    let full_prompt = format!("System Instruction: {}\n\nUser Question: {}", system, prompt);
+    let full_prompt = format!(
+        "System Instruction: {}\n\nUser Question: {}",
+        system, prompt
+    );
     let body = json!({
         "contents": [{
             "parts": [{ "text": full_prompt }]
@@ -145,10 +247,14 @@ fn call_gemini(model: &str, api_key: &str, system: &str, prompt: &str) -> Result
 
     println!("Calling Google Gemini API (Model: {})...", model);
     let response = ureq::post(&url)
+        .timeout(std::time::Duration::from_secs(60))
+        .set("x-goog-api-key", api_key)
+        .set("Content-Type", "application/json")
         .send_json(body)
         .map_err(|e| format!("Gemini request failed: {:?}", e))?;
 
-    let res_json: serde_json::Value = response.into_json()
+    let res_json: serde_json::Value = response
+        .into_json()
         .map_err(|e| format!("Failed to parse Gemini response: {:?}", e))?;
 
     let content = res_json["candidates"][0]["content"]["parts"][0]["text"]

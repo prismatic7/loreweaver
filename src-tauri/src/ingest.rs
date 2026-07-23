@@ -1,8 +1,7 @@
-use std::fs;
-use rusqlite::params;
-use uuid::Uuid;
 use crate::db;
 use crate::search;
+use rusqlite::params;
+use uuid::Uuid;
 
 /// Ingests raw markdown text content directly.
 pub fn ingest_markdown_text(
@@ -11,7 +10,10 @@ pub fn ingest_markdown_text(
     category: &str,
     source: &str,
 ) -> Result<(), String> {
-    println!("Ingesting SRD content (Category: {}, Source: {})", category, source);
+    println!(
+        "Ingesting SRD content (Category: {}, Source: {})",
+        category, source
+    );
     let conn = db::init_db(db_path).map_err(|e| e.to_string())?;
 
     let mut current_title = format!("{} Introduction", source);
@@ -44,17 +46,6 @@ pub fn ingest_markdown_text(
     Ok(())
 }
 
-/// Ingests a Markdown SRD rulebook file path.
-pub fn ingest_markdown_srd(
-    db_path: &str,
-    file_path: &str,
-    category: &str,
-    source: &str,
-) -> Result<(), String> {
-    let content = fs::read_to_string(file_path).map_err(|e| e.to_string())?;
-    ingest_markdown_text(db_path, &content, category, source)
-}
-
 fn save_rule_entry(
     conn: &rusqlite::Connection,
     title: &str,
@@ -78,12 +69,14 @@ fn save_rule_entry(
 
         match search::generate_embedding(&chunk) {
             Ok(embedding) => {
-                db::insert_rule_chunk(conn, &rule_id, &chunk, &embedding).map_err(|e| e.to_string())?;
+                db::insert_rule_chunk(conn, &rule_id, &chunk, &embedding)
+                    .map_err(|e| e.to_string())?;
             }
             Err(e) => {
                 eprintln!("Could not generate rule embedding: {:?}", e);
                 let empty_emb = vec![0.0f32; 384];
-                db::insert_rule_chunk(conn, &rule_id, &chunk, &empty_emb).map_err(|e| e.to_string())?;
+                db::insert_rule_chunk(conn, &rule_id, &chunk, &empty_emb)
+                    .map_err(|e| e.to_string())?;
             }
         }
     }

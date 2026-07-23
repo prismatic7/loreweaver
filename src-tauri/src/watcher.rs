@@ -1,11 +1,13 @@
+use crate::db;
+use gray_matter::{engine::YAML, Matter};
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use gray_matter::{Matter, engine::YAML};
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use serde_json::Value;
-use crate::db;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 fn clean_title(title: &str) -> String {
     let mut s = title.trim().to_string();
@@ -68,7 +70,9 @@ pub fn should_ai_index(path: &Path, frontmatter: &HashMap<String, Value>) -> boo
 }
 
 /// Parses a Markdown file, extracts YAML frontmatter and H1 title.
-pub fn parse_markdown_file(path: &Path) -> Result<(String, String, HashMap<String, Value>), String> {
+pub fn parse_markdown_file(
+    path: &Path,
+) -> Result<(String, String, HashMap<String, Value>), String> {
     let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let matter = Matter::<YAML>::new();
     let parsed_result = matter.parse::<HashMap<String, Value>>(&content);
@@ -97,7 +101,6 @@ pub fn parse_markdown_file(path: &Path) -> Result<(String, String, HashMap<Strin
 
     Ok((title, parsed.content, frontmatter))
 }
-
 
 fn parse_canvas_file(path: &Path) -> Result<(String, String, HashMap<String, Value>), String> {
     let title = path
@@ -134,7 +137,9 @@ pub fn sync_entire_directory(vault_path: &Path, db_path: &str) -> Result<(), Str
                         Ok(note_id) => {
                             if ext == "md" {
                                 if should_ai_index(path, &frontmatter) {
-                                    if let Err(e) = crate::search::index_note_vectors(db_path, &note_id, &content) {
+                                    if let Err(e) = crate::search::index_note_vectors(
+                                        db_path, &note_id, &content,
+                                    ) {
                                         eprintln!("Failed to index note vectors: {:?}", e);
                                     }
                                 } else {
@@ -175,6 +180,8 @@ pub fn sync_entire_directory(vault_path: &Path, db_path: &str) -> Result<(), Str
 }
 
 /// Spawns a filesystem watcher that runs in the background.
+/// Events are debounced: rapid successive events for the same file are
+/// coalesced into a single DB update after 500ms of quiet.
 pub fn start_directory_watcher(
     vault_path_str: String,
     db_path_str: String,
@@ -182,80 +189,67 @@ pub fn start_directory_watcher(
     let vault_path = PathBuf::from(&vault_path_str);
     let db_path = Arc::new(db_path_str);
     let vault_path_clone = vault_path.clone();
-    
+
     // Perform initial sync
     sync_entire_directory(&vault_path, &db_path)?;
 
+    // Pending events: path -> (is_remove, last_seen)
+    let pending: Arc<Mutex<HashMap<PathBuf, (bool, Instant)>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+
+    // Debounce flusher thread
+    let pending_flush = Arc::clone(&pending);
+    let db_path_flush = Arc::clone(&db_path);
+    let vault_path_flush = vault_path_clone.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(500));
+        let to_process: Vec<(PathBuf, bool)> = {
+            let mut p = pending_flush.lock().unwrap_or_else(|e| e.into_inner());
+            if p.is_empty() {
+                continue;
+            }
+            // Only flush entries that haven't been touched in the last 400ms
+            let now = Instant::now();
+            let stale: Vec<_> = p
+                .iter()
+                .filter(|(_, (_, ts))| now.duration_since(*ts) > Duration::from_millis(400))
+                .map(|(k, (is_rem, _))| (k.clone(), *is_rem))
+                .collect();
+            for (k, _) in &stale {
+                p.remove(k);
+            }
+            stale
+        };
+
+        for (path, is_remove) in to_process {
+            process_file_event(&path, is_remove, &db_path_flush, &vault_path_flush);
+        }
+    });
+
     // Create watcher
+    let pending_watcher = Arc::clone(&pending);
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<Event, notify::Error>| match res {
             Ok(event) => {
-                let db_path = Arc::clone(&db_path);
-                let vault_path = vault_path_clone.clone();
-                
-                // Process event paths
+                let is_remove = event.kind.is_remove();
                 for path in event.paths {
-                    if path.extension().map_or(false, |ext| ext == "md") {
-                        let conn = match db::init_db(&db_path) {
-                            Ok(c) => c,
-                            Err(e) => {
-                                eprintln!("Watcher could not connect to SQLite: {:?}", e);
-                                continue;
-                            }
-                        };
-                        
-                        let rel_path = path
-                            .strip_prefix(&vault_path)
-                            .unwrap_or(&path)
-                            .to_string_lossy()
-                            .into_owned();
-
-                        if rel_path.starts_with(".trash") || rel_path.contains("/.trash") || rel_path.contains("\\.trash") {
-                            continue;
-                        }
-
-                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if ext != "md" && ext != "canvas" {
-                            continue;
-                        }
-
-                        if event.kind.is_remove() {
-                            println!("File deleted: {:?}", path);
-                            if let Err(e) = db::delete_note_by_path(&conn, &rel_path) {
-                                eprintln!("Failed to delete note from DB: {:?}", e);
-                            }
-                        } else if event.kind.is_create() || event.kind.is_modify() {
-                            println!("File created/modified: {:?}", path);
-                            if path.exists() {
-                                let parse_res = if ext == "canvas" {
-                                    parse_canvas_file(&path)
-                                } else {
-                                    parse_markdown_file(&path)
-                                };
-                                match parse_res {
-                                    Ok((title, content, frontmatter)) => {
-                                        match db::upsert_note(&conn, &rel_path, &title, &content, &frontmatter) {
-                                            Ok(note_id) => {
-                                                if ext == "md" {
-                                                    if should_ai_index(&path, &frontmatter) {
-                                                        if let Err(e) = crate::search::index_note_vectors(&db_path, &note_id, &content) {
-                                                            eprintln!("Failed to index note vectors: {:?}", e);
-                                                        }
-                                                    } else {
-                                                        if let Err(e) = db::clear_note_chunks(&conn, &note_id) {
-                                                            eprintln!("Failed to clear note chunks: {:?}", e);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => eprintln!("Failed to upsert modified note: {:?}", e),
-                                        }
-                                    }
-                                    Err(e) => eprintln!("Failed to parse created/modified file: {:?}", e),
-                                }
-                            }
-                        }
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    if ext != "md" && ext != "canvas" {
+                        continue;
                     }
+                    let rel_path = path
+                        .strip_prefix(&vault_path_clone)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .into_owned();
+                    if rel_path.starts_with(".trash")
+                        || rel_path.contains("/.trash")
+                        || rel_path.contains("\\.trash")
+                    {
+                        continue;
+                    }
+                    let mut p = pending_watcher.lock().unwrap_or_else(|e| e.into_inner());
+                    p.insert(path, (is_remove, Instant::now()));
                 }
             }
             Err(e) => eprintln!("Watcher error: {:?}", e),
@@ -269,4 +263,60 @@ pub fn start_directory_watcher(
         .map_err(|e| e.to_string())?;
 
     Ok(watcher)
+}
+
+/// Process a single file event — parse, upsert/delete in DB, re-index vectors.
+fn process_file_event(path: &Path, is_remove: bool, db_path: &str, vault_path: &Path) {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    let conn = match db::init_db(db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Watcher could not connect to SQLite: {:?}", e);
+            return;
+        }
+    };
+
+    let rel_path = path
+        .strip_prefix(vault_path)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned();
+
+    if is_remove || !path.exists() {
+        println!("File deleted: {:?}", path);
+        if let Err(e) = db::delete_note_by_path(&conn, &rel_path) {
+            eprintln!("Failed to delete note from DB: {:?}", e);
+        }
+    } else {
+        println!("File created/modified: {:?}", path);
+        let parse_res = if ext == "canvas" {
+            parse_canvas_file(path)
+        } else {
+            parse_markdown_file(path)
+        };
+        match parse_res {
+            Ok((title, content, frontmatter)) => {
+                match db::upsert_note(&conn, &rel_path, &title, &content, &frontmatter) {
+                    Ok(note_id) => {
+                        if ext == "md" {
+                            if should_ai_index(path, &frontmatter) {
+                                if let Err(e) =
+                                    crate::search::index_note_vectors(db_path, &note_id, &content)
+                                {
+                                    eprintln!("Failed to index note vectors: {:?}", e);
+                                }
+                            } else {
+                                if let Err(e) = db::clear_note_chunks(&conn, &note_id) {
+                                    eprintln!("Failed to clear note chunks: {:?}", e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("Failed to upsert modified note: {:?}", e),
+                }
+            }
+            Err(e) => eprintln!("Failed to parse created/modified file: {:?}", e),
+        }
+    }
 }

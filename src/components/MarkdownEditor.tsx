@@ -18,6 +18,7 @@ type MarkdownEditorProps = {
   value: string;
   onChange: (value: string) => void;
   notes: EditorNote[];
+  activeNotePath?: string;
 };
 
 const buildLinkCandidates = (notes: EditorNote[]) => {
