@@ -4,15 +4,19 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 
 pub mod agent;
-pub mod db;
-pub mod ingest;
-pub mod plugins;
-pub mod search;
-pub mod watcher;
+mod db;
+mod ingest;
+mod plugins;
+mod search;
+mod watcher;
+
+/// Tauri Bootstrapper & Command Registry
+/// Integrates all core modules (DB, watcher, AI agent, plugins, search)
+/// and exposes the Tauri IPC command interface.
 
 // --- App State ---
 
@@ -21,6 +25,7 @@ pub struct AppState {
     pub vault_path: Mutex<String>,
     pub plugins_path: Mutex<String>,
     pub watcher: Mutex<Option<RecommendedWatcher>>,
+    pub conn: Mutex<Arc<Mutex<rusqlite::Connection>>>,
 }
 
 // --- Data Structures ---
@@ -37,6 +42,7 @@ pub struct CampaignNote {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RuleEntry {
     pub id: String,
+    pub path: String,
     pub title: String,
     pub category: String,
     pub source: String,
@@ -131,8 +137,8 @@ fn greet(name: &str) -> String {
 /// Load all campaign notes from the local SQLite database.
 #[tauri::command]
 fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     db::load_all_notes(&conn).map_err(|e| e.to_string())
 }
 
@@ -258,20 +264,19 @@ fn write_note_to_disk(
 #[tauri::command]
 fn save_note(state: State<AppState>, note: CampaignNote) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
     let file_path = validate_safe_path(&vault_path, &note.path)?;
     write_note_to_disk(&file_path, &note.content, &note.frontmatter)?;
 
     // Also upsert directly into the DB so load_notes immediately reflects changes
-    if let Ok(conn) = db::init_db(&db_path) {
-        let _ = db::upsert_note(
-            &conn,
-            &note.path,
-            &note.title,
-            &note.content,
-            &note.frontmatter,
-        );
-    }
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    let _ = db::upsert_note(
+        &conn,
+        &note.path,
+        &note.title,
+        &note.content,
+        &note.frontmatter,
+    );
 
     Ok(())
 }
@@ -317,10 +322,10 @@ fn save_note_asset(
 /// Resolves or auto-creates a note from a [[Wiki-link]] target.
 #[tauri::command]
 fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<CampaignNote, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
 
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     // 1. Check if note already exists by title or path
     // Escape LIKE wildcards in the target name to prevent wildcard injection
@@ -408,6 +413,7 @@ fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<Campai
         &frontmatter,
     )
     .map_err(|e| e.to_string())?;
+    drop(conn);
 
     Ok(CampaignNote {
         id: note_id,
@@ -421,26 +427,54 @@ fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<Campai
 #[tauri::command]
 fn trash_note(state: State<AppState>, note_path: &str) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let file_path = validate_safe_path(&vault_path, note_path)?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    trash_note_impl(&vault_path, &conn, note_path)
+}
+
+fn trash_note_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    note_path: &str,
+) -> Result<(), String> {
+    // Normalize the relative path: strip leading slashes, "./" prefixes, and whitespace
+    // so that "notes/foo.md", "/notes/foo.md", and "./notes/foo.md" all resolve identically.
+    let clean_path = note_path
+        .trim_start_matches('/')
+        .trim_start_matches("./")
+        .trim();
+
+    let file_path = validate_safe_path(vault_path, clean_path)?;
+
     if !file_path.exists() {
-        return Err("Note file does not exist".to_string());
+        // Ghost note: File is already deleted from disk. Clean up the database record.
+        eprintln!(
+            "[trash_note] file not found; cleaning DB records for '{}' and '{}'",
+            note_path, clean_path
+        );
+        // Try both the raw and cleaned path in case DB stores either variant
+        let _ = db::delete_note_by_path(conn, note_path);
+        let _ = db::delete_note_by_path(conn, clean_path);
+        return Err(format!(
+            "Could not find note file at '{}' (already deleted?)",
+            clean_path
+        ));
     }
 
     // Parse existing file to retain content and metadata
     let (_title, content, mut frontmatter) = watcher::parse_markdown_file(&file_path)?;
 
-    // Add trash metadata
+    // Add trash metadata: store the clean relative path for reliable restoration
     frontmatter.insert(
         "original_path".to_string(),
-        Value::String(note_path.to_string()),
+        Value::String(clean_path.to_string()),
     );
     frontmatter.insert(
         "deleted_at".to_string(),
         Value::Number(serde_json::Number::from(chrono::Utc::now().timestamp())),
     );
 
-    let trash_dir = std::path::Path::new(&*vault_path).join(".trash");
+    let trash_dir = std::path::Path::new(vault_path).join(".trash");
     std::fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
 
     let filename = file_path.file_name().ok_or("Invalid note filename")?;
@@ -454,9 +488,8 @@ fn trash_note(state: State<AppState>, note_path: &str) -> Result<(), String> {
     std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
 
     // Also remove from SQLite DB directly
-    if let Ok(conn) = db::init_db(&db_path) {
-        let _ = db::delete_note_by_path(&conn, note_path);
-    }
+    let _ = db::delete_note_by_path(conn, note_path);
+    let _ = db::delete_note_by_path(conn, clean_path);
 
     Ok(())
 }
@@ -464,66 +497,78 @@ fn trash_note(state: State<AppState>, note_path: &str) -> Result<(), String> {
 #[tauri::command]
 fn trash_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let dir_path = validate_safe_path(&vault_path, folder_path)?;
-    if !dir_path.exists() {
-        return Err("Folder does not exist".to_string());
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    trash_folder_impl(&vault_path, &conn, folder_path)
+}
+
+fn trash_folder_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    folder_path: &str,
+) -> Result<(), String> {
+    let clean_folder = folder_path
+        .trim_start_matches('/')
+        .trim_start_matches("./")
+        .trim();
+    let target_dir = validate_safe_path(vault_path, clean_folder)?;
+
+    if !target_dir.exists() {
+        // Folder is already gone from disk; ensure DB is cleaned up.
+        let _ = db::delete_notes_in_folder(conn, folder_path);
+        let _ = db::delete_notes_in_folder(conn, clean_folder);
+        return Ok(());
     }
 
-    let trash_dir = std::path::Path::new(&*vault_path).join(".trash");
+    let trash_dir = std::path::Path::new(vault_path).join(".trash");
     std::fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
 
-    // Walk the folder, move each .md file to trash with metadata
-    fn move_files_to_trash(
-        dir: &std::path::Path,
-        vault_path: &std::path::Path,
-        trash_dir: &std::path::Path,
-    ) -> Result<(), String> {
-        for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.is_dir() {
-                move_files_to_trash(&path, vault_path, trash_dir)?;
-            } else if path.is_file() {
-                let rel_path = path
-                    .strip_prefix(vault_path)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .to_string();
-                if path.extension().map_or(false, |ext| ext == "md") {
-                    let (_title, content, mut frontmatter) = watcher::parse_markdown_file(&path)?;
-                    frontmatter.insert("original_path".to_string(), Value::String(rel_path));
-                    frontmatter.insert(
-                        "deleted_at".to_string(),
-                        Value::Number(serde_json::Number::from(chrono::Utc::now().timestamp())),
-                    );
-                    let filename = path.file_name().ok_or("Invalid filename")?;
-                    let trash_filename =
-                        format!("{}_{}", uuid::Uuid::new_v4(), filename.to_string_lossy());
-                    let trash_file_path = trash_dir.join(&trash_filename);
-                    write_note_to_disk(&trash_file_path, &content, &frontmatter)?;
-                }
-                std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-            }
+    // Collect all .md files in the target directory and its subdirectories.
+    let mut files_to_trash: Vec<std::path::PathBuf> = Vec::new();
+    for entry in walkdir::WalkDir::new(&target_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
+            files_to_trash.push(path.to_path_buf());
         }
-        Ok(())
     }
 
-    if dir_path.is_dir() {
-        move_files_to_trash(&dir_path, std::path::Path::new(&*vault_path), &trash_dir)?;
-        // Remove the now-empty directory tree
-        std::fs::remove_dir_all(&dir_path).map_err(|e| e.to_string())?;
-    } else if dir_path.is_file() {
-        std::fs::remove_file(&dir_path).map_err(|e| e.to_string())?;
-    }
+    // Move each markdown file to trash and remove its DB record.
+    for file_path in files_to_trash {
+        let rel_path = match file_path.strip_prefix(vault_path) {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => {
+                eprintln!("Could not compute relative path for {:?}", file_path);
+                continue;
+            }
+        };
 
-    if let Ok(conn) = db::init_db(&db_path) {
-        let pattern = format!("{}/%", folder_path);
-        let _ = conn.execute(
-            "DELETE FROM notes WHERE path LIKE ?1 OR path = ?2",
-            params![pattern, folder_path],
+        let (_title, content, mut frontmatter) =
+            watcher::parse_markdown_file(&file_path).unwrap_or_default();
+        frontmatter.insert("original_path".to_string(), Value::String(rel_path.clone()));
+        frontmatter.insert(
+            "deleted_at".to_string(),
+            Value::Number(serde_json::Number::from(chrono::Utc::now().timestamp())),
         );
+
+        let filename = file_path.file_name().unwrap_or_default();
+        let trash_filename = format!("{}_{}", uuid::Uuid::new_v4(), filename.to_string_lossy());
+        let trash_file_path = trash_dir.join(&trash_filename);
+
+        if write_note_to_disk(&trash_file_path, &content, &frontmatter).is_ok() {
+            let _ = std::fs::remove_file(&file_path);
+            let _ = db::delete_note_by_path(conn, &rel_path);
+        }
     }
+
+    // Remove the now-empty directory tree from disk.
+    let _ = std::fs::remove_dir_all(&target_dir);
+
+    // Final DB cleanup for any lingering rows.
+    let _ = db::delete_notes_in_folder(conn, folder_path);
+    let _ = db::delete_notes_in_folder(conn, clean_folder);
 
     Ok(())
 }
@@ -531,7 +576,17 @@ fn trash_folder(state: State<AppState>, folder_path: &str) -> Result<(), String>
 #[tauri::command]
 fn restore_note(state: State<AppState>, trash_note_path: &str) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let file_path = validate_safe_path(&vault_path, trash_note_path)?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    restore_note_impl(&vault_path, &conn, trash_note_path)
+}
+
+fn restore_note_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    trash_note_path: &str,
+) -> Result<(), String> {
+    let file_path = validate_safe_path(vault_path, trash_note_path)?;
     if !file_path.exists() {
         return Err("Trashed note file does not exist".to_string());
     }
@@ -560,7 +615,7 @@ fn restore_note(state: State<AppState>, trash_note_path: &str) -> Result<(), Str
         }
     };
 
-    let original_file_path = validate_safe_path(&vault_path, &original_rel_path)?;
+    let original_file_path = validate_safe_path(vault_path, &original_rel_path)?;
 
     // Write restored note
     write_note_to_disk(&original_file_path, &content, &frontmatter)?;
@@ -568,13 +623,41 @@ fn restore_note(state: State<AppState>, trash_note_path: &str) -> Result<(), Str
     // Remove from trash
     std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
 
+    // Explicitly re-index the restored note so it appears immediately even if the watcher is late.
+    let title = frontmatter
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let note_id = db::upsert_note(conn, &original_rel_path, title, &content, &frontmatter)
+        .unwrap_or_default();
+    // Clear stale vector chunks and rebuild them so search stays consistent.
+    let _ = db::clear_note_chunks(conn, &note_id);
+    let chunks = search::chunk_text(&content, 200, 20);
+    for chunk in chunks {
+        if chunk.trim().is_empty() {
+            continue;
+        }
+        match search::generate_embedding(&chunk) {
+            Ok(emb) => {
+                let _ = db::insert_note_chunk(conn, &note_id, &chunk, &emb);
+            }
+            Err(_) => {
+                let _ = db::insert_note_chunk(conn, &note_id, &chunk, &vec![0.0f32; 384]);
+            }
+        }
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 fn load_trash_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let trash_dir = std::path::Path::new(&*vault_path).join(".trash");
+    load_trash_notes_impl(&vault_path)
+}
+
+fn load_trash_notes_impl(vault_path: &str) -> Result<Vec<CampaignNote>, String> {
+    let trash_dir = std::path::Path::new(vault_path).join(".trash");
     if !trash_dir.exists() {
         return Ok(Vec::new());
     }
@@ -586,7 +669,7 @@ fn load_trash_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String>
             if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
                 if let Ok((title, content, frontmatter)) = watcher::parse_markdown_file(&path) {
                     let rel_path = path
-                        .strip_prefix(&*vault_path)
+                        .strip_prefix(vault_path)
                         .unwrap_or(&path)
                         .to_string_lossy()
                         .into_owned();
@@ -612,8 +695,32 @@ fn load_trash_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String>
 #[tauri::command]
 fn empty_trash(state: State<AppState>) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let trash_dir = std::path::Path::new(&*vault_path).join(".trash");
     if trash_dir.exists() {
+        // Remove each trashed note from the DB before deleting the file.
+        if let Ok(entries) = std::fs::read_dir(&trash_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
+                    let rel_path = path
+                        .strip_prefix(&*vault_path)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string();
+                    let original_path = watcher::parse_markdown_file(&path)
+                        .ok()
+                        .and_then(|(_t, _c, fm)| {
+                            fm.get("original_path")
+                                .and_then(|v| v.as_str().map(String::from))
+                        })
+                        .unwrap_or(rel_path.clone());
+                    let _ = db::delete_note_by_path(&conn, &rel_path);
+                    let _ = db::delete_note_by_path(&conn, &original_path);
+                }
+            }
+        }
         std::fs::remove_dir_all(&trash_dir).map_err(|e| e.to_string())?;
         std::fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
     }
@@ -623,16 +730,32 @@ fn empty_trash(state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 fn delete_trashed_note(state: State<AppState>, trash_note_path: &str) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let file_path = validate_safe_path(&vault_path, trash_note_path)?;
     if file_path.exists() {
+        // Remove the DB entry that may still exist for this trashed note.
+        let rel_path = file_path
+            .strip_prefix(&*vault_path)
+            .unwrap_or(&file_path)
+            .to_string_lossy()
+            .to_string();
+        let original_path = watcher::parse_markdown_file(&file_path)
+            .ok()
+            .and_then(|(_t, _c, fm)| {
+                fm.get("original_path")
+                    .and_then(|v| v.as_str().map(String::from))
+            })
+            .unwrap_or(rel_path.clone());
+        let _ = db::delete_note_by_path(&conn, &rel_path);
+        let _ = db::delete_note_by_path(&conn, &original_path);
         std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-fn cleanup_expired_trash(vault_path_str: &str, db_path_str: &str) -> Result<(), String> {
-    let conn = db::init_db(db_path_str).map_err(|e| e.to_string())?;
-    let retention_days_str = db::get_setting(&conn, "trash_retention_days")
+fn cleanup_expired_trash(vault_path_str: &str, conn: &rusqlite::Connection) -> Result<(), String> {
+    let retention_days_str = db::get_setting(conn, "trash_retention_days")
         .map_err(|e| e.to_string())?
         .unwrap_or_else(|| "30".to_string());
     let retention_days: i64 = retention_days_str.parse().unwrap_or(30);
@@ -694,20 +817,21 @@ fn get_vault_path(state: State<AppState>) -> String {
 /// Load rulebooks from the SQLite database.
 #[tauri::command]
 fn load_rules(state: State<AppState>) -> Result<Vec<RuleEntry>, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, title, category, source, content FROM rules")
+        .prepare("SELECT id, path, title, category, source, content FROM rules")
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map([], |row| {
             Ok(RuleEntry {
                 id: row.get(0)?,
-                title: row.get(1)?,
-                category: row.get(2)?,
-                source: row.get(3)?,
-                content: row.get(4)?,
+                path: row.get(1)?,
+                title: row.get(2)?,
+                category: row.get(3)?,
+                source: row.get(4)?,
+                content: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -726,18 +850,20 @@ fn search_vault(
     query: &str,
     category: &str,
 ) -> Result<Vec<SearchResult>, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    search::hybrid_query(&db_path, query, category)
+    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    search::hybrid_query(&conn, query, category)
 }
 
 /// Saves (creates or updates) a rule entry to the database.
 #[tauri::command]
 fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::upsert_rule(
         &conn,
         &rule.id,
+        &rule.path,
         &rule.title,
         &rule.category,
         &rule.source,
@@ -754,9 +880,69 @@ fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> 
 /// Deletes a rule entry from the database by id.
 #[tauri::command]
 fn delete_rule(state: State<AppState>, rule_id: &str) -> Result<(), String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::delete_rule(&conn, rule_id).map_err(|e| e.to_string())
+}
+
+/// Recursively lists all directories inside the vault, relative to the vault root.
+/// Excludes `.trash` and hidden directories starting with `.`.
+#[tauri::command]
+fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
+    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let vault = std::path::Path::new(&*vault_path);
+    if !vault.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut folders: Vec<String> = Vec::new();
+
+    fn collect_dirs(
+        dir: &std::path::Path,
+        vault: &std::path::Path,
+        out: &mut Vec<String>,
+    ) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if name.starts_with('.') || name == "_assets" {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(vault)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            if !rel.is_empty() {
+                out.push(rel);
+            }
+            collect_dirs(&path, vault, out)?;
+        }
+        Ok(())
+    }
+
+    if let Err(e) = collect_dirs(vault, vault, &mut folders) {
+        eprintln!("list_folders error: {:?}", e);
+    }
+
+    folders.sort();
+    folders.dedup();
+    Ok(folders)
+}
+
+/// Deletes all rules whose path lives inside `folder_path` (e.g. a rulebook folder).
+#[tauri::command]
+fn delete_rules_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::delete_rules_in_folder(&conn, folder_path).map_err(|e| e.to_string())
 }
 
 /// Ingests a new rulebook/SRD from raw markdown content.
@@ -767,8 +953,9 @@ fn ingest_srd_text(
     source: &str,
     content: &str,
 ) -> Result<(), String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    ingest::ingest_markdown_text(&db_path, content, category, source)
+    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    ingest::ingest_markdown_text(&conn, content, category, source)
 }
 
 /// Orchestrates an AI response using the configured LLM backend.
@@ -782,9 +969,10 @@ async fn orchestrate_agent(
     base_url: Option<&str>,
     active_note_id: Option<&str>,
 ) -> Result<String, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
+    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     agent::generate_response(
-        &db_path,
+        &conn,
         prompt,
         provider,
         model,
@@ -1257,8 +1445,8 @@ fn generate_speech(
 
 #[tauri::command]
 fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     let llm_provider = db::get_setting(&conn, "llm_provider")
         .unwrap_or(None)
@@ -1349,8 +1537,8 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
 
 #[tauri::command]
 fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
-    let db_path = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn = db::init_db(&db_path).map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "llm_provider", &settings.llm_provider).map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_model", &settings.llm_model).map_err(|e| e.to_string())?;
@@ -1676,26 +1864,31 @@ fn switch_vault(state: State<AppState>, path: &str) -> Result<(), String> {
         .to_string_lossy()
         .to_string();
 
+    let new_conn = db::init_db(&new_db_path_str).map_err(|e| e.to_string())?;
+    db::seed_default_rules(&new_conn).map_err(|e| e.to_string())?;
+    let new_conn = Arc::new(Mutex::new(new_conn));
+
     {
         let mut vault_path_guard = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
         *vault_path_guard = new_vault_path_str.clone();
 
         let mut db_path_guard = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
         *db_path_guard = new_db_path_str.clone();
+
+        let mut conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+        *conn_guard = Arc::clone(&new_conn);
     }
 
-    let conn = db::init_db(&new_db_path_str).map_err(|e| e.to_string())?;
-    db::seed_default_rules(&conn).map_err(|e| e.to_string())?;
-
     let new_watcher =
-        watcher::start_directory_watcher(new_vault_path_str.clone(), new_db_path_str.clone())?;
+        watcher::start_directory_watcher(new_vault_path_str.clone(), Arc::clone(&new_conn))?;
     {
         let mut watcher_guard = state.watcher.lock().unwrap_or_else(|e| e.into_inner());
         *watcher_guard = Some(new_watcher);
     }
 
-    let db_path_clone = new_db_path_str.clone();
+    let conn_clone = Arc::clone(&new_conn);
     let vault_path_clone = new_vault_path_str.clone();
+    let new_db_path_clone = new_db_path_str.clone();
 
     let search_engine_dir = canonical_target
         .parent()
@@ -1704,15 +1897,16 @@ fn switch_vault(state: State<AppState>, path: &str) -> Result<(), String> {
         .unwrap_or_else(|| "./data".to_string());
 
     std::thread::spawn(move || {
-        search::set_db_path(&db_path_clone);
+        search::set_db_path(&new_db_path_clone);
         match search::init_search_engine(&search_engine_dir) {
             Ok(_) => {
-                let _ = search::index_all_rules_vectors(&db_path_clone);
+                let conn_guard = conn_clone.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = search::index_all_rules_vectors(&conn_guard);
                 let _ = watcher::sync_entire_directory(
                     std::path::Path::new(&vault_path_clone),
-                    &db_path_clone,
+                    &conn_guard,
                 );
-                let _ = cleanup_expired_trash(&vault_path_clone, &db_path_clone);
+                let _ = cleanup_expired_trash(&vault_path_clone, &conn_guard);
                 println!("New campaign vault notes vector-indexed successfully!");
             }
             Err(e) => eprintln!("Failed to initialize search engine for new vault: {:?}", e),
@@ -1853,31 +2047,76 @@ pub fn run() {
             std::fs::create_dir_all(&plugins_path)
                 .map_err(|e| err(format!("Failed to create plugins dir: {}", e)))?;
 
-            // Seed a sample dice bonus modifier plugin
-            let sample_plugin_dir = app_data_dir.join("plugins/dice-bonus");
+            // Seed a sample notation dice roller plugin
+            let sample_plugin_dir = app_data_dir.join("plugins/dice-roller");
             std::fs::create_dir_all(&sample_plugin_dir)
                 .map_err(|e| err(format!("Failed to create sample plugin dir: {}", e)))?;
 
             let sample_manifest = sample_plugin_dir.join("manifest.json");
             if !sample_manifest.exists() {
                 std::fs::write(&sample_manifest, r#"{
-  "id": "dice-bonus",
-  "name": "Proficiency Bonus Modifier",
+  "id": "dice-roller",
+  "name": "Notation Dice Roller",
   "version": "1.0.0",
-  "description": "Appends a proficiency bonus (+2) to all d20 rolls automatically.",
-    "permissions": ["hooks"],
+  "description": "Notation-based RPG dice roller supporting standard dice formats (e.g. 2d10+4).",
+  "permissions": ["hooks"],
   "entry": "index.js"
 }"#).map_err(|e| err(format!("Failed to write sample manifest: {}", e)))?;
             }
 
             let sample_script = sample_plugin_dir.join("index.js");
             if !sample_script.exists() {
-                std::fs::write(&sample_script, r#"function on_dice_roll(payload) {
-    let data = JSON.parse(payload);
-    if (data.sides === 20) {
-        data.modifier += 2;
+                std::fs::write(&sample_script, r#"function roll_notation(payload) {
+    let str = payload.toLowerCase().replace(/\s+/g, '');
+    let termRegex = /([+-]?)(?:(\d*)d(\d+|%|f)|(\d+))/g;
+    let match;
+    let total = 0;
+    let explanation = [];
+
+    while ((match = termRegex.exec(str)) !== null) {
+        let sign = match[1] === '-' ? -1 : 1;
+        let signText = match[1] || (explanation.length > 0 ? '+' : '');
+
+        if (match[4]) {
+            let val = parseInt(match[4], 10);
+            total += sign * val;
+            explanation.push(signText + val);
+        } else {
+            let count = match[2] ? parseInt(match[2], 10) : 1;
+            let sidesStr = match[3];
+            let sides = sidesStr === '%' ? 100 : (sidesStr === 'f' ? 'f' : parseInt(sidesStr, 10));
+
+            let termRolls = [];
+            let termTotal = 0;
+            for (let i = 0; i < count; i++) {
+                let rollVal;
+                if (sides === 'f') {
+                    rollVal = Math.floor(Math.random() * 3) - 1;
+                } else {
+                    rollVal = Math.floor(Math.random() * sides) + 1;
+                }
+                termRolls.push(rollVal);
+                termTotal += rollVal;
+            }
+
+            total += sign * termTotal;
+            explanation.push(signText + count + "d" + sidesStr + "[" + termRolls.join(",") + "]");
+        }
     }
-    return JSON.stringify(data);
+
+    if (explanation.length === 0) {
+        return JSON.stringify({
+            notation: payload,
+            total: 0,
+            rolls: "Invalid dice notation"
+        });
+    }
+
+    return JSON.stringify({
+        notation: payload,
+        total: total,
+        rolls: explanation.join(" ")
+    });
 }"#).map_err(|e| err(format!("Failed to write sample script: {}", e)))?;
             }
 
@@ -1935,23 +2174,35 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 .map_err(|e| err(format!("Failed to init database: {}", e)))?;
             db::seed_default_rules(&conn)
                 .map_err(|e| err(format!("Failed to seed default rules: {}", e)))?;
+            let conn = Arc::new(Mutex::new(conn));
 
             // Spawn Fs Watcher (triggers initial index scan automatically)
-            let watcher = watcher::start_directory_watcher(vault_path.clone(), db_path.clone())
-                .map_err(|e| err(format!("Failed to start directory watcher: {}", e)))?;
+            let watcher = watcher::start_directory_watcher(
+                vault_path.clone(),
+                Arc::clone(&conn),
+            )
+            .map_err(|e| err(format!("Failed to start directory watcher: {}", e)))?;
 
             // Spawn local search engine initialization and subsequent vector indexing in a background thread
             let app_data_dir_str = app_data_dir.to_string_lossy().to_string();
-            let db_path_clone = db_path.clone();
+            let conn_clone = Arc::clone(&conn);
             let vault_path_clone = vault_path.clone();
+            let db_path_clone = db_path.clone();
             std::thread::spawn(move || {
                 search::set_db_path(&db_path_clone);
                 match search::init_search_engine(&app_data_dir_str) {
                     Ok(_) => {
                         println!("Search engine loaded. Vector-indexing existing notes and rules...");
-                        let _ = search::index_all_rules_vectors(&db_path_clone);
-                        let _ = watcher::sync_entire_directory(std::path::Path::new(&vault_path_clone), &db_path_clone);
-                        let _ = cleanup_expired_trash(&vault_path_clone, &db_path_clone);
+                        let conn_guard = conn_clone.lock().unwrap_or_else(|e| e.into_inner());
+                        let _ = search::index_all_rules_vectors(&conn_guard);
+                        let _ = watcher::sync_entire_directory(
+                            std::path::Path::new(&vault_path_clone),
+                            &conn_guard,
+                        );
+                        let _ = cleanup_expired_trash(
+                            &vault_path_clone,
+                            &conn_guard,
+                        );
                         println!("Notes and rules successfully vector indexed!");
                     }
                     Err(e) => {
@@ -1965,6 +2216,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 vault_path: Mutex::new(vault_path),
                 plugins_path: Mutex::new(plugins_path),
                 watcher: Mutex::new(Some(watcher)),
+                conn: Mutex::new(conn),
             });
 
             Ok(())
@@ -1998,6 +2250,8 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             trash_folder,
             restore_note,
             delete_trashed_note,
+            delete_rules_folder,
+            list_folders,
             delete_vault,
             open_vault_dialog,
             load_vault_settings,
@@ -2007,4 +2261,137 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[test]
+    fn test_trash_note() {
+        let temp_dir = std::env::temp_dir().join("loreweaver_test_vault");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let note_dir = temp_dir.join("Worldbuilding");
+        std::fs::create_dir_all(&note_dir).unwrap();
+
+        let note_path = note_dir.join("TestNote.md");
+        std::fs::write(&note_path, "---\ntitle: Test\ntags: [a]\n---\nHello World").unwrap();
+
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let state = AppState {
+            db_path: Mutex::new(db_path_str),
+            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: Mutex::new(None),
+            conn: Mutex::new(Arc::clone(&conn)),
+        };
+
+        let vault_path = state.vault_path.lock().unwrap();
+        let binding = state.conn.lock().unwrap();
+        let conn_guard = binding.lock().unwrap();
+
+        let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
+        assert!(res.is_ok(), "trash_note failed: {:?}", res);
+        drop(conn_guard);
+
+        // Verify file was moved to .trash/
+        let trash_dir = temp_dir.join(".trash");
+        assert!(trash_dir.exists(), "Trash directory not created");
+
+        let entries: Vec<_> = std::fs::read_dir(trash_dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(entries.len(), 1, "Expected 1 file in trash");
+
+        let trashed_file_path = &entries[0];
+        let file_name = trashed_file_path.file_name().unwrap().to_string_lossy();
+        assert!(
+            file_name.contains("_TestNote.md"),
+            "Unexpected file in trash: {}",
+            file_name
+        );
+
+        // Verify original file is gone
+        assert!(!note_path.exists(), "Original file not deleted");
+
+        // Verify DB entry is gone
+        let count: i64 = conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM notes WHERE path = 'Worldbuilding/TestNote.md'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "Note still exists in DB");
+
+        // Verify load_trash_notes
+        let trashed = load_trash_notes_impl(&vault_path).unwrap();
+        assert_eq!(trashed.len(), 1, "Expected 1 note in load_trash_notes");
+        assert_eq!(trashed[0].title, "Test");
+
+        // Test restore_note
+        let binding = state.conn.lock().unwrap();
+        let conn_guard = binding.lock().unwrap();
+        let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
+        assert!(
+            restore_res.is_ok(),
+            "restore_note failed: {:?}",
+            restore_res
+        );
+
+        // Verify original file is back
+        assert!(note_path.exists(), "Original file not restored");
+    }
+
+    #[test]
+    fn test_empty_note_and_folder_trashing() {
+        let temp_dir = std::env::temp_dir().join("loreweaver_test_vault_empty");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let note_dir = temp_dir.join("Worldbuilding");
+        std::fs::create_dir_all(&note_dir).unwrap();
+
+        let empty_note_path = note_dir.join("EmptyNote.md");
+        std::fs::write(&empty_note_path, "").unwrap(); // Completely empty file
+
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let state = AppState {
+            db_path: Mutex::new(db_path_str),
+            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: Mutex::new(None),
+            conn: Mutex::new(Arc::clone(&conn)),
+        };
+
+        let vault_path = state.vault_path.lock().unwrap();
+        let binding = state.conn.lock().unwrap();
+        let conn_guard = binding.lock().unwrap();
+
+        // 1. Verify parsing and trashing empty note directly
+        let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/EmptyNote.md");
+        assert!(res.is_ok(), "trash_note failed on empty note: {:?}", res);
+
+        // 2. Re-create empty note and test folder trashing
+        std::fs::write(&empty_note_path, "").unwrap();
+        let trash_folder_res = trash_folder_impl(&vault_path, &conn_guard, "Worldbuilding");
+        assert!(
+            trash_folder_res.is_ok(),
+            "trash_folder failed: {:?}",
+            trash_folder_res
+        );
+
+        // Verify folder is gone
+        assert!(!note_dir.exists(), "Folder still exists");
+    }
 }

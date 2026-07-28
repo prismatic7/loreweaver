@@ -3,6 +3,9 @@ use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// Database Initialization
+/// Creates structured SQLite tables for Notes, Rules, Settings, and Vector Chunks.
+/// Enables Write-Ahead Logging (WAL) and foreign keys for high performance and integrity.
 pub fn init_db(db_path: &str) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
@@ -40,6 +43,7 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rules (
             id TEXT PRIMARY KEY,
+            path TEXT NOT NULL DEFAULT '',
             title TEXT NOT NULL,
             category TEXT NOT NULL,
             source TEXT NOT NULL,
@@ -182,6 +186,32 @@ pub fn delete_note_by_path(conn: &Connection, path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Deletes all notes whose path matches a folder prefix and cleans up their FTS entries.
+/// Uses cascading FK deletes for metadata and vector chunks.
+pub fn delete_notes_in_folder(conn: &Connection, folder_path: &str) -> Result<()> {
+    // First purge FTS entries for all matching notes so the virtual table stays in sync.
+    let _ = conn.execute(
+        "DELETE FROM notes_fts WHERE note_id IN (SELECT id FROM notes WHERE path LIKE ?1 OR path = ?2);",
+        params![format!("{}/%", folder_path), folder_path],
+    );
+    conn.execute(
+        "DELETE FROM notes WHERE path LIKE ?1 OR path = ?2;",
+        params![format!("{}/%", folder_path), folder_path],
+    )?;
+    Ok(())
+}
+
+/// Returns every note path currently stored in the DB.
+pub fn all_note_paths(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT path FROM notes;")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let mut paths = Vec::new();
+    for row in rows {
+        paths.push(row?);
+    }
+    Ok(paths)
+}
+
 pub fn load_all_notes(conn: &Connection) -> Result<Vec<super::CampaignNote>> {
     // Single query: get all notes, then batch-load all metadata in one pass
     let mut stmt = conn.prepare("SELECT id, path, title, content FROM notes")?;
@@ -261,9 +291,10 @@ pub fn seed_default_rules(conn: &Connection) -> Result<()> {
     ];
 
     for (id, title, category, source, content) in rules {
+        let path = format!("{}/{}.md", category, title);
         conn.execute(
-            "INSERT INTO rules (id, title, category, source, content) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, title, category, source, content],
+            "INSERT INTO rules (id, path, title, category, source, content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, path, title, category, source, content],
         )?;
     }
 
@@ -395,20 +426,22 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
 pub fn upsert_rule(
     conn: &Connection,
     id: &str,
+    path: &str,
     title: &str,
     category: &str,
     source: &str,
     content: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO rules (id, title, category, source, content)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO rules (id, path, title, category, source, content)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(id) DO UPDATE SET
+            path = excluded.path,
             title = excluded.title,
             category = excluded.category,
             source = excluded.source,
             content = excluded.content;",
-        params![id, title, category, source, content],
+        params![id, path, title, category, source, content],
     )?;
 
     // Sync FTS5 search index
@@ -421,17 +454,35 @@ pub fn upsert_rule(
     Ok(())
 }
 
-/// Deletes a rule and its chunks by id.
+/// Deletes a rule and all associated data (FTS index, vector chunks, rule row).
+/// Cascading order: FTS entries → vector chunks → rule row.
 pub fn delete_rule(conn: &Connection, rule_id: &str) -> Result<()> {
-    let _ = conn.execute(
+    conn.execute(
         "DELETE FROM rules_fts WHERE rule_id = ?1;",
         params![rule_id],
-    );
-    let _ = conn.execute(
+    )?;
+    conn.execute(
         "DELETE FROM rule_chunks WHERE rule_id = ?1;",
         params![rule_id],
-    );
+    )?;
     conn.execute("DELETE FROM rules WHERE id = ?1;", params![rule_id])?;
+    Ok(())
+}
+
+/// Deletes every rule whose path is inside `folder_path` and cleans up FTS/chunks.
+pub fn delete_rules_in_folder(conn: &Connection, folder_path: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM rules_fts WHERE rule_id IN (SELECT id FROM rules WHERE path LIKE ?1 OR path = ?2);",
+        params![format!("{}/%", folder_path), folder_path],
+    )?;
+    conn.execute(
+        "DELETE FROM rule_chunks WHERE rule_id IN (SELECT id FROM rules WHERE path LIKE ?1 OR path = ?2);",
+        params![format!("{}/%", folder_path), folder_path],
+    )?;
+    conn.execute(
+        "DELETE FROM rules WHERE path LIKE ?1 OR path = ?2;",
+        params![format!("{}/%", folder_path), folder_path],
+    )?;
     Ok(())
 }
 
@@ -539,4 +590,85 @@ pub fn fts_search_rules(
         })
         .collect();
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_db_init_and_settings() {
+        let conn = init_db(":memory:").expect("Failed to initialize memory DB");
+
+        let setting = get_setting(&conn, "test_key").expect("Failed to get setting");
+        assert!(setting.is_none());
+
+        set_setting(&conn, "test_key", "test_value").expect("Failed to set setting");
+        let setting = get_setting(&conn, "test_key").expect("Failed to get setting");
+        assert_eq!(setting, Some("test_value".to_string()));
+    }
+
+    #[test]
+    fn test_note_operations() {
+        let conn = init_db(":memory:").expect("Failed to initialize memory DB");
+
+        let path = "Worldbuilding/Eldoria.md";
+        let title = "Eldoria";
+        let content = "# Eldoria\nAncient elven city.";
+        let mut frontmatter = HashMap::new();
+        frontmatter.insert("type".to_string(), Value::String("Location".to_string()));
+
+        let note_id =
+            upsert_note(&conn, path, title, content, &frontmatter).expect("Failed to upsert note");
+
+        let notes = load_all_notes(&conn).expect("Failed to load notes");
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].id, note_id);
+        assert_eq!(notes[0].path, path);
+        assert_eq!(notes[0].title, title);
+        assert_eq!(notes[0].content, content);
+        assert_eq!(
+            notes[0].frontmatter.get("type").and_then(|v| v.as_str()),
+            Some("Location")
+        );
+
+        // Delete note
+        delete_note_by_path(&conn, path).expect("Failed to delete note");
+        let notes = load_all_notes(&conn).expect("Failed to load notes");
+        assert_eq!(notes.len(), 0);
+    }
+
+    #[test]
+    fn test_rule_operations() {
+        let conn = init_db(":memory:").expect("Failed to initialize memory DB");
+
+        let rule_id = "test-rule-id";
+        let title = "Spellcasting";
+        let category = "Rules";
+        let source = "D&D 5e SRD";
+        let content = "Spellcasting is the action of casting a spell.";
+
+        upsert_rule(
+            &conn,
+            rule_id,
+            "Rules/Spellcasting.md",
+            title,
+            category,
+            source,
+            content,
+        )
+        .expect("Failed to upsert rule");
+
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM rules", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Delete rule
+        delete_rule(&conn, rule_id).expect("Failed to delete rule");
+        let count: i64 = conn
+            .query_row("SELECT count(*) FROM rules", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }

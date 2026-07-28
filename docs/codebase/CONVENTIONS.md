@@ -18,14 +18,18 @@
 ## Naming and Data Shape
 
 - Notes use `id`, `title`, `path`, `frontmatter`, and `content`.
-- Rules use `id`, `title`, `category`, `source`, and `content`.
+- Rules use `id`, `title`, `category`, `source`, `path`, and `content`. The `path` column groups rules into folders in the UI.
 - Search results use a string `type` field, a title, a snippet, a score, and a path.
 
-## [TODO]
+## UI Conventions
 
-- No formatter or lint configuration file was inspected in the repo root.
-- The frontend still uses a few `any`-typed values, so type discipline is partial even though `strict` mode is enabled.
-- The codebase is small enough that the current monolithic `App.tsx` works, but it will become harder to maintain as features expand.
+- Destructive actions (trash, delete folder, empty trash, delete vault) require confirmation through a custom React modal. Browser `confirm()` dialogs are not used because Tauri WebViews suppress them.
+
+## Code Quality & Conventions
+
+- **Formatting:** Frontend files use ESLint and Prettier for automated checks. Backend Rust files follow `rustfmt` standard style conventions.
+- **Strict Typing:** All new React components and functions should declare explicit interfaces and avoid using the `any` type to ensure type safety.
+- **Component Splitting:** Rather than expanding the monolithic `App.tsx` sheet, new features (like canvas variants or settings panels) should be placed in dedicated sub-files under `src/components/`.
 
 ## Evidence
 

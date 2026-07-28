@@ -1,29 +1,35 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+
+/**
+ * Loreweaver Monolithic App Coordinator
+ * Serves as the central React interface layout controller managing state routing,
+ * vault file trees, rulebook indexing, settings drawers, and AI Architect chat RAG workflows.
+ */
 import {
-    BookOpen,
-    Brain,
-    ChevronRight,
-    Compass,
-    Copy,
-    Download,
-    Eye,
-    FilePlus,
-    FileText,
-    FolderOpen,
-    FolderPlus,
-    Image as ImageIcon,
-    Layers,
-    Link2,
-    Moon,
-    PenLine,
-    Plus,
-    RotateCcw,
-    Search,
-    Send,
-    Settings as SettingsIcon,
-    Sun,
-    Trash2,
+  BookOpen,
+  Brain,
+  ChevronRight,
+  Compass,
+  Copy,
+  Download,
+  Eye,
+  FilePlus,
+  FileText,
+  FolderOpen,
+  FolderPlus,
+  Image as ImageIcon,
+  Layers,
+  Link2,
+  Moon,
+  PenLine,
+  Plus,
+  RotateCcw,
+  Search,
+  Send,
+  Settings as SettingsIcon,
+  Sun,
+  Trash2,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -46,8 +52,8 @@ interface CampaignNote {
 
 interface RuleEntry {
   id: string;
-  title: string;
   path: string;
+  title: string;
   category: string;
   source: string;
   content: string;
@@ -106,9 +112,22 @@ function App() {
   );
   const [rules, setRules] = useState<RuleEntry[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string>("");
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: "note" | "folder" | "rule" | "rule-folder";
+    targetId: string;
+    path?: string;
+    isRulebook?: boolean;
+  } | null>(null);
   const [vaultPath, setVaultPath] = useState("");
   const [trashedNotes, setTrashedNotes] = useState<CampaignNote[]>([]);
-  const [trashedRules, setTrashedRules] = useState<RuleEntry[]>([]);
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    message: string;
+  }>({ open: false, message: "" });
+  const pendingConfirmRef = useRef<(() => void) | null>(null);
 
   const [chatInput, setChatInput] = useState("");
   const [chatMessagesByVault, setChatMessagesByVault] = useState<
@@ -130,6 +149,7 @@ function App() {
   const [collapsedFolders, setCollapsedFolders] = useState<
     Record<string, boolean>
   >({});
+  const [discoveredFolders, setDiscoveredFolders] = useState<string[]>([]);
 
   const assetFileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingAssetTarget, setPendingAssetTarget] = useState<{
@@ -382,7 +402,7 @@ function App() {
     useState("");
 
   const [diceHistory, setDiceHistory] = useState<string[]>([]);
-  const [rollModifier, setRollModifier] = useState<number>(0);
+  const [diceNotation, setDiceNotation] = useState<string>("2d20+5");
 
   const [imagePrompt, setImagePrompt] = useState(
     "A detailed portrait of Lirael, the elven mage",
@@ -440,6 +460,10 @@ function App() {
       .then((path) => setVaultPath(path))
       .catch((err) => console.error("Failed to get vault path:", err));
 
+    invoke<string[]>("list_folders")
+      .then((folders) => setDiscoveredFolders(folders || []))
+      .catch((err) => console.error("Failed to list folders:", err));
+
     invoke<CampaignNote[]>("load_trash_notes")
       .then((res) => {
         if (res) setTrashedNotes(res);
@@ -490,6 +514,22 @@ function App() {
     invoke<any[]>("load_plugins")
       .then((list) => setPluginsList(list || []))
       .catch((err) => console.error("Failed to load plugins:", err));
+
+    // Poll the backend to keep the UI in sync with filesystem changes (and
+    // ensure empty folders remain visible after notes are removed).
+    const syncInterval = setInterval(() => {
+      invoke<CampaignNote[]>("load_notes")
+        .then((loadedNotes) => {
+          if (loadedNotes) setNotes(loadedNotes);
+          return invoke<string[]>("list_folders");
+        })
+        .then((folders) => {
+          setDiscoveredFolders(folders || []);
+        })
+        .catch((err) => console.error("Background vault sync failed:", err));
+    }, 2000);
+
+    return () => clearInterval(syncInterval);
   }, []);
 
   useEffect(() => {
@@ -857,21 +897,27 @@ function App() {
   };
 
   const handleDeleteRule = (ruleId: string) => {
-    if (!confirm("Are you sure you want to delete this rule entry?")) return;
-    invoke("delete_rule", { ruleId })
-      .then(() => invoke<RuleEntry[]>("load_rules"))
-      .then((loadedRules) => {
-        if (loadedRules) {
-          setRules(loadedRules);
-          if (loadedRules.length > 0) {
-            setSelectedRuleId(loadedRules[0].id);
-          } else {
-            setSelectedRuleId("");
+    pendingConfirmRef.current = () => {
+      activeEditingRuleIdRef.current = null;
+      invoke("delete_rule", { ruleId })
+        .then(() => invoke<RuleEntry[]>("load_rules"))
+        .then((loadedRules) => {
+          if (loadedRules) {
+            setRules(loadedRules);
+            if (loadedRules.length > 0) {
+              setSelectedRuleId(loadedRules[0].id);
+            } else {
+              setSelectedRuleId("");
+            }
           }
-        }
-      })
-      .catch((err) => alert("Error deleting rule: " + err));
-    setIsEditingRule(false);
+          setIsEditingRule(false);
+        })
+        .catch((err) => alert("Error deleting rule: " + err));
+    };
+    setConfirmDialog({
+      open: true,
+      message: "Are you sure you want to delete this rule entry?",
+    });
   };
 
   const handleInsertRuleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1155,84 +1201,97 @@ function App() {
   };
 
   const handleTrashNote = (notePath: string) => {
-    if (!confirm("Are you sure you want to move this note to the trash?"))
-      return;
-    invoke("trash_note", { notePath })
-      .then(() => invoke<CampaignNote[]>("load_notes"))
-      .then((loadedNotes) => {
-        if (loadedNotes) {
-          setNotes(loadedNotes);
-          if (loadedNotes.length > 0) {
-            setSelectedNoteId(loadedNotes[0].id);
-          } else {
-            setSelectedNoteId("");
+    // Normalize path: strip leading slashes to match backend expectations
+    const cleanPath = notePath.replace(/^\/+/, "");
+    pendingConfirmRef.current = () => {
+      activeEditingNoteIdRef.current = null;
+      invoke("trash_note", { notePath: cleanPath })
+        .then(() => invoke<CampaignNote[]>("load_notes"))
+        .then((loadedNotes) => {
+          if (loadedNotes) {
+            setNotes(loadedNotes);
+            if (loadedNotes.length > 0) {
+              setSelectedNoteId(loadedNotes[0].id);
+            } else {
+              setSelectedNoteId("");
+            }
+            setIsEditingNote(false);
           }
-          setIsEditingNote(false);
-          invoke<CampaignNote[]>("load_trash_notes").then((res) => {
-            if (res) setTrashedNotes(res);
-          });
-        }
-      })
-      .catch((err) => alert("Error moving note to trash: " + err));
+          return invoke<CampaignNote[]>("load_trash_notes");
+        })
+        .then((res) => {
+          if (res) setTrashedNotes(res);
+          // Refresh discovered folders so empty directories remain visible.
+          return invoke<string[]>("list_folders");
+        })
+        .then((folders) => {
+          setDiscoveredFolders(folders || []);
+        })
+        .catch((err) => {
+          console.error("[frontend] trash_note error:", err);
+          alert("Error moving note to trash: " + err);
+        });
+    };
+    setConfirmDialog({
+      open: true,
+      message: `Are you sure you want to move "${cleanPath}" to the trash?`,
+    });
   };
 
   const handleTrashFolder = (
     folderName: string,
     isRulebook: boolean = false,
   ) => {
-    if (
-      !confirm(
-        `Are you sure you want to move folder "${folderName}" and its contents to the trash?`,
-      )
-    )
-      return;
-
-    if (isRulebook) {
-      const folderRules = rules.filter(
-        (r) => r.path.startsWith(`${folderName}/`) || r.path === folderName,
-      );
-      setRules((prev) =>
-        prev.filter(
-          (r) => !r.path.startsWith(`${folderName}/`) && r.path !== folderName,
-        ),
-      );
-      setTrashedRules((prev) => [...prev, ...folderRules]);
-      // Persist deletion for each rule in the folder
-      folderRules.forEach((rule) => {
-        invoke("delete_rule", { ruleId: rule.id }).catch((err) =>
-          console.error("Failed to delete rule from backend:", err),
-        );
-      });
-      if (
-        currentRule &&
-        (currentRule.path.startsWith(`${folderName}/`) ||
-          currentRule.path === folderName)
-      ) {
-        setSelectedRuleId("");
-        setIsEditingRule(false);
-      }
-    } else {
-      invoke("trash_folder", { folderPath: folderName })
-        .then(() => invoke<CampaignNote[]>("load_notes"))
-        .then((loadedNotes) => {
-          if (loadedNotes) {
-            setNotes(loadedNotes);
-            if (
-              currentNote &&
-              (currentNote.path.startsWith(`${folderName}/`) ||
-                currentNote.path === folderName)
-            ) {
-              if (loadedNotes.length > 0) setSelectedNoteId(loadedNotes[0].id);
-              else setSelectedNoteId("");
-              setIsEditingNote(false);
+    pendingConfirmRef.current = () => {
+      if (isRulebook) {
+        activeEditingRuleIdRef.current = null;
+        // Delete the whole rulebook folder atomically in the backend.
+        invoke("delete_rules_folder", { folderPath: folderName })
+          .then(() => invoke<RuleEntry[]>("load_rules"))
+          .then((loadedRules) => {
+            if (loadedRules) setRules(loadedRules);
+          })
+          .catch((err) => console.error("Failed to delete rule folder:", err));
+        if (
+          currentRule &&
+          (currentRule.path.startsWith(`${folderName}/`) ||
+            currentRule.path === folderName)
+        ) {
+          setSelectedRuleId("");
+          setIsEditingRule(false);
+        }
+      } else {
+        activeEditingNoteIdRef.current = null;
+        invoke("trash_folder", { folderPath: folderName })
+          .then(() => invoke<CampaignNote[]>("load_notes"))
+          .then((loadedNotes) => {
+            if (loadedNotes) {
+              setNotes(loadedNotes);
+              if (
+                currentNote &&
+                (currentNote.path.startsWith(`${folderName}/`) ||
+                  currentNote.path === folderName)
+              ) {
+                if (loadedNotes.length > 0)
+                  setSelectedNoteId(loadedNotes[0].id);
+                else setSelectedNoteId("");
+                setIsEditingNote(false);
+              }
+              invoke<CampaignNote[]>("load_trash_notes")
+                .then((res) => {
+                  if (res) setTrashedNotes(res);
+                  return invoke<string[]>("list_folders");
+                })
+                .then((folders) => setDiscoveredFolders(folders || []));
             }
-            invoke<CampaignNote[]>("load_trash_notes").then((res) => {
-              if (res) setTrashedNotes(res);
-            });
-          }
-        })
-        .catch((err) => alert("Error deleting folder: " + err));
-    }
+          })
+          .catch((err) => alert("Error deleting folder: " + err));
+      }
+    };
+    setConfirmDialog({
+      open: true,
+      message: `Are you sure you want to move folder "${folderName}" and its contents to the trash?`,
+    });
   };
 
   const handleRestoreNote = (trashNotePath: string) => {
@@ -1241,56 +1300,52 @@ function App() {
       .then((loadedNotes) => {
         if (loadedNotes) {
           setNotes(loadedNotes);
-          invoke<CampaignNote[]>("load_trash_notes").then((res) => {
-            if (res) setTrashedNotes(res);
-          });
+          invoke<CampaignNote[]>("load_trash_notes")
+            .then((res) => {
+              if (res) setTrashedNotes(res);
+              return invoke<string[]>("list_folders");
+            })
+            .then((folders) => setDiscoveredFolders(folders || []));
         }
       })
       .catch((err) => alert("Error restoring note: " + err));
   };
 
-  const handleRestoreRule = (ruleId: string) => {
-    const targetRule = trashedRules.find((r) => r.id === ruleId);
-    if (!targetRule) return;
-    setTrashedRules((prev) => prev.filter((r) => r.id !== ruleId));
-    setRules((prev) => [...prev, targetRule]);
-    setSelectedRuleId(ruleId);
-    setActiveView("rules");
-    invoke("save_rule", { rule: targetRule }).catch((err) =>
-      console.error("Failed to persist restored rule:", err),
-    );
-  };
-
   const handleDeleteTrashedNote = (trashNotePath: string) => {
-    if (
-      !confirm("Permanently delete this item from disk? This cannot be undone.")
-    )
-      return;
-    invoke("delete_trashed_note", { trashNotePath })
-      .then(() => {
-        invoke<CampaignNote[]>("load_trash_notes").then((res) => {
-          if (res) setTrashedNotes(res);
-        });
-      })
-      .catch((err) => alert("Error deleting trashed note: " + err));
+    pendingConfirmRef.current = () => {
+      invoke("delete_trashed_note", { trashNotePath })
+        .then(() => {
+          invoke<CampaignNote[]>("load_trash_notes").then((res) => {
+            if (res) setTrashedNotes(res);
+          });
+        })
+        .catch((err) => alert("Error deleting trashed note: " + err));
+    };
+    setConfirmDialog({
+      open: true,
+      message: "Permanently delete this item from disk? This cannot be undone.",
+    });
   };
 
   const handleEmptyTrash = () => {
-    if (
-      !confirm(
-        "Are you sure you want to permanently delete all items in the trash?",
-      )
-    )
-      return;
-    invoke("empty_trash")
-      .then(() => {
-        setTrashedNotes([]);
-        setTrashedRules([]);
-        invoke<CampaignNote[]>("load_trash_notes").then((res) => {
+    pendingConfirmRef.current = () => {
+      invoke("empty_trash")
+        .then(() => {
+          setTrashedNotes([]);
+          return invoke<CampaignNote[]>("load_trash_notes");
+        })
+        .then((res) => {
           if (res) setTrashedNotes(res);
-        });
-      })
-      .catch((err) => alert("Error emptying trash: " + err));
+          return invoke<string[]>("list_folders");
+        })
+        .then((folders) => setDiscoveredFolders(folders || []))
+        .catch((err) => alert("Error emptying trash: " + err));
+    };
+    setConfirmDialog({
+      open: true,
+      message:
+        "Are you sure you want to permanently delete all items in the trash?",
+    });
   };
 
   const handleCreatePluginAsset = (
@@ -2009,6 +2064,10 @@ function App() {
 
   const notesByFolder = useMemo<Record<string, CampaignNote[]>>(() => {
     const groups: Record<string, CampaignNote[]> = {};
+    // Seed with filesystem-discovered folders so empty directories remain visible.
+    discoveredFolders.forEach((folder) => {
+      groups[folder] = [];
+    });
     notes.forEach((note: any) => {
       const parts = note.path.split("/");
       let folder = "Root";
@@ -2022,7 +2081,7 @@ function App() {
       groups[folder].push(note);
     });
     return groups;
-  }, [notes]);
+  }, [notes, discoveredFolders]);
 
   const rulesByFolder = useMemo<Record<string, RuleEntry[]>>(() => {
     const groups: Record<string, RuleEntry[]> = {};
@@ -2285,39 +2344,87 @@ function App() {
     );
   };
 
-  const rollDice = (sides: number) => {
-    const roll = Math.floor(Math.random() * sides) + 1;
-    const initialPayload = JSON.stringify({
-      sides,
-      roll,
-      modifier: rollModifier,
-    });
+  const fallbackRoll = (notation: string): string => {
+    try {
+      const str = notation.toLowerCase().replace(/\s+/g, "");
+      const termRegex = /([+-]?)(?:(\d*)d(\d+|%|f)|(\d+))/g;
+      let match;
+      let total = 0;
+      let explanation: string[] = [];
+
+      while ((match = termRegex.exec(str)) !== null) {
+        const sign = match[1] === "-" ? -1 : 1;
+        const signText = match[1] || (explanation.length > 0 ? "+" : "");
+
+        if (match[4]) {
+          const val = parseInt(match[4], 10);
+          total += sign * val;
+          explanation.push(signText + val);
+        } else {
+          const count = match[2] ? parseInt(match[2], 10) : 1;
+          const sidesStr = match[3];
+          const sides =
+            sidesStr === "%"
+              ? 100
+              : sidesStr === "f"
+                ? "f"
+                : parseInt(sidesStr, 10);
+
+          let termRolls: number[] = [];
+          let termTotal = 0;
+          for (let i = 0; i < count; i++) {
+            let rollVal;
+            if (sides === "f") {
+              rollVal = Math.floor(Math.random() * 3) - 1;
+            } else {
+              rollVal = Math.floor(Math.random() * (sides as number)) + 1;
+            }
+            termRolls.push(rollVal);
+            termTotal += rollVal;
+          }
+
+          total += sign * termTotal;
+          explanation.push(
+            signText + count + "d" + sidesStr + "[" + termRolls.join(",") + "]",
+          );
+        }
+      }
+
+      if (explanation.length === 0) return `Invalid notation: ${notation}`;
+      return `${notation}: ${explanation.join(" ")} = ${total}`;
+    } catch (e) {
+      return `Error rolling ${notation}`;
+    }
+  };
+
+  const rollDiceNotation = (notation: string) => {
+    if (!notation.trim()) return;
 
     const hasDicePlugin = pluginsList.some(
-      (p) => p.id === "dice-bonus" && p.active,
+      (p) => p.id === "dice-roller" && p.active,
     );
 
-    const addHistory = (data: { roll: number; modifier?: number }) => {
-      const mod = data.modifier ?? rollModifier;
-      const modText = mod >= 0 ? `+${mod}` : `${mod}`;
-      const total = data.roll + mod;
-      const historyEntry = `d${sides} rolled: ${data.roll} (${modText}) = ${total}`;
-      setDiceHistory((prev) => [historyEntry, ...prev.slice(0, 15)]);
+    const addHistory = (text: string) => {
+      setDiceHistory((prev) => [text, ...prev.slice(0, 15)]);
     };
 
     if (hasDicePlugin) {
       invoke<string>("execute_plugin_hook", {
-        pluginId: "dice-bonus",
-        hook: "on_dice_roll",
-        payload: initialPayload,
+        pluginId: "dice-roller",
+        hook: "roll_notation",
+        payload: notation,
       })
         .then((resultStr) => {
-          const data = JSON.parse(resultStr);
-          addHistory(data);
+          const res = JSON.parse(resultStr);
+          addHistory(`${res.notation}: ${res.rolls} = ${res.total}`);
         })
-        .catch(() => addHistory({ roll }));
+        .catch(() => {
+          const res = fallbackRoll(notation);
+          addHistory(res);
+        });
     } else {
-      addHistory({ roll });
+      const res = fallbackRoll(notation);
+      addHistory(res);
     }
   };
 
@@ -2882,6 +2989,16 @@ function App() {
                           <div key={folderName} style={{ marginBottom: "8px" }}>
                             {/* Folder Header */}
                             <div
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu({
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  type: "folder",
+                                  targetId: folderName,
+                                  isRulebook: false,
+                                });
+                              }}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
@@ -2997,6 +3114,17 @@ function App() {
                                   return (
                                     <button
                                       key={note.id}
+                                      onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setContextMenu({
+                                          x: e.clientX,
+                                          y: e.clientY,
+                                          type: "note",
+                                          targetId: note.id,
+                                          path: note.path,
+                                        });
+                                      }}
                                       className={`nav-item ${selectedNoteId === note.id ? "active" : ""}`}
                                       onClick={() => {
                                         setSelectedNoteId(note.id);
@@ -3496,6 +3624,16 @@ function App() {
                           <div key={folderName} style={{ marginBottom: "8px" }}>
                             {/* Folder Header */}
                             <div
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu({
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  type: "rule-folder",
+                                  targetId: folderName,
+                                  isRulebook: true,
+                                });
+                              }}
                               style={{
                                 display: "flex",
                                 alignItems: "center",
@@ -3593,6 +3731,16 @@ function App() {
                                 {folderRules.map((rule) => (
                                   <button
                                     key={rule.id}
+                                    onContextMenu={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setContextMenu({
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        type: "rule",
+                                        targetId: rule.id,
+                                      });
+                                    }}
                                     className={`nav-item ${selectedRuleId === rule.id ? "active" : ""}`}
                                     onClick={() => {
                                       setSelectedRuleId(rule.id);
@@ -4190,7 +4338,7 @@ function App() {
                       </div>
                     </div>
 
-                    {(trashedNotes.length > 0 || trashedRules.length > 0) && (
+                    {trashedNotes.length > 0 && (
                       <button
                         type="button"
                         onClick={handleEmptyTrash}
@@ -4213,7 +4361,7 @@ function App() {
                     )}
                   </div>
 
-                  {trashedNotes.length === 0 && trashedRules.length === 0 ? (
+                  {trashedNotes.length === 0 ? (
                     <div
                       style={{
                         padding: "60px 20px",
@@ -4238,8 +4386,8 @@ function App() {
                         Trash is Empty
                       </h3>
                       <p style={{ fontSize: "12px", margin: 0 }}>
-                        Any deleted campaign notes or rulebook pages will appear
-                        here for easy recovery.
+                        Any deleted campaign notes will appear here for easy
+                        recovery.
                       </p>
                     </div>
                   ) : (
@@ -4301,7 +4449,11 @@ function App() {
                                       marginTop: "2px",
                                     }}
                                   >
-                                    Path: <code>{note.path}</code>
+                                    Path:{" "}
+                                    <code>
+                                      {note.frontmatter?.original_path ||
+                                        note.path}
+                                    </code>
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", gap: "8px" }}>
@@ -4329,119 +4481,6 @@ function App() {
                                     onClick={() =>
                                       handleDeleteTrashedNote(note.path)
                                     }
-                                    style={{
-                                      background: "transparent",
-                                      border: "1px solid var(--border)",
-                                      color: "var(--danger)",
-                                      padding: "4px 10px",
-                                      borderRadius: "4px",
-                                      fontSize: "11px",
-                                      fontWeight: 600,
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                    }}
-                                  >
-                                    Delete Permanently
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {trashedRules.length > 0 && (
-                        <div>
-                          <h3
-                            style={{
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.08em",
-                              color: "var(--accent)",
-                              marginBottom: "10px",
-                            }}
-                          >
-                            Trashed Rulebook Pages ({trashedRules.length})
-                          </h3>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "8px",
-                            }}
-                          >
-                            {trashedRules.map((rule) => (
-                              <div
-                                key={rule.id}
-                                style={{
-                                  background: "var(--surface)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "6px",
-                                  padding: "12px 16px",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                }}
-                              >
-                                <div>
-                                  <div
-                                    style={{
-                                      fontSize: "13px",
-                                      fontWeight: 600,
-                                      color: "var(--fg)",
-                                    }}
-                                  >
-                                    {rule.title}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: "11px",
-                                      color: "var(--muted)",
-                                      marginTop: "2px",
-                                    }}
-                                  >
-                                    Category: {rule.category} | Path:{" "}
-                                    <code>{rule.path}</code>
-                                  </div>
-                                </div>
-                                <div style={{ display: "flex", gap: "8px" }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRestoreRule(rule.id)}
-                                    style={{
-                                      background: "var(--bg)",
-                                      border: "1px solid var(--border)",
-                                      color: "var(--fg)",
-                                      padding: "4px 10px",
-                                      borderRadius: "4px",
-                                      fontSize: "11px",
-                                      fontWeight: 600,
-                                      cursor: "pointer",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                    }}
-                                  >
-                                    <RotateCcw size={12} /> Restore
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setTrashedRules((prev) =>
-                                        prev.filter((r) => r.id !== rule.id),
-                                      );
-                                      invoke("delete_rule", {
-                                        ruleId: rule.id,
-                                      }).catch((err) =>
-                                        console.error(
-                                          "Failed to permanently delete rule:",
-                                          err,
-                                        ),
-                                      );
-                                    }}
                                     style={{
                                       background: "transparent",
                                       border: "1px solid var(--border)",
@@ -5596,60 +5635,47 @@ function App() {
                           </span>
                           <div
                             style={{
-                              display: "grid",
-                              gridTemplateColumns: "repeat(4, 1fr)",
+                              display: "flex",
                               gap: "6px",
                             }}
                           >
-                            {[4, 6, 8, 20].map((sides) => (
-                              <button
-                                key={sides}
-                                className="dice-btn"
-                                style={{
-                                  padding: "6px 0",
-                                  fontSize: "12px",
-                                  cursor: "pointer",
-                                  background: "var(--surface)",
-                                  border: "1px solid var(--border)",
-                                  borderRadius: "4px",
-                                  color: "var(--fg)",
-                                }}
-                                onClick={() => rollDice(sides)}
-                                type="button"
-                              >
-                                d{sides}
-                              </button>
-                            ))}
-                          </div>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "8px",
-                              marginTop: "8px",
-                            }}
-                          >
-                            <span
-                              style={{ fontSize: 11, color: "var(--muted)" }}
-                            >
-                              Mod:
-                            </span>
                             <input
-                              type="number"
-                              value={rollModifier}
-                              onChange={(e) =>
-                                setRollModifier(parseInt(e.target.value) || 0)
-                              }
+                              type="text"
+                              value={diceNotation}
+                              onChange={(e) => setDiceNotation(e.target.value)}
+                              placeholder="e.g. 2d20+5, d6"
                               style={{
-                                width: "50px",
-                                padding: "4px",
+                                flex: 1,
+                                padding: "6px 8px",
                                 background: "var(--bg)",
                                 border: "1px solid var(--border)",
                                 borderRadius: "4px",
                                 color: "var(--fg)",
                                 fontSize: "12px",
+                                outline: "none",
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  rollDiceNotation(diceNotation);
+                                }
                               }}
                             />
+                            <button
+                              className="dice-btn"
+                              style={{
+                                padding: "6px 12px",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                background: "var(--surface)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "4px",
+                                color: "var(--fg)",
+                              }}
+                              onClick={() => rollDiceNotation(diceNotation)}
+                              type="button"
+                            >
+                              Roll
+                            </button>
                           </div>
                           {diceHistory.length > 0 && (
                             <div
@@ -6702,6 +6728,213 @@ function App() {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+      {contextMenu && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1000,
+            background: "transparent",
+          }}
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu(null);
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: contextMenu.y,
+              left: contextMenu.x,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+              padding: "4px 0",
+              minWidth: "140px",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {contextMenu.type === "note" && (
+              <button
+                onClick={() => {
+                  const path = contextMenu.path;
+                  if (path) {
+                    handleTrashNote(path);
+                  }
+                  setContextMenu(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--danger)",
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                🗑️ Send to Trash
+              </button>
+            )}
+            {contextMenu.type === "folder" && (
+              <button
+                onClick={() => {
+                  const targetId = contextMenu.targetId;
+                  const isRulebook = contextMenu.isRulebook;
+                  handleTrashFolder(targetId, isRulebook);
+                  setContextMenu(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--danger)",
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                🗑️ Delete Folder
+              </button>
+            )}
+            {contextMenu.type === "rule" && (
+              <button
+                onClick={() => {
+                  const targetId = contextMenu.targetId;
+                  handleDeleteRule(targetId);
+                  setContextMenu(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--danger)",
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                🗑️ Delete Rule
+              </button>
+            )}
+            {contextMenu.type === "rule-folder" && (
+              <button
+                onClick={() => {
+                  const targetId = contextMenu.targetId;
+                  handleTrashFolder(targetId, true);
+                  setContextMenu(null);
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--danger)",
+                  padding: "8px 12px",
+                  fontSize: "12px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                🗑️ Delete Folder
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {confirmDialog.open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setConfirmDialog((d) => ({ ...d, open: false }))}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              padding: "20px",
+              maxWidth: "360px",
+              width: "90%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: "14px", lineHeight: 1.5 }}>
+              {confirmDialog.message}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setConfirmDialog((d) => ({ ...d, open: false }))}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  pendingConfirmRef.current?.();
+                  pendingConfirmRef.current = null;
+                  setConfirmDialog((d) => ({ ...d, open: false }));
+                }}
+                style={{
+                  background: "var(--danger)",
+                  border: "none",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -2,7 +2,11 @@ use crate::db;
 use gray_matter::{engine::YAML, Matter};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Directory Watcher & Syncing Pipeline
+/// Recursively monitors Campaign Vault directories for file additions, modifications, and deletions.
+/// Spawns background debouncing loops to process and update indexes in SQLite.
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -114,8 +118,9 @@ fn parse_canvas_file(path: &Path) -> Result<(String, String, HashMap<String, Val
 }
 
 /// Recursively scans and indexes a directory.
-pub fn sync_entire_directory(vault_path: &Path, db_path: &str) -> Result<(), String> {
-    let conn = db::init_db(db_path).map_err(|e| e.to_string())?;
+/// After indexing existing files, removes any DB rows whose files no longer exist on disk.
+pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> Result<(), String> {
+    let mut disk_paths: HashSet<String> = HashSet::new();
 
     let mut visit = |path: &Path| {
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -133,17 +138,18 @@ pub fn sync_entire_directory(vault_path: &Path, db_path: &str) -> Result<(), Str
                         .unwrap_or(path)
                         .to_string_lossy()
                         .into_owned();
-                    match db::upsert_note(&conn, &rel_path, &title, &content, &frontmatter) {
+                    disk_paths.insert(rel_path.clone());
+                    match db::upsert_note(conn, &rel_path, &title, &content, &frontmatter) {
                         Ok(note_id) => {
                             if ext == "md" {
                                 if should_ai_index(path, &frontmatter) {
-                                    if let Err(e) = crate::search::index_note_vectors(
-                                        db_path, &note_id, &content,
-                                    ) {
+                                    if let Err(e) =
+                                        crate::search::index_note_vectors(conn, &note_id, &content)
+                                    {
                                         eprintln!("Failed to index note vectors: {:?}", e);
                                     }
                                 } else {
-                                    if let Err(e) = db::clear_note_chunks(&conn, &note_id) {
+                                    if let Err(e) = db::clear_note_chunks(conn, &note_id) {
                                         eprintln!("Failed to clear note chunks: {:?}", e);
                                     }
                                 }
@@ -176,6 +182,17 @@ pub fn sync_entire_directory(vault_path: &Path, db_path: &str) -> Result<(), Str
     }
 
     visit_dirs(vault_path, &mut visit).map_err(|e| e.to_string())?;
+
+    // Purge DB rows for files that are no longer present on disk.
+    if let Ok(db_paths) = db::all_note_paths(&conn) {
+        for path in db_paths {
+            if !disk_paths.contains(&path) {
+                println!("Purging missing note from DB: {}", path);
+                let _ = db::delete_note_by_path(&conn, &path);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -184,14 +201,16 @@ pub fn sync_entire_directory(vault_path: &Path, db_path: &str) -> Result<(), Str
 /// coalesced into a single DB update after 500ms of quiet.
 pub fn start_directory_watcher(
     vault_path_str: String,
-    db_path_str: String,
+    conn: Arc<Mutex<rusqlite::Connection>>,
 ) -> Result<RecommendedWatcher, String> {
     let vault_path = PathBuf::from(&vault_path_str);
-    let db_path = Arc::new(db_path_str);
     let vault_path_clone = vault_path.clone();
 
     // Perform initial sync
-    sync_entire_directory(&vault_path, &db_path)?;
+    {
+        let conn_guard = conn.lock().map_err(|e| e.to_string())?;
+        sync_entire_directory(&vault_path, &conn_guard)?;
+    }
 
     // Pending events: path -> (is_remove, last_seen)
     let pending: Arc<Mutex<HashMap<PathBuf, (bool, Instant)>>> =
@@ -199,7 +218,7 @@ pub fn start_directory_watcher(
 
     // Debounce flusher thread
     let pending_flush = Arc::clone(&pending);
-    let db_path_flush = Arc::clone(&db_path);
+    let conn_flush = Arc::clone(&conn);
     let vault_path_flush = vault_path_clone.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(500));
@@ -221,8 +240,15 @@ pub fn start_directory_watcher(
             stale
         };
 
+        let conn_guard = match conn_flush.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("Watcher flush could not acquire DB lock: {:?}", e);
+                continue;
+            }
+        };
         for (path, is_remove) in to_process {
-            process_file_event(&path, is_remove, &db_path_flush, &vault_path_flush);
+            process_file_event(&path, is_remove, &conn_guard, &vault_path_flush);
         }
     });
 
@@ -266,16 +292,13 @@ pub fn start_directory_watcher(
 }
 
 /// Process a single file event — parse, upsert/delete in DB, re-index vectors.
-fn process_file_event(path: &Path, is_remove: bool, db_path: &str, vault_path: &Path) {
+fn process_file_event(
+    path: &Path,
+    is_remove: bool,
+    conn: &rusqlite::Connection,
+    vault_path: &Path,
+) {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-    let conn = match db::init_db(db_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Watcher could not connect to SQLite: {:?}", e);
-            return;
-        }
-    };
 
     let rel_path = path
         .strip_prefix(vault_path)
@@ -285,7 +308,7 @@ fn process_file_event(path: &Path, is_remove: bool, db_path: &str, vault_path: &
 
     if is_remove || !path.exists() {
         println!("File deleted: {:?}", path);
-        if let Err(e) = db::delete_note_by_path(&conn, &rel_path) {
+        if let Err(e) = db::delete_note_by_path(conn, &rel_path) {
             eprintln!("Failed to delete note from DB: {:?}", e);
         }
     } else {
@@ -297,17 +320,17 @@ fn process_file_event(path: &Path, is_remove: bool, db_path: &str, vault_path: &
         };
         match parse_res {
             Ok((title, content, frontmatter)) => {
-                match db::upsert_note(&conn, &rel_path, &title, &content, &frontmatter) {
+                match db::upsert_note(conn, &rel_path, &title, &content, &frontmatter) {
                     Ok(note_id) => {
                         if ext == "md" {
                             if should_ai_index(path, &frontmatter) {
                                 if let Err(e) =
-                                    crate::search::index_note_vectors(db_path, &note_id, &content)
+                                    crate::search::index_note_vectors(conn, &note_id, &content)
                                 {
                                     eprintln!("Failed to index note vectors: {:?}", e);
                                 }
                             } else {
-                                if let Err(e) = db::clear_note_chunks(&conn, &note_id) {
+                                if let Err(e) = db::clear_note_chunks(conn, &note_id) {
                                     eprintln!("Failed to clear note chunks: {:?}", e);
                                 }
                             }
@@ -318,5 +341,67 @@ fn process_file_event(path: &Path, is_remove: bool, db_path: &str, vault_path: &
             }
             Err(e) => eprintln!("Failed to parse created/modified file: {:?}", e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_parse_markdown_file_with_frontmatter() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("test_note_{}.md", uuid::Uuid::new_v4()));
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        write!(
+            file,
+            "---\ntitle: Custom Title\ntags: [location, city]\n---\n# Header\nNote content."
+        )
+        .unwrap();
+
+        let (title, content, frontmatter) = parse_markdown_file(&file_path).unwrap();
+        assert_eq!(title, "Custom Title");
+        assert_eq!(content.trim(), "# Header\nNote content.");
+        assert_eq!(
+            frontmatter.get("title").and_then(|v| v.as_str()),
+            Some("Custom Title")
+        );
+        assert!(frontmatter.get("tags").is_some());
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_parse_markdown_file_fallback_h1() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("test_note_{}.md", uuid::Uuid::new_v4()));
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        write!(file, "# Heading Title\nNote body without YAML.").unwrap();
+
+        let (title, content, frontmatter) = parse_markdown_file(&file_path).unwrap();
+        assert_eq!(title, "Heading Title");
+        assert_eq!(content.trim(), "# Heading Title\nNote body without YAML.");
+        assert!(frontmatter.is_empty());
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_parse_canvas_file() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("test_note_{}.canvas", uuid::Uuid::new_v4()));
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        write!(file, "{{\"nodes\": []}}").unwrap();
+
+        let (title, content, frontmatter) = parse_canvas_file(&file_path).unwrap();
+        assert_eq!(content, "{\"nodes\": []}");
+        assert_eq!(
+            frontmatter.get("type").and_then(|v| v.as_str()),
+            Some("Canvas")
+        );
+        assert!(!title.is_empty());
+
+        let _ = std::fs::remove_file(file_path);
     }
 }

@@ -11,22 +11,20 @@
 
 - `src/App.tsx` is a very large component that owns navigation, vault editing, settings, chat, search, dice rolling, and plugin entry points in one file.
 - The frontend still uses `any` in several places, which weakens the value of strict TypeScript settings.
-- The Rust backend relies on watcher-driven persistence after writing notes to disk, so the DB state is indirectly synchronized instead of being updated in the same call path.
 
 ## Validation Gaps
 
-- I could not run the Rust backend compiler in this environment because Cargo is unavailable.
-- The workspace is not a git checkout here, so I could not inspect churn with `git log`.
+- The workspace has limited automated test coverage. `npm run build` and `npm run tauri build` serve as the current type-check and compile gates.
 
 ## Intent vs Reality
 
 - README-level claims about image generation, memory backends, and broader orchestration are ahead of what the inspected source currently implements.
 - The app looks like a product prototype with real persistence/search/plugin plumbing, but not a fully complete multi-modal system yet.
 
-## [ASK USER]
+## Decided Decisions & Status
 
-- Should the image-generation panel remain a placeholder for now, or should I wire it to a real backend command and model runner?
-- Should the plugin system stay Boa-based and lightweight, or do you want a stronger sandbox and permission model before feature work expands further?
+- **Image Generation Panel:** The image generation panel will remain a timed placeholder demonstration for now. Real ComfyUI/Stable Diffusion backend integration remains planned for a future release.
+- **Plugin Sandbox Isolation:** The plugin system will continue utilizing the lightweight Boa JS engine with basic permission checks. Hardening sandbox isolation beyond basic scope bounds is deferred until security threat models are fully evaluated.
 
 ## Evidence
 

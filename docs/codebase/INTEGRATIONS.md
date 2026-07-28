@@ -3,8 +3,9 @@
 ## Local Storage and Filesystem
 
 - Notes are stored as Markdown files inside a campaign vault directory.
-- `watcher.rs` monitors the vault and keeps SQLite in sync.
+- `watcher.rs` monitors the vault and keeps SQLite in sync, including purging DB rows for files that no longer exist.
 - `save_note` writes Markdown with YAML frontmatter back to disk.
+- `list_folders` discovers folders directly from the filesystem so the UI reflects real directory state, including empty folders.
 
 ## Database
 
@@ -28,10 +29,10 @@
 - `boa_engine` evaluates plugin scripts and executes named hook functions.
 - The repo includes `character-roller` and `threat-evaluator` plugins, and the backend seeds a `dice-bonus` plugin at runtime.
 
-## [TODO]
+## Future Integrations Status
 
-- The image generation section in the UI does not currently call a backend image API or model runner.
-- I did not find a real text-to-speech or speech-to-text implementation in the inspected backend modules.
+- **Image Generation:** Currently a frontend placeholder mock. Stable Diffusion ComfyUI bindings exist in the Rust backend code but are not connected to the UI.
+- **Audio Processing:** Text-to-speech (TTS) and speech-to-text (STT) capabilities are currently not implemented in the application backend.
 
 ## Evidence
 

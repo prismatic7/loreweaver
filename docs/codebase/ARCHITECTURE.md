@@ -12,6 +12,15 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 4. `search.rs` downloads and loads the local embedding model, chunks text, and performs hybrid semantic search.
 5. The frontend calls Tauri commands such as `load_notes`, `load_rules`, `search_vault`, `save_note`, and `orchestrate_agent`.
 
+## Deletion and Trash
+
+- The vault mirrors the filesystem: empty folders remain on disk and remain visible in the UI.
+- `trash_note` and `trash_folder` move Markdown files to `.trash/` while removing their SQLite, FTS5, and vector-chunk records.
+- `restore_note` moves a trashed file back to its original location and re-indexes it.
+- `empty_trash` and `delete_trashed_note` permanently remove files and their DB records.
+- `delete_rules_folder` removes a rulebook folder atomically from the backend.
+- Folder discovery (`list_folders`) is filesystem-first, excludes `.trash`, hidden directories, and `_assets`, and is refreshed after mutations that may empty a folder.
+
 ## Backend Layers
 
 - `db.rs` owns schema creation and CRUD helpers.

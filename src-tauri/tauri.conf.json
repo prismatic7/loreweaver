@@ -16,7 +16,8 @@
         "title": "Loreweaver",
         "width": 1280,
         "height": 800,
-        "url": "index.html"
+        "url": "index.html",
+        "devtools": true
       }
     ],
     "security": {
