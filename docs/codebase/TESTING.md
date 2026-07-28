@@ -1,27 +1,48 @@
 # Testing
 
-## What Exists
+Loreweaver uses a split automated testing strategy to cover both the Rust backend and the React + TypeScript frontend.
 
-- The root package manifest defines a production build command and Vite dev/preview commands.
-- The TypeScript config is strict, so `npm run build` also acts as a useful type-check gate.
+---
 
-## What I Verified
+## 1. Frontend Testing
 
-- `npm run build` succeeded in this environment.
+### Setup & Tools
+- **Framework:** [Vitest](https://vitest.dev/)
+- **Utility:** [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/)
+- **Environment:** `jsdom` (simulates browser environment in Node.js)
+- **Globals/Mocking:** Standard `window` globals are configured in `src/test/setup.ts` to mock Tauri's `invoke` IPC interface and `localStorage` state.
 
-## What I Did Not Find
+### Running Frontend Tests
+Run all frontend test suites using:
+```bash
+npm run test
+```
 
-- No `test` script is defined in `package.json`.
-- No test files were found in the inspected workspace using standard `test`/`spec` naming.
-- I could not run `cargo check` here because Cargo is not installed in the terminal environment.
+### Coverage
+- [App.test.tsx](file:///Users/chris/Development/loreweaver/src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading.
+- [MarkdownEditor.test.tsx](file:///Users/chris/Development/loreweaver/src/components/MarkdownEditor.test.tsx): Verifies rendering of CodeMirror bindings, input changes, and prop propagation.
 
-## [TODO]
+---
 
-- There is no visible frontend or backend automated test suite in the inspected files.
-- Backend verification remains incomplete until the Rust toolchain is available in a terminal with Cargo.
+## 2. Backend Testing
 
-## Evidence
+### Setup & Tools
+- **Framework:** Rust's built-in `cargo test` runner.
+- **DB Mocking:** Databases are initialized using in-memory SQLite connections (`:memory:`) or temporary directory files, preventing pollution of real user profiles.
+- **Boa Mocking:** JS plugins are evaluated using the raw in-memory Boa Engine context.
 
-- [package.json](/Users/chris/Development/loreweaver/package.json)
-- [tsconfig.json](/Users/chris/Development/loreweaver/tsconfig.json)
-- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
+### Running Backend Tests
+Navigate to the Tauri workspace directory and run tests:
+```bash
+cd src-tauri
+cargo test
+```
+
+### Coverage
+- **Database (`db.rs`):** Validates CRUD queries for campaign notes, rulebooks, and settings.
+- **Watcher (`watcher.rs`):** Tests markdown frontmatter parsing and canvas JSON file loading.
+- **Ingestion (`ingest.rs`):** Verifies splitting rules on heading tokens during SRD imports.
+- **Plugins (`plugins.rs`):** Tests JS hook evaluations and state mutation cycles.
+- **Search Similarity (`search.rs`):** Tests text chunking math and cosine similarity dot products.
+- **Orchestration (`agent.rs`):** Validates RAG prompt compilation and model configuration checks.
+- **Commands (`lib.rs`):** Includes integration verification of file deletion/restoration cycles.

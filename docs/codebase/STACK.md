@@ -21,10 +21,12 @@
 - The frontend package manifest defines `build`, `dev`, `preview`, and `tauri` scripts.
 - The Rust manifest defines the backend dependencies and the Tauri v2 build dependency.
 
-## [TODO]
+## Code Verification & Tooling
 
-- No lint or test scripts are defined in the root package manifest.
-- Cargo could not be executed in this terminal environment, so the Rust toolchain was not runtime-verified here.
+- **Frontend Tests:** Configured using Vitest and React Testing Library (`npm run test`).
+- **Backend Tests:** Built-in unit and command integration tests validated via Cargo (`cargo test` in `src-tauri/`).
+- **TypeScript:** Enforced strictly under strict compiler settings.
+- **Cargo Toolchain:** Fully verified and operational locally.
 
 ## Evidence
 

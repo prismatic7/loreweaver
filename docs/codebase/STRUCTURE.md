@@ -27,11 +27,13 @@
 - `plugins/threat-evaluator/` contains a manifest and `index.js` implementation.
 - The backend also seeds a `dice-bonus` plugin at runtime under the app data directory.
 
-## [TODO]
+## Documentation Layout
 
-- The repository README mentions a `docs/` tree, but no source docs directory is present in the workspace root listing I inspected.
-
-## Evidence
+- `docs/` contains complete application documentation:
+  - `docs/codebase/`: Developer-focused internal design notes (structure, stack, INTEGRATIONS, concerns).
+  - `docs/user/`: End-user guides (quickstart, features, settings).
+  - `docs/developer/`: Technical developer guides (Tauri commands API, plugin authoring, troubleshooting).
+  - `docs/DOCUMENTATION_PLAN.md`: Roadmap detailing the documentation updates.
 
 - [index.html](/Users/chris/Development/loreweaver/index.html)
 - [src/main.tsx](/Users/chris/Development/loreweaver/src/main.tsx)

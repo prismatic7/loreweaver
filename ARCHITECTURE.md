@@ -1,88 +1,71 @@
 # Loreweaver Architecture
 
-This document describes the technical architecture of Loreweaver, details the tech stack, data flows, and design decisions made to satisfy the core requirements.
+This document describes the technical architecture of Loreweaver, detailing the subsystems, data flows, and design decisions.
 
 ---
 
 ## 1. High-Level Architecture
 
-Loreweaver is built as a hybrid desktop application utilizing **Tauri** to link a high-performance **Rust** backend with a modern **TypeScript** frontend.
+Loreweaver is built as a hybrid desktop application utilizing **Tauri v2** to link a high-performance **Rust** backend with a modern **React + TypeScript** frontend.
 
 ```mermaid
 graph TD
-    A[TypeScript Frontend] <-->|Tauri IPC / IPC Bridge| B[Rust Core Backend]
-    B <-->|FS Operations| C[(Markdown Vaults & Media)]
-    B <-->|SQL / Vector Queries| D[(Local SQLite Database)]
-    B <-->|Embedded Runtime| E[Plugin Runner - WASM/JS]
-    B <-->|APIs / SDKs| F[Local/Remote LLMs & Stable Diffusion]
-    E <-->|Plugin API| A
+    A[React + TS Frontend] <-->|Tauri IPC Commands| B[Rust Core Backend]
+    B <-->|FS Directory Watcher| C[(Markdown Vaults & Canvas Files)]
+    B <-->|Local SQLite Read/Write| D[(Local SQLite Database & FTS5)]
+    B <-->|Boa JS Runtime| E[Plugin Runner - Boa Engine]
+    B <-->|HTTP API Calls| F[Ollama / Remote LLM APIs]
+    B <-->|ONNX Local Inference| G[ort Embedding Model]
 ```
 
 ---
 
-## 2. Tech Stack
+## 2. Subsystem Implementations
 
-### Backend (Rust)
-- **Framework**: [Tauri v2](https://tauri.app/) — provides lightweight windowing, IPC, and security configuration.
-- **Database**: [SQLite](https://www.sqlite.org/) (via `sqlx` or `rusqlite`) — stores metadata, indexing parameters, plugin registries, and system configurations.
-- **Vector Search**: [sqlite-vec](https://github.com/asg017/sqlite-vec) (a lightweight vector search extension for SQLite) is used to support embedded vector embeddings inside the same single-file SQLite database.
-- **Text Extraction & Processing**:
-  - Markdown Parser: `pulldown-cmark`.
-  - PDF/HTML extraction tools for importing rulebooks.
-- **Embeddings & LLM Interface**: Local embedding generation via `ort` (ONNX Runtime in Rust) using a tiny model like `all-MiniLM-L6-v2`, and integration with local APIs (Ollama, Llama.cpp) and cloud APIs (OpenAI, Anthropic, Gemini).
-- **Plugin Host**: An embedded JavaScript engine (using `deno_core` or `boa`) to execute third-party plugin code securely in JS/TS sandboxed environments.
+### Frontend (React + TypeScript)
+* **View Layer:** Component tree managing dashboard, campaign vault editor, rulebook browser, chat assistants, and system settings.
+* **Markdown Editor:** Powered by [CodeMirror 6](https://codemirror.net/) (via `@uiw/react-codemirror`) with custom autocompletion hooks for internal note wikilinks (`[[Note Name]]`).
+* **Interactive Canvas:** A vector graphic node-based visual layout rendered via SVG in the frontend (`FolderCanvas.tsx`).
 
-### Frontend (TypeScript)
-- **Framework**: [React](https://react.dev/) (using Vite as the build tool) — ensures fast, reactive interface updates.
-- **Styling**: Vanilla CSS or HSL CSS Variables (glassmorphic, dark-mode first design).
-- **Markdown Editor**: [Lexical](https://lexical.dev/) or [Milkdown](https://milkdown.dev/) or a customized Markdown editor supporting wiki-links (`[[Note Name]]`) and slash commands.
-- **State Management**: Zustand or Signals.
+### Backend (Rust Core)
+* **Database Layer:** Standard SQLite managed via `rusqlite`. Handles fast indexing of files, rule entries, vector search chunks, and configuration properties. Uses FTS5 for keyword full-text index matching.
+* **Vector Embeddings (ort):** Runs local ONNX model inference using `all-MiniLM-L6-v2` via the `ort` ONNX Runtime wrapper. Generates normalized 384-dimensional vectors.
+* **Directory Watcher (notify):** Watches the active campaign folder recursively in the background. Synced events update SQLite FTS indices and run chunking automatically.
+* **JavaScript Plugin Host (boa_engine):** An embedded JavaScript interpreter running Boa. Plugins register custom rules and dice hooks. The sandbox currently operates with a whitelist restricting permissions exclusively to `"hooks"`.
+* **AI Orchestrator:** Implements Retrieval-Augmented Generation (RAG) context assembly, stitching recent FTS query segments and active note sheets together to pass to selected providers.
 
 ---
 
-## 3. Data Storage & Local-First Philosophy
+## 3. Data Storage & Directory Synchronization
 
-Loreweaver stores campaign data inside a **"Campaign Vault"**, which is a normal directory on the user's hard drive.
-
-- **Markdown Files**: Notes, worldbuilding entries, and descriptions are stored as plain Markdown. Users can open this directory in Obsidian, VS Code, or any text editor.
-- **Frontmatter Metadata**: Structured information (e.g., character stats, location coordinate data, item properties) is stored as YAML/JSON frontmatter in the Markdown files:
-  ```markdown
-  ---
-  type: npc
-  system: dnd5e
-  alignment: Chaotic Neutral
-  hp: 45
-  ac: 14
-  tags: [faction/thieves-guild, status/alive]
-  ---
-  # Barnaby the Quick
-  Barnaby is a swift-fingered rogue operating in the lower docks...
-  ```
-- **Sync & Indexing**: The Rust backend monitors this directory using the `notify` crate. When a file is created, updated, or deleted, Rust parses the frontmatter and content, updates the keyword search index (SQLite FTS5), and regenerates semantic embeddings (stored in `sqlite-vec`).
+Loreweaver operates under a strict **local-first** approach:
+* **Markdown Campaigns:** Notes, worldbuilding entries, and rule guides are stored on disk in the user's hard drive as normal `.md` files, preserving maximum portability.
+* **Frontmatter Properties:** Metadata (like types, tags, or alias definitions) are serialized inside note headers using standard YAML frontmatter syntax parsed via the `gray_matter` crate.
+* **Background Sync:** The `notify`-based thread observes file edits. Modifying files triggers parsing, updating keyword FTS5 virtual tables, and chunking. 
 
 ---
 
-## 4. Semantic Search & Vector Embeddings
+## 4. Hybrid Search & Vector Similarity
 
-To achieve fast, local-first semantic search without cloud dependencies:
-1. **Model**: A small, pre-trained sentence-transformer model (e.g., `all-MiniLM-L6-v2`) is downloaded once or packaged with the app.
-2. **Execution**: The ONNX runtime (via `ort`) runs this model locally on the user's CPU/GPU.
-3. **Storage**: Text chunks (e.g., specific paragraphs of rulebooks, campaign notes) and their 384-dimensional vector embeddings are stored in SQLite using `sqlite-vec`.
-4. **Querying**: When a user queries their vault, the query is embedded, and SQLite runs a cosine-similarity search to pull the most contextually relevant chunks.
-
----
-
-## 5. Plugin System & API
-
-To allow community extensions without sacrificing app safety:
-- **Sandbox Architecture**: Plugins are loaded in an isolated environment.
-- **Manifest**: Plugins must declare permissions in a `manifest.json` (e.g., `network`, `filesystem:read`, `ui:register_view`).
-- **Plugin API**: Exposed to the frontend and backend, providing hooks to modify rendering, intercept events, run custom calculations (e.g., dice rollers), and integrate new RPG systems.
+To support fast offline semantic lookup without cloud latency:
+1. **Model:** Pre-packaged or cached `all-MiniLM-L6-v2` ONNX model.
+2. **Text Chunking:** Paragraph-based sliding window tokenizer split to avoid splitting in the middle of UTF-8 boundaries.
+3. **Similarity Matcher:** Query prompts are embedded into a normalized vector. Cosine similarity is calculated directly via dot-product multiplication against chunk records loaded from SQLite.
+4. **Ranking:** Combined keyword scores (BM25 from FTS5, weighted at 30%) and vector scores (normalized dot products, weighted at 70%) are sorted to yield RAG contexts.
 
 ---
 
-## 6. AI Agent Orchestration & Memory
+## 5. Subsystem Status Matrix
 
-- **Context Assembly**: The app gathers relevant context using a hybrid search (keyword FTS5 + semantic vector).
-- **Memory Backend**: Uses a graph structure (Factions, Locations, NPCs) to build short-term and long-term memory for AI-guided NPCs.
-- **Agent Framework**: Rust-based agent loops that parse user prompts, consult rules, execute tool calls (e.g., "Lookup spell fireball", "Roll 1d20+3"), and generate narrative responses.
+| Subsystem | Status | Description |
+| :--- | :--- | :--- |
+| **Markdown Editor** | `Implemented` | CodeMirror 6 with custom wikilinks and auto-save. |
+| **Interactive Canvas** | `Implemented` | Node boards rendering interactive diagrams. |
+| **SQLite DB & FTS5** | `Implemented` | Structured CRUD and keyword indexing via `rusqlite`. |
+| **Local Embeddings (ort)** | `Implemented` | Normalized 384-dimensional vector generation. |
+| **RAG AI Chat** | `Implemented` | Context stitching for Ollama, OpenAI, Gemini, and Anthropic. |
+| **JS Plugin Host (Boa)** | `Implemented` | Light JS hook execution. |
+| **Image Generation** | `Planned (Placeholder)` | The UI panel is a timed mockup; ComfyUI/Stable Diffusion API bindings exist in Rust but are not yet linked to the UI. |
+| **Hardened Sandbox** | `Planned` | Sandbox isolation beyond basic Boa scope limitations is not yet implemented. |
+
+For detailed low-level descriptions of backend boundaries and IPC data flows, please refer to [docs/codebase/ARCHITECTURE.md](file:///Users/chris/Development/loreweaver/docs/codebase/ARCHITECTURE.md).
