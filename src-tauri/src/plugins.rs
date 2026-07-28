@@ -5,6 +5,11 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
+/// Plugin System Host Architecture
+/// Evaluates Javascript plugin files inside isolated, synchronous Boa contexts.
+/// Restricts execution privileges exclusively to whitelisted hook callbacks.
+
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PluginInfo {
     pub id: String,
@@ -266,3 +271,62 @@ pub fn run_plugin_hook(
 
     Ok(response)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_plugin_hook_execution() {
+        let plugin_id = "test-plugin";
+        let script = r#"
+            function on_dice_roll(payload) {
+                let roll = JSON.parse(payload);
+                roll.value += 2;
+                __state.counter = (__state.counter || 0) + 1;
+                return JSON.stringify(roll);
+            }
+        "#;
+
+        let plugin = PluginInfo {
+            id: plugin_id.to_string(),
+            name: "Test Plugin".to_string(),
+            version: "1.0.0".to_string(),
+            description: "A testing plugin".to_string(),
+            permissions: vec!["hooks".to_string()],
+            script_content: script.to_string(),
+            active: true,
+        };
+
+        // Insert into ACTIVE_PLUGINS global state
+        {
+            let mut active = active_plugins().lock().unwrap();
+            active.insert(plugin_id.to_string(), plugin);
+        }
+
+        let vault_path = "/mock/vault";
+        let payload = r#"{"value": 10}"#;
+
+        // Run hook first time
+        let res = run_plugin_hook(vault_path, plugin_id, "on_dice_roll", payload).unwrap();
+        assert_eq!(res, r#"{"value":12}"#);
+
+        // Verify state is updated (counter should be 1)
+        {
+            let states = plugin_states().lock().unwrap();
+            let vault_states = states.get(vault_path).unwrap();
+            let state_str = vault_states.get(plugin_id).unwrap();
+            assert_eq!(state_str, r#"{"counter":1}"#);
+        }
+
+        // Run hook second time (counter should increment to 2)
+        let _ = run_plugin_hook(vault_path, plugin_id, "on_dice_roll", payload).unwrap();
+        {
+            let states = plugin_states().lock().unwrap();
+            let vault_states = states.get(vault_path).unwrap();
+            let state_str = vault_states.get(plugin_id).unwrap();
+            assert_eq!(state_str, r#"{"counter":2}"#);
+        }
+    }
+}
+

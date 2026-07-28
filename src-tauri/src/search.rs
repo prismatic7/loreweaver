@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tokenizers::Tokenizer;
 
+/// Hybrid Search Indexer & Matcher
+/// Blends classic full-text keyword indexing (SQLite FTS5) with dense vector search.
+/// Vector embeddings are calculated via ONNX Runtime and ranked using cosine dot-products.
+
 // --- Global Search Engine State ---
 
 pub struct SearchEngine {
@@ -369,9 +373,12 @@ fn chunk_text_by_chars(text: &str, chunk_size: usize, overlap: usize) -> Vec<Str
 }
 
 /// Chunks and indexes a note into the vector database.
-pub fn index_note_vectors(db_path: &str, note_id: &str, content: &str) -> Result<(), String> {
-    let conn = db::init_db(db_path).map_err(|e| e.to_string())?;
-    db::clear_note_chunks(&conn, note_id).map_err(|e| e.to_string())?;
+pub fn index_note_vectors(
+    conn: &rusqlite::Connection,
+    note_id: &str,
+    content: &str,
+) -> Result<(), String> {
+    db::clear_note_chunks(conn, note_id).map_err(|e| e.to_string())?;
 
     // Split note content into paragraphs/chunks
     let chunks = chunk_text(content, 120, 20);
@@ -406,12 +413,10 @@ pub fn index_note_vectors(db_path: &str, note_id: &str, content: &str) -> Result
 /// Performs a hybrid similarity ranking over notes and rules chunks.
 /// Combines FTS5 keyword search with vector similarity search.
 pub fn hybrid_query(
-    db_path: &str,
+    conn: &rusqlite::Connection,
     query_text: &str,
     category: &str,
 ) -> Result<Vec<super::SearchResult>, String> {
-    let conn = db::init_db(db_path).map_err(|e| e.to_string())?;
-
     // Collect results: key = "type:title" -> (SearchResult, has_fts, has_vector)
     let mut best_results: HashMap<String, super::SearchResult> = HashMap::new();
 
@@ -574,8 +579,7 @@ pub fn hybrid_query(
 }
 
 /// Chunks and indexes all rules in the database.
-pub fn index_all_rules_vectors(db_path: &str) -> Result<(), String> {
-    let conn = db::init_db(db_path).map_err(|e| e.to_string())?;
+pub fn index_all_rules_vectors(conn: &rusqlite::Connection) -> Result<(), String> {
     let mut stmt = conn
         .prepare("SELECT id, content FROM rules")
         .map_err(|e| e.to_string())?;
@@ -602,4 +606,52 @@ pub fn index_all_rules_vectors(db_path: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_chunk_text_short() {
+        let text = "This is a short note.";
+        let chunks = chunk_text(text, 100, 10);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0], "This is a short note.");
+    }
+
+    #[test]
+    fn test_chunk_text_long() {
+        let text = "A very long text that should be split into multiple chunks because it exceeds the size limit. We want to verify that overlap works and splits are correct.";
+        // Let's use small chunk size to force splitting: chunk size 10 tokens (~40 chars), overlap 2 tokens (~8 chars)
+        let chunks = chunk_text(text, 10, 2);
+        assert!(chunks.len() > 1);
+        // Verify no empty chunks
+        for chunk in &chunks {
+            assert!(!chunk.trim().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_cosine_similarity_calculation() {
+        // Since we cannot run local ONNX model download in tests, we test the math of similarity score directly.
+        // L2 normalized vectors
+        let vec_a = vec![1.0f32, 0.0f32, 0.0f32];
+        let vec_b = vec![1.0f32, 0.0f32, 0.0f32];
+        let vec_c = vec![0.0f32, 1.0f32, 0.0f32];
+
+        // Similarity between vec_a and vec_b should be 1.0 (identical)
+        let mut score_ab = 0.0f32;
+        for d in 0..3 {
+            score_ab += vec_a[d] * vec_b[d];
+        }
+        assert!((score_ab - 1.0).abs() < 1e-5);
+
+        // Similarity between vec_a and vec_c should be 0.0 (orthogonal)
+        let mut score_ac = 0.0f32;
+        for d in 0..3 {
+            score_ac += vec_a[d] * vec_c[d];
+        }
+        assert!(score_ac.abs() < 1e-5);
+    }
 }

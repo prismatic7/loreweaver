@@ -1,7 +1,10 @@
-use crate::db;
 use crate::search;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+/// AI Agent & RAG Context Orchestration
+/// Blends FTS5 matches and active document buffers into structured system prompt boundaries.
+/// Dispatches chat payloads to Ollama, OpenAI, Gemini, or Anthropic.
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct ChatMessage {
@@ -11,7 +14,7 @@ pub struct ChatMessage {
 
 /// Orchestrates local RAG, fetches matching context vectors, and calls the LLM provider.
 pub fn generate_response(
-    db_path: &str,
+    conn: &rusqlite::Connection,
     prompt: &str,
     provider: &str,
     model: &str,
@@ -20,7 +23,7 @@ pub fn generate_response(
     active_note_id: Option<&str>,
 ) -> Result<String, String> {
     // 1. Gather Context via Hybrid Search (RAG)
-    let context_results = match search::hybrid_query(db_path, prompt, "all") {
+    let context_results = match search::hybrid_query(conn, prompt, "all") {
         Ok(results) => results,
         Err(e) => {
             eprintln!("RAG context search failed: {:?}", e);
@@ -42,17 +45,15 @@ pub fn generate_response(
     // 2. Fetch Active Note Content (if open)
     let mut active_note_context = String::new();
     if let Some(note_id) = active_note_id {
-        if let Ok(conn) = db::init_db(db_path) {
-            if let Ok((title, content)) = conn.query_row(
-                "SELECT title, content FROM notes WHERE id = ?1",
-                [note_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            ) {
-                active_note_context = format!(
-                    "\nCurrently Open Note sheet (Title: {}):\n{}\n",
-                    title, content
-                );
-            }
+        if let Ok((title, content)) = conn.query_row(
+            "SELECT title, content FROM notes WHERE id = ?1",
+            [note_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            active_note_context = format!(
+                "\nCurrently Open Note sheet (Title: {}):\n{}\n",
+                title, content
+            );
         }
     }
 
@@ -262,4 +263,65 @@ fn call_gemini(
         .ok_or("Gemini returned empty response")?;
 
     Ok(content.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unsupported_provider() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let res = generate_response(
+            &conn,
+            "Hello",
+            "nonexistent-provider",
+            "model-abc",
+            None,
+            None,
+            None,
+        );
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err(),
+            "Unsupported LLM provider: nonexistent-provider"
+        );
+    }
+
+    #[test]
+    fn test_missing_api_keys() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        // OpenAI missing key
+        let res_openai = generate_response(&conn, "Hello", "openai", "gpt-4o", None, None, None);
+        assert!(res_openai.is_err());
+        assert!(res_openai.unwrap_err().contains("API key missing"));
+
+        // Gemini missing key
+        let res_gemini = generate_response(
+            &conn,
+            "Hello",
+            "gemini",
+            "gemini-1.5-flash",
+            None,
+            None,
+            None,
+        );
+        assert!(res_gemini.is_err());
+        assert!(res_gemini.unwrap_err().contains("Gemini API key missing"));
+
+        // Anthropic missing key
+        let res_anthropic = generate_response(
+            &conn,
+            "Hello",
+            "anthropic",
+            "claude-3-opus",
+            None,
+            None,
+            None,
+        );
+        assert!(res_anthropic.is_err());
+        assert!(res_anthropic
+            .unwrap_err()
+            .contains("Anthropic API key missing"));
+    }
 }

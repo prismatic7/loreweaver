@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye } from "lucide-react";
 
+/**
+ * FolderCanvas Component
+ * Implements an interactive board canvas rendering connections, locations, and notes using vector SVGs.
+ * Performs coordinate tracking, pan/zoom transformations, and binds nodes directly to campaign notes.
+ */
+
+
 const extractWikiLinks = (text: string): string[] => {
   const links: string[] = [];
   const regex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;

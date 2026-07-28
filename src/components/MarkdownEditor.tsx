@@ -9,6 +9,13 @@ import CodeMirror from "@uiw/react-codemirror";
 import Fuse from "fuse.js";
 import { useMemo } from "react";
 
+/**
+ * MarkdownEditor Component
+ * Wraps CodeMirror 6 with support for Markdown line-wrapping and wikilink autocompletion.
+ * Performs fuzzy search on note titles and aliases to trigger Obsidian-style link injections.
+ */
+
+
 type EditorNote = {
   title: string;
   frontmatter: Record<string, unknown>;
