@@ -41,6 +41,7 @@ import { z } from "zod";
 import "./App.css";
 
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor"));
+const FolderCanvas = lazy(() => import("./components/FolderCanvas"));
 
 interface CampaignNote {
   id: string;
@@ -1015,6 +1016,36 @@ function App() {
     setActiveView("vault");
   };
 
+  const handleSelectNoteFromCanvas = (noteId: string) => {
+    const targetNote = notes.find((n) => n.id === noteId);
+    if (targetNote) {
+      setSelectedNoteId(noteId);
+      const isCanvas =
+        targetNote.frontmatter?.type === "Canvas" ||
+        targetNote.path.endsWith(".canvas");
+      if (isCanvas) {
+        const parts = targetNote.path.split("/");
+        parts.pop();
+        const folderName = parts.join("/");
+        setCurrentCanvasFolder(folderName);
+        setActiveView("canvas");
+      } else {
+        setIsEditingNote(false);
+        setActiveView("vault");
+      }
+    }
+  };
+
+  const handleSelectCanvas = (canvasPath: string) => {
+    const targetNote = notes.find(
+      (n) => n.frontmatter?.canvasPath === canvasPath || n.path === canvasPath,
+    );
+    if (targetNote) {
+      setSelectedNoteId(targetNote.id);
+      setActiveView("canvas");
+    }
+  };
+
   const handleCreateItemInFolder = (
     folderName: string,
     type: "note" | "folder" | "canvas" | "audio" | "image",
@@ -1176,8 +1207,8 @@ function App() {
       activeEditingNoteIdRef.current = newId;
 
       invoke("save_canvas_file", {
-        relPath: canvasPath,
-        jsonContent: JSON.stringify({ nodes: [], edges: [], containers: [] }),
+        rel_path: canvasPath,
+        content: JSON.stringify({ nodes: [], edges: [], containers: [] }),
       })
         .then(() => invoke("save_note", { note: canvasNote }))
         .then(() => invoke<CampaignNote[]>("load_notes"))
@@ -2613,7 +2644,7 @@ function App() {
             style={{ display: "flex", alignItems: "center", gap: "10px" }}
           >
             {activeView === "dashboard" && "Dashboard"}
-            {activeView === "vault" && (
+            {(activeView === "vault" || activeView === "canvas") && (
               <>
                 Vault / <span>{currentNote?.title || "Untitled"}</span>
               </>
@@ -2906,7 +2937,7 @@ function App() {
             )}
 
             {/* VIEW: VAULT */}
-            {activeView === "vault" && (
+            {(activeView === "vault" || activeView === "canvas") && (
               <div
                 className="view-container"
                 data-od-id="vault-view"
@@ -3161,73 +3192,52 @@ function App() {
                       },
                     )}
                   </div>
-                  <div
-                    style={{
-                      flex: 1,
-                      overflowY: "auto",
-                      padding: "32px 40px",
-                      display: "flex",
-                      justifyContent: "center",
-                    }}
-                  >
+                  {activeView === "canvas" ? (
+                    <Suspense fallback={<div style={{ padding: "20px", color: "var(--muted)" }}>Loading Canvas...</div>}>
+                      <FolderCanvas
+                        currentFolder={currentCanvasFolder || ""}
+                        activeCanvasPath={
+                          (currentNote?.frontmatter?.canvasPath as string) ||
+                          currentNote?.path ||
+                          ""
+                        }
+                        notes={notes as any[]}
+                        onSelectNote={handleSelectNoteFromCanvas}
+                        onSelectCanvas={handleSelectCanvas}
+                      />
+                    </Suspense>
+                  ) : (
                     <div
-                      className="document-sheet"
-                      style={{ padding: "40px 48px" }}
+                      style={{
+                        flex: 1,
+                        overflowY: "auto",
+                        padding: "32px 40px",
+                        display: "flex",
+                        justifyContent: "center",
+                      }}
                     >
-                      {/* Mode Toggle at top-right */}
                       <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          gap: "8px",
-                          marginBottom: "16px",
-                        }}
+                        className="document-sheet"
+                        style={{ padding: "40px 48px" }}
                       >
-                        <button
-                          onClick={handleNormalizeVaultMarkdown}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            border: "1px solid var(--border)",
-                            background: "var(--bg)",
-                            color: "var(--fg)",
-                            padding: "4px 10px",
-                            borderRadius: "4px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            fontFamily: "var(--font-body)",
-                            cursor: "pointer",
-                          }}
-                          title="Rewrite notes with canonical wiki links"
-                        >
-                          <Copy size={12} /> Normalize Vault
-                        </button>
+                        {/* Mode Toggle at top-right */}
                         <div
                           style={{
                             display: "flex",
-                            background: "var(--bg)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "6px",
-                            padding: "2px",
+                            justifyContent: "flex-end",
+                            gap: "8px",
+                            marginBottom: "16px",
                           }}
                         >
                           <button
-                            onClick={() => {
-                              triggerImmediateSave();
-                              setIsEditingNote(false);
-                            }}
+                            onClick={handleNormalizeVaultMarkdown}
                             style={{
                               display: "flex",
                               alignItems: "center",
                               gap: "4px",
-                              border: "none",
-                              background: !isEditingNote
-                                ? "var(--surface)"
-                                : "transparent",
-                              color: !isEditingNote
-                                ? "var(--accent)"
-                                : "var(--muted)",
+                              border: "1px solid var(--border)",
+                              background: "var(--bg)",
+                              color: "var(--fg)",
                               padding: "4px 10px",
                               borderRadius: "4px",
                               fontSize: "11px",
@@ -3235,305 +3245,342 @@ function App() {
                               fontFamily: "var(--font-body)",
                               cursor: "pointer",
                             }}
+                            title="Rewrite notes with canonical wiki links"
                           >
-                            <Eye size={12} /> Preview
+                            <Copy size={12} /> Normalize Vault
                           </button>
-                          <button
-                            onClick={() => setIsEditingNote(true)}
+                          <div
                             style={{
                               display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              border: "none",
-                              background: isEditingNote
-                                ? "var(--surface)"
-                                : "transparent",
-                              color: isEditingNote
-                                ? "var(--accent)"
-                                : "var(--muted)",
-                              padding: "4px 10px",
-                              borderRadius: "4px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              fontFamily: "var(--font-body)",
-                              cursor: "pointer",
+                              background: "var(--bg)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "6px",
+                              padding: "2px",
                             }}
                           >
-                            <PenLine size={12} /> Edit
-                          </button>
-                        </div>
-
-                        {selectedNoteId && currentNote && (
-                          <button
-                            className="btn btn-sm"
-                            onClick={() => handleTrashNote(currentNote.path)}
-                            style={{
-                              color: "var(--danger)",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                            }}
-                            title="Trash this note"
-                          >
-                            <Trash2 size={12} /> Trash Note
-                          </button>
-                        )}
-                      </div>
-
-                      {isEditingNote ? (
-                        <div>
-                          {/* Title Edit (Borderless) */}
-                          <div style={{ marginBottom: "16px" }}>
-                            <input
-                              type="text"
-                              value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              style={{
-                                fontFamily: "var(--font-display)",
-                                fontSize: "36px",
-                                lineHeight: "1.1",
-                                letterSpacing: "-0.02em",
-                                fontWeight: 600,
-                                border: "none",
-                                outline: "none",
-                                background: "transparent",
-                                color: "var(--fg)",
-                                width: "100%",
-                                padding: "0 0 6px 0",
-                                borderBottom: "1px dashed var(--border)",
+                            <button
+                              onClick={() => {
+                                triggerImmediateSave();
+                                setIsEditingNote(false);
                               }}
-                              placeholder="Untitled Note"
-                            />
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                border: "none",
+                                background: !isEditingNote
+                                  ? "var(--surface)"
+                                  : "transparent",
+                                color: !isEditingNote
+                                  ? "var(--accent)"
+                                  : "var(--muted)",
+                                padding: "4px 10px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                fontFamily: "var(--font-body)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <Eye size={12} /> Preview
+                            </button>
+                            <button
+                              onClick={() => setIsEditingNote(true)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                border: "none",
+                                background: isEditingNote
+                                  ? "var(--surface)"
+                                  : "transparent",
+                                color: isEditingNote
+                                  ? "var(--accent)"
+                                  : "var(--muted)",
+                                padding: "4px 10px",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                fontFamily: "var(--font-body)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <PenLine size={12} /> Edit
+                            </button>
                           </div>
 
-                          {/* Collapsible Metadata Editor */}
-                          <details
-                            style={{
-                              marginBottom: "20px",
-                              border: "1px solid var(--border)",
-                              borderRadius: "4px",
-                              padding: "10px 14px",
-                              background: "var(--surface)",
-                            }}
-                          >
-                            <summary
+                          {selectedNoteId && currentNote && (
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => handleTrashNote(currentNote.path)}
                               style={{
-                                fontSize: "11px",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.08em",
-                                color: "var(--muted)",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                outline: "none",
-                              }}
-                            >
-                              Metadata Properties
-                            </summary>
-                            <div
-                              style={{
-                                marginTop: "12px",
+                                color: "var(--danger)",
                                 display: "flex",
-                                flexDirection: "column",
-                                gap: "8px",
+                                alignItems: "center",
+                                gap: 4,
+                              }}
+                              title="Trash this note"
+                            >
+                              <Trash2 size={12} /> Trash Note
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditingNote ? (
+                          <div>
+                            {/* Title Edit (Borderless) */}
+                            <div style={{ marginBottom: "16px" }}>
+                              <input
+                                type="text"
+                                value={editTitle}
+                                onChange={(e) => setEditTitle(e.target.value)}
+                                style={{
+                                  fontFamily: "var(--font-display)",
+                                  fontSize: "36px",
+                                  lineHeight: "1.1",
+                                  letterSpacing: "-0.02em",
+                                  fontWeight: 600,
+                                  border: "none",
+                                  outline: "none",
+                                  background: "transparent",
+                                  color: "var(--fg)",
+                                  width: "100%",
+                                  padding: "0 0 6px 0",
+                                  borderBottom: "1px dashed var(--border)",
+                                }}
+                                placeholder="Untitled Note"
+                              />
+                            </div>
+
+                            {/* Collapsible Metadata Editor */}
+                            <details
+                              style={{
+                                marginBottom: "20px",
+                                border: "1px solid var(--border)",
+                                borderRadius: "4px",
+                                padding: "10px 14px",
+                                background: "var(--surface)",
                               }}
                             >
-                              {Object.entries(editFrontmatter).map(
-                                ([key, val]) => (
-                                  <div
-                                    key={key}
-                                    style={{
-                                      display: "flex",
-                                      gap: "8px",
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        fontSize: "12px",
-                                        width: "100px",
-                                        color: "var(--muted)",
-                                        fontWeight: 500,
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {key}
-                                    </span>
-                                    <input
-                                      type="text"
-                                      value={
-                                        Array.isArray(val)
-                                          ? val.join(", ")
-                                          : String(val)
-                                      }
-                                      onChange={(e) => {
-                                        const newVal = e.target.value;
-                                        setEditFrontmatter((prev) => ({
-                                          ...prev,
-                                          [key]:
-                                            key === "tags"
-                                              ? newVal
-                                                  .split(",")
-                                                  .map((t) => t.trim())
-                                              : newVal,
-                                        }));
-                                      }}
-                                      style={{
-                                        flex: 1,
-                                        padding: "4px 8px",
-                                        fontSize: "12px",
-                                        background: "var(--bg)",
-                                        border: "1px solid var(--border)",
-                                        borderRadius: "4px",
-                                        color: "var(--fg)",
-                                      }}
-                                    />
-                                    <button
-                                      onClick={() => {
-                                        const { [key]: _, ...rest } =
-                                          editFrontmatter;
-                                        setEditFrontmatter(rest);
-                                      }}
-                                      className="btn btn-sm"
-                                      style={{
-                                        color: "var(--danger)",
-                                        padding: "4px 8px",
-                                      }}
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ),
-                              )}
-
-                              {/* Add New Metadata Key-Value */}
-                              <div
+                              <summary
                                 style={{
-                                  display: "flex",
-                                  gap: "8px",
-                                  marginTop: "12px",
-                                  alignItems: "center",
+                                  fontSize: "11px",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.08em",
+                                  color: "var(--muted)",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  outline: "none",
                                 }}
                               >
-                                <input
-                                  placeholder="Key"
-                                  value={newMetaKey}
-                                  onChange={(e) =>
-                                    setNewMetaKey(e.target.value)
-                                  }
-                                  style={{
-                                    width: "100px",
-                                    padding: "4px 8px",
-                                    fontSize: "12px",
-                                    background: "var(--bg)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "4px",
-                                    color: "var(--fg)",
-                                  }}
-                                />
-                                <input
-                                  placeholder="Value"
-                                  value={newMetaVal}
-                                  onChange={(e) =>
-                                    setNewMetaVal(e.target.value)
-                                  }
-                                  style={{
-                                    flex: 1,
-                                    padding: "4px 8px",
-                                    fontSize: "12px",
-                                    background: "var(--bg)",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "4px",
-                                    color: "var(--fg)",
-                                  }}
-                                />
-                                <button
-                                  onClick={() => {
-                                    if (!newMetaKey.trim()) return;
-                                    setEditFrontmatter((prev) => ({
-                                      ...prev,
-                                      [newMetaKey.trim()]: newMetaVal,
-                                    }));
-                                    setNewMetaKey("");
-                                    setNewMetaVal("");
-                                  }}
-                                  className="btn btn-sm"
-                                  style={{ padding: "4px 10px" }}
-                                >
-                                  Add Field
-                                </button>
-                              </div>
-                            </div>
-                          </details>
+                                Metadata Properties
+                              </summary>
+                              <div
+                                style={{
+                                  marginTop: "12px",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "8px",
+                                }}
+                              >
+                                {Object.entries(editFrontmatter).map(
+                                  ([key, val]) => (
+                                    <div
+                                      key={key}
+                                      style={{
+                                        display: "flex",
+                                        gap: "8px",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: "12px",
+                                          width: "100px",
+                                          color: "var(--muted)",
+                                          fontWeight: 500,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        {key}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={
+                                          Array.isArray(val)
+                                            ? val.join(", ")
+                                            : String(val)
+                                        }
+                                        onChange={(e) => {
+                                          const newVal = e.target.value;
+                                          setEditFrontmatter((prev) => ({
+                                            ...prev,
+                                            [key]:
+                                              key === "tags"
+                                                ? newVal
+                                                    .split(",")
+                                                    .map((t) => t.trim())
+                                                : newVal,
+                                          }));
+                                        }}
+                                        style={{
+                                          flex: 1,
+                                          padding: "4px 8px",
+                                          fontSize: "12px",
+                                          background: "var(--bg)",
+                                          border: "1px solid var(--border)",
+                                          borderRadius: "4px",
+                                          color: "var(--fg)",
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const { [key]: _, ...rest } =
+                                            editFrontmatter;
+                                          setEditFrontmatter(rest);
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{
+                                          color: "var(--danger)",
+                                          padding: "4px 8px",
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ),
+                                )}
 
-                          {/* Content Body Edit (Borderless, inheriting styles) */}
-                          <div style={{ marginBottom: "20px" }}>
-                            <Suspense
-                              fallback={
+                                {/* Add New Metadata Key-Value */}
                                 <div
                                   style={{
-                                    width: "100%",
-                                    height: "400px",
                                     display: "flex",
+                                    gap: "8px",
+                                    marginTop: "12px",
                                     alignItems: "center",
-                                    justifyContent: "center",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "6px",
-                                    background: "var(--surface)",
-                                    color: "var(--muted)",
-                                    fontSize: "13px",
                                   }}
                                 >
-                                  Loading markdown editor...
+                                  <input
+                                    placeholder="Key"
+                                    value={newMetaKey}
+                                    onChange={(e) =>
+                                      setNewMetaKey(e.target.value)
+                                    }
+                                    style={{
+                                      width: "100px",
+                                      padding: "4px 8px",
+                                      fontSize: "12px",
+                                      background: "var(--bg)",
+                                      border: "1px solid var(--border)",
+                                      borderRadius: "4px",
+                                      color: "var(--fg)",
+                                    }}
+                                  />
+                                  <input
+                                    placeholder="Value"
+                                    value={newMetaVal}
+                                    onChange={(e) =>
+                                      setNewMetaVal(e.target.value)
+                                    }
+                                    style={{
+                                      flex: 1,
+                                      padding: "4px 8px",
+                                      fontSize: "12px",
+                                      background: "var(--bg)",
+                                      border: "1px solid var(--border)",
+                                      borderRadius: "4px",
+                                      color: "var(--fg)",
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      if (!newMetaKey.trim()) return;
+                                      setEditFrontmatter((prev) => ({
+                                        ...prev,
+                                        [newMetaKey.trim()]: newMetaVal,
+                                      }));
+                                      setNewMetaKey("");
+                                      setNewMetaVal("");
+                                    }}
+                                    className="btn btn-sm"
+                                    style={{ padding: "4px 10px" }}
+                                  >
+                                    Add Field
+                                  </button>
                                 </div>
-                              }
-                            >
-                              <MarkdownEditor
-                                value={editContent}
-                                onChange={setEditContent}
-                                notes={notes}
-                                activeNotePath={
-                                  currentNote ? currentNote.path : ""
+                              </div>
+                            </details>
+
+                            {/* Content Body Edit (Borderless, inheriting styles) */}
+                            <div style={{ marginBottom: "20px" }}>
+                              <Suspense
+                                fallback={
+                                  <div
+                                    style={{
+                                      width: "100%",
+                                      height: "400px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      border: "1px solid var(--border)",
+                                      borderRadius: "6px",
+                                      background: "var(--surface)",
+                                      color: "var(--muted)",
+                                      fontSize: "13px",
+                                    }}
+                                  >
+                                    Loading markdown editor...
+                                  </div>
                                 }
-                              />
-                            </Suspense>
+                              >
+                                <MarkdownEditor
+                                  value={editContent}
+                                  onChange={setEditContent}
+                                  notes={notes}
+                                  activeNotePath={
+                                    currentNote ? currentNote.path : ""
+                                  }
+                                />
+                              </Suspense>
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                color: "var(--muted)",
+                                fontStyle: "italic",
+                                borderTop: "1px solid var(--border)",
+                                paddingTop: "8px",
+                              }}
+                            >
+                              ● Auto-saving in background...
+                            </div>
                           </div>
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: "var(--muted)",
-                              fontStyle: "italic",
-                              borderTop: "1px solid var(--border)",
-                              paddingTop: "8px",
-                            }}
-                          >
-                            ● Auto-saving in background...
+                        ) : (
+                          <div>
+                            <div
+                              className="doc-title"
+                              style={{ wordBreak: "break-word" }}
+                            >
+                              {currentNote?.title}
+                            </div>
+                            <div className="doc-meta">
+                              <span className="doc-meta-tag">
+                                {String(currentNote?.frontmatter.type || "Note")}
+                              </span>
+                              <span>{currentNote?.path}</span>
+                            </div>
+                            <div className="doc-body">
+                              {currentNote
+                                ? renderMarkdown(currentNote.content)
+                                : null}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div
-                            className="doc-title"
-                            style={{ wordBreak: "break-word" }}
-                          >
-                            {currentNote?.title}
-                          </div>
-                          <div className="doc-meta">
-                            <span className="doc-meta-tag">
-                              {String(currentNote?.frontmatter.type || "Note")}
-                            </span>
-                            <span>{currentNote?.path}</span>
-                          </div>
-                          <div className="doc-body">
-                            {currentNote
-                              ? renderMarkdown(currentNote.content)
-                              : null}
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}

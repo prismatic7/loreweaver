@@ -2292,12 +2292,14 @@ mod tests {
         };
 
         let vault_path = state.vault_path.lock().unwrap();
-        let binding = state.conn.lock().unwrap();
-        let conn_guard = binding.lock().unwrap();
 
-        let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
-        assert!(res.is_ok(), "trash_note failed: {:?}", res);
-        drop(conn_guard);
+        // 1. Trash the note within a scope to release locks immediately
+        {
+            let binding = state.conn.lock().unwrap();
+            let conn_guard = binding.lock().unwrap();
+            let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
+            assert!(res.is_ok(), "trash_note failed: {:?}", res);
+        }
 
         // Verify file was moved to .trash/
         let trash_dir = temp_dir.join(".trash");
@@ -2337,15 +2339,17 @@ mod tests {
         assert_eq!(trashed.len(), 1, "Expected 1 note in load_trash_notes");
         assert_eq!(trashed[0].title, "Test");
 
-        // Test restore_note
-        let binding = state.conn.lock().unwrap();
-        let conn_guard = binding.lock().unwrap();
-        let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
-        assert!(
-            restore_res.is_ok(),
-            "restore_note failed: {:?}",
-            restore_res
-        );
+        // Test restore_note within a separate scope to avoid deadlocks
+        {
+            let binding = state.conn.lock().unwrap();
+            let conn_guard = binding.lock().unwrap();
+            let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
+            assert!(
+                restore_res.is_ok(),
+                "restore_note failed: {:?}",
+                restore_res
+            );
+        }
 
         // Verify original file is back
         assert!(note_path.exists(), "Original file not restored");
