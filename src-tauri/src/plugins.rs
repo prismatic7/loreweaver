@@ -82,6 +82,7 @@ pub fn load_all_plugins(
                         // We don't persist the context — run_plugin_hook creates a fresh one.
                         {
                             let mut context = Context::default();
+                            context.runtime_limits_mut().set_loop_iteration_limit(50000);
                             let source = Source::from_bytes(info.script_content.as_bytes());
                             if let Err(e) = context.eval(source) {
                                 eprintln!("JS Eval Error for plugin {}: {:?}", info.id, e);
@@ -206,6 +207,7 @@ pub fn run_plugin_hook(
     };
 
     let mut context = Context::default();
+    context.runtime_limits_mut().set_loop_iteration_limit(50000);
 
     // Evaluate plugin script
     let source = Source::from_bytes(plugin.script_content.as_bytes());

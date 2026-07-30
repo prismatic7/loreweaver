@@ -26,6 +26,7 @@ pub struct AppState {
     pub plugins_path: Mutex<String>,
     pub watcher: Mutex<Option<RecommendedWatcher>>,
     pub conn: Mutex<Arc<Mutex<rusqlite::Connection>>>,
+    pub campaigns_root: std::path::PathBuf,
 }
 
 // --- Data Structures ---
@@ -209,19 +210,14 @@ fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::Pa
 /// Validates that `path` is inside the current vault's parent (campaigns) directory.
 /// Returns the canonicalized path on success.
 fn validate_campaigns_path(
-    current_vault_path: &str,
+    campaigns_root: &std::path::Path,
     target_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let current_vault = std::path::Path::new(current_vault_path);
-    let campaigns_dir = current_vault
-        .parent()
-        .ok_or("Invalid vault path structure: no parent directory")?;
-
     let target = std::path::Path::new(target_path);
     let canonical_target = target
         .canonicalize()
         .map_err(|e| format!("Target path does not exist or cannot be resolved: {}", e))?;
-    let canonical_campaigns = campaigns_dir
+    let canonical_campaigns = campaigns_root
         .canonicalize()
         .map_err(|e| format!("Campaigns directory cannot be resolved: {}", e))?;
 
@@ -1811,12 +1807,7 @@ fn create_vault(state: State<AppState>, name: &str) -> Result<String, String> {
         return Err("Invalid vault name".to_string());
     }
 
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let current_vault = std::path::Path::new(&*vault_path_str);
-    let campaigns_dir = current_vault
-        .parent()
-        .ok_or("Invalid vault path structure")?;
-    let new_vault_path = campaigns_dir.join(&sanitized_name);
+    let new_vault_path = state.campaigns_root.join(&sanitized_name);
 
     if new_vault_path.exists() {
         return Err("A campaign vault with this name already exists".to_string());
@@ -1842,12 +1833,7 @@ Eldoria is a sprawling kingdom known for its towering white-stone structures and
 
 #[tauri::command]
 fn switch_vault(state: State<AppState>, path: &str) -> Result<(), String> {
-    let current_vault_path = state
-        .vault_path
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-    let canonical_target = validate_campaigns_path(&current_vault_path, path)?;
+    let canonical_target = validate_campaigns_path(&state.campaigns_root, path)?;
 
     if !canonical_target.is_dir() {
         return Err("Target vault path does not exist or is not a directory".to_string());
@@ -1931,7 +1917,7 @@ fn delete_vault(state: State<AppState>, vault_path: &str) -> Result<(), String> 
         );
     }
 
-    let canonical_target = validate_campaigns_path(&current_vault_path, vault_path)?;
+    let canonical_target = validate_campaigns_path(&state.campaigns_root, vault_path)?;
 
     if !canonical_target.is_dir() {
         return Err("Vault directory does not exist".to_string());
@@ -2211,12 +2197,15 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 }
             });
 
+            let campaigns_root = app_data_dir.join("campaigns");
+
             app.manage(AppState {
                 db_path: Mutex::new(db_path),
                 vault_path: Mutex::new(vault_path),
                 plugins_path: Mutex::new(plugins_path),
                 watcher: Mutex::new(Some(watcher)),
                 conn: Mutex::new(conn),
+                campaigns_root,
             });
 
             Ok(())
@@ -2289,6 +2278,7 @@ mod tests {
             plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
             watcher: Mutex::new(None),
             conn: Mutex::new(Arc::clone(&conn)),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
         };
 
         let vault_path = state.vault_path.lock().unwrap();
@@ -2376,6 +2366,7 @@ mod tests {
             plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
             watcher: Mutex::new(None),
             conn: Mutex::new(Arc::clone(&conn)),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
         };
 
         let vault_path = state.vault_path.lock().unwrap();
