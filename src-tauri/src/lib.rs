@@ -626,21 +626,11 @@ fn restore_note_impl(
         .unwrap_or("");
     let note_id = db::upsert_note(conn, &original_rel_path, title, &content, &frontmatter)
         .unwrap_or_default();
-    // Clear stale vector chunks and rebuild them so search stays consistent.
-    let _ = db::clear_note_chunks(conn, &note_id);
-    let chunks = search::chunk_text(&content, 200, 20);
-    for chunk in chunks {
-        if chunk.trim().is_empty() {
-            continue;
-        }
-        match search::generate_embedding(&chunk) {
-            Ok(emb) => {
-                let _ = db::insert_note_chunk(conn, &note_id, &chunk, &emb);
-            }
-            Err(_) => {
-                let _ = db::insert_note_chunk(conn, &note_id, &chunk, &vec![0.0f32; 384]);
-            }
-        }
+
+    if watcher::should_ai_index(&original_file_path, &frontmatter) {
+        let _ = search::index_note_vectors(conn, &note_id, &content);
+    } else {
+        let _ = db::clear_note_chunks(conn, &note_id);
     }
 
     Ok(())
@@ -1832,7 +1822,7 @@ Eldoria is a sprawling kingdom known for its towering white-stone structures and
 }
 
 #[tauri::command]
-fn switch_vault(state: State<AppState>, path: &str) -> Result<(), String> {
+fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Result<(), String> {
     let canonical_target = validate_campaigns_path(&state.campaigns_root, path)?;
 
     if !canonical_target.is_dir() {
@@ -1866,7 +1856,7 @@ fn switch_vault(state: State<AppState>, path: &str) -> Result<(), String> {
     }
 
     let new_watcher =
-        watcher::start_directory_watcher(new_vault_path_str.clone(), Arc::clone(&new_conn))?;
+        watcher::start_directory_watcher(new_vault_path_str.clone(), Arc::clone(&new_conn), app)?;
     {
         let mut watcher_guard = state.watcher.lock().unwrap_or_else(|e| e.into_inner());
         *watcher_guard = Some(new_watcher);
@@ -2166,6 +2156,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             let watcher = watcher::start_directory_watcher(
                 vault_path.clone(),
                 Arc::clone(&conn),
+                app_handle.clone(),
             )
             .map_err(|e| err(format!("Failed to start directory watcher: {}", e)))?;
 

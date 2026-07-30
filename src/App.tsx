@@ -1,5 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 /**
  * Loreweaver Monolithic App Coordinator
@@ -516,9 +517,7 @@ function App() {
       .then((list) => setPluginsList(list || []))
       .catch((err) => console.error("Failed to load plugins:", err));
 
-    // Poll the backend to keep the UI in sync with filesystem changes (and
-    // ensure empty folders remain visible after notes are removed).
-    const syncInterval = setInterval(() => {
+    const unlisten = listen("vault-changed", () => {
       invoke<CampaignNote[]>("load_notes")
         .then((loadedNotes) => {
           if (loadedNotes) setNotes(loadedNotes);
@@ -528,9 +527,11 @@ function App() {
           setDiscoveredFolders(folders || []);
         })
         .catch((err) => console.error("Background vault sync failed:", err));
-    }, 2000);
+    });
 
-    return () => clearInterval(syncInterval);
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   useEffect(() => {

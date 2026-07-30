@@ -3,6 +3,7 @@ use gray_matter::{engine::YAML, Matter};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use tauri::Emitter;
 
 /// Directory Watcher & Syncing Pipeline
 /// Recursively monitors Campaign Vault directories for file additions, modifications, and deletions.
@@ -202,6 +203,7 @@ pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> 
 pub fn start_directory_watcher(
     vault_path_str: String,
     conn: Arc<Mutex<rusqlite::Connection>>,
+    app_handle: tauri::AppHandle,
 ) -> Result<RecommendedWatcher, String> {
     let vault_path = PathBuf::from(&vault_path_str);
     let vault_path_clone = vault_path.clone();
@@ -220,6 +222,7 @@ pub fn start_directory_watcher(
     let pending_flush = Arc::clone(&pending);
     let conn_flush = Arc::clone(&conn);
     let vault_path_flush = vault_path_clone.clone();
+    let app_handle_flush = app_handle.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(500));
         let to_process: Vec<(PathBuf, bool)> = {
@@ -248,7 +251,7 @@ pub fn start_directory_watcher(
             }
         };
         for (path, is_remove) in to_process {
-            process_file_event(&path, is_remove, &conn_guard, &vault_path_flush);
+            process_file_event(&path, is_remove, &conn_guard, &vault_path_flush, &app_handle_flush);
         }
     });
 
@@ -297,6 +300,7 @@ fn process_file_event(
     is_remove: bool,
     conn: &rusqlite::Connection,
     vault_path: &Path,
+    app_handle: &tauri::AppHandle,
 ) {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
@@ -342,6 +346,8 @@ fn process_file_event(
             Err(e) => eprintln!("Failed to parse created/modified file: {:?}", e),
         }
     }
+
+    let _ = app_handle.emit("vault-changed", ());
 }
 
 #[cfg(test)]
