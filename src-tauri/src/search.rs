@@ -502,7 +502,8 @@ pub fn hybrid_query(
         let chunks = db::get_all_note_chunks(&conn).map_err(|e| e.to_string())?;
         for (_chunk_id, note_id, chunk_embedding, chunk_text, title) in chunks {
             let mut score = 0.0f32;
-            for d in 0..384 {
+            let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
+            for d in 0..dims {
                 score += query_vector[d] * chunk_embedding[d];
             }
 
@@ -542,7 +543,8 @@ pub fn hybrid_query(
         let chunks = db::get_all_rule_chunks(&conn).map_err(|e| e.to_string())?;
         for (_chunk_id, rule_id, chunk_embedding, chunk_text, title, source) in chunks {
             let mut score = 0.0f32;
-            for d in 0..384 {
+            let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
+            for d in 0..dims {
                 score += query_vector[d] * chunk_embedding[d];
             }
 

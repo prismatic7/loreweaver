@@ -98,7 +98,9 @@ pub fn generate_response(
             call_openai_compatible(model, key, &system_prompt, prompt, base, provider)
         }
         "gemini" => {
-            let key = api_key.ok_or("Gemini API key missing")?;
+            let key = api_key
+                .filter(|k| !k.trim().is_empty())
+                .ok_or("Gemini API key missing")?;
             let base = base_url
                 .filter(|b| !b.trim().is_empty())
                 .unwrap_or("https://generativelanguage.googleapis.com")

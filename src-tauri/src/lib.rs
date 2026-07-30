@@ -2025,8 +2025,8 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)
                 .map_err(|e| err(format!("Failed to create app data dir: {}", e)))?;
 
-            let db_path = app_data_dir.join("loreweaver.db").to_string_lossy().to_string();
             let vault_path = app_data_dir.join("campaigns/default").to_string_lossy().to_string();
+            let db_path = app_data_dir.join("campaigns/default/loreweaver_vault.db").to_string_lossy().to_string();
             let plugins_path = app_data_dir.join("plugins").to_string_lossy().to_string();
             std::fs::create_dir_all(&vault_path)
                 .map_err(|e| err(format!("Failed to create vault dir: {}", e)))?;
