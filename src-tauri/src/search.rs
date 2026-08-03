@@ -500,7 +500,7 @@ pub fn hybrid_query(
     // Query Notes Chunks (vector)
     if category == "all" || category == "notes" {
         let chunks = db::get_all_note_chunks(&conn).map_err(|e| e.to_string())?;
-        for (_chunk_id, note_id, chunk_embedding, chunk_text, title) in chunks {
+        for (_chunk_id, note_id, chunk_embedding, chunk_text, title, _note_path) in chunks {
             let mut score = 0.0f32;
             let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
             for d in 0..dims {

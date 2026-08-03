@@ -330,14 +330,15 @@ pub fn insert_note_chunk(
 
 pub fn get_all_note_chunks(
     conn: &Connection,
-) -> Result<Vec<(String, String, Vec<f32>, String, String)>> {
-    let mut stmt = conn.prepare("SELECT c.id, c.note_id, c.embedding, c.chunk_text, n.title FROM note_chunks c JOIN notes n ON c.note_id = n.id")?;
+) -> Result<Vec<(String, String, Vec<f32>, String, String, String)>> {
+    let mut stmt = conn.prepare("SELECT c.id, c.note_id, c.embedding, c.chunk_text, n.title, n.path FROM note_chunks c JOIN notes n ON c.note_id = n.id")?;
     let rows = stmt.query_map([], |row| {
         let id: String = row.get(0)?;
         let note_id: String = row.get(1)?;
         let bytes: Vec<u8> = row.get(2)?;
         let chunk_text: String = row.get(3)?;
         let title: String = row.get(4)?;
+        let path: String = row.get(5)?;
 
         let mut embedding = Vec::with_capacity(bytes.len() / 4);
         for chunk in bytes.chunks_exact(4) {
@@ -345,13 +346,13 @@ pub fn get_all_note_chunks(
             embedding.push(f32::from_ne_bytes(arr));
         }
 
-        Ok((id, note_id, embedding, chunk_text, title))
+        Ok((id, note_id, embedding, chunk_text, title, path))
     })?;
 
     let mut chunks = Vec::new();
     for r in rows {
-        let (id, note_id, embedding, chunk_text, title) = r?;
-        chunks.push((id, note_id, embedding, chunk_text, title));
+        let (id, note_id, embedding, chunk_text, title, path) = r?;
+        chunks.push((id, note_id, embedding, chunk_text, title, path));
     }
     Ok(chunks)
 }
