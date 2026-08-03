@@ -634,6 +634,7 @@ fn restore_note_impl(
     } else {
         let _ = db::clear_note_chunks(conn, &note_id);
     }
+    search::invalidate_cache();
 
     Ok(())
 }
