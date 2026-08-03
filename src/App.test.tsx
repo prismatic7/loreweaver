@@ -27,6 +27,13 @@ vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => path,
 }));
 
+// Mock Tauri event API
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (_event, _handler) => {
+    return () => {};
+  }),
+}));
+
 describe("Loreweaver Main UI App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
