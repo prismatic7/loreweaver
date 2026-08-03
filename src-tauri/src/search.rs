@@ -2,7 +2,7 @@ use crate::db;
 use ort::{inputs, session::Session};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use tokenizers::Tokenizer;
 
 /// Hybrid Search Indexer & Matcher
@@ -24,7 +24,7 @@ pub struct ChunkCache {
     pub rule_chunks: Vec<(String, String, Vec<f32>, String, String, String)>,
 }
 
-static CACHE: OnceLock<Mutex<Option<ChunkCache>>> = OnceLock::new();
+static CACHE: OnceLock<Mutex<Option<Arc<ChunkCache>>>> = OnceLock::new();
 
 pub fn invalidate_cache() {
     if let Some(mutex) = CACHE.get() {
@@ -33,14 +33,20 @@ pub fn invalidate_cache() {
     }
 }
 
-fn get_cache(conn: &rusqlite::Connection) -> Result<std::sync::MutexGuard<'_, Option<ChunkCache>>, String> {
-    let mut guard = CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner());
+fn get_cache(conn: &rusqlite::Connection) -> Result<Arc<ChunkCache>, String> {
+    let mut guard = CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     if guard.is_none() {
         let note_chunks = db::get_all_note_chunks(conn).map_err(|e| e.to_string())?;
         let rule_chunks = db::get_all_rule_chunks(conn).map_err(|e| e.to_string())?;
-        *guard = Some(ChunkCache { note_chunks, rule_chunks });
+        *guard = Some(Arc::new(ChunkCache {
+            note_chunks,
+            rule_chunks,
+        }));
     }
-    Ok(guard)
+    Ok(guard.as_ref().unwrap().clone())
 }
 
 
@@ -523,8 +529,7 @@ pub fn hybrid_query(
         }
     };
 
-    let cache_guard = get_cache(conn)?;
-    let cache = cache_guard.as_ref().ok_or("Failed to access search cache")?;
+    let cache = get_cache(conn)?;
 
     // Query Notes Chunks (vector cache)
     if category == "all" || category == "notes" {
