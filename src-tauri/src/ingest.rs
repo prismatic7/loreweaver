@@ -45,6 +45,7 @@ pub fn ingest_markdown_text(
         save_rule_entry(&conn, &current_title, category, source, &section_text)?;
     }
 
+    search::invalidate_cache();
     println!("SRD text content ingestion complete!");
     Ok(())
 }

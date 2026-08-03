@@ -194,6 +194,7 @@ pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> 
         }
     }
 
+    crate::search::invalidate_cache();
     Ok(())
 }
 
@@ -347,6 +348,7 @@ fn process_file_event(
         }
     }
 
+    crate::search::invalidate_cache();
     let _ = app_handle.emit("vault-changed", ());
 }
 

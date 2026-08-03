@@ -28,9 +28,8 @@ static CACHE: OnceLock<Mutex<Option<ChunkCache>>> = OnceLock::new();
 
 pub fn invalidate_cache() {
     if let Some(mutex) = CACHE.get() {
-        if let Ok(mut guard) = mutex.lock() {
-            *guard = None;
-        }
+        let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = None;
     }
 }
 
@@ -433,6 +432,7 @@ pub fn index_note_vectors(
         }
     }
 
+    invalidate_cache();
     Ok(())
 }
 
@@ -625,6 +625,7 @@ pub fn index_all_rules_vectors(conn: &rusqlite::Connection) -> Result<(), String
             }
         }
     }
+    invalidate_cache();
     Ok(())
 }
 

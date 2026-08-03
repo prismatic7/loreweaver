@@ -451,6 +451,7 @@ fn trash_note_impl(
         // Try both the raw and cleaned path in case DB stores either variant
         let _ = db::delete_note_by_path(conn, note_path);
         let _ = db::delete_note_by_path(conn, clean_path);
+        search::invalidate_cache();
         return Err(format!(
             "Could not find note file at '{}' (already deleted?)",
             clean_path
@@ -486,6 +487,7 @@ fn trash_note_impl(
     // Also remove from SQLite DB directly
     let _ = db::delete_note_by_path(conn, note_path);
     let _ = db::delete_note_by_path(conn, clean_path);
+    search::invalidate_cache();
 
     Ok(())
 }
@@ -710,6 +712,7 @@ fn empty_trash(state: State<AppState>) -> Result<(), String> {
         std::fs::remove_dir_all(&trash_dir).map_err(|e| e.to_string())?;
         std::fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
     }
+    search::invalidate_cache();
     Ok(())
 }
 
@@ -737,6 +740,7 @@ fn delete_trashed_note(state: State<AppState>, trash_note_path: &str) -> Result<
         let _ = db::delete_note_by_path(&conn, &original_path);
         std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
     }
+    search::invalidate_cache();
     Ok(())
 }
 
@@ -860,6 +864,7 @@ fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> 
     if let Err(e) = db::reindex_rule_chunks(&conn, &rule.id, &rule.content) {
         eprintln!("Failed to re-index rule chunks: {:?}", e);
     }
+    search::invalidate_cache();
     Ok(rule.id)
 }
 
@@ -868,7 +873,9 @@ fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> 
 fn delete_rule(state: State<AppState>, rule_id: &str) -> Result<(), String> {
     let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
-    db::delete_rule(&conn, rule_id).map_err(|e| e.to_string())
+    db::delete_rule(&conn, rule_id).map_err(|e| e.to_string())?;
+    search::invalidate_cache();
+    Ok(())
 }
 
 /// Recursively lists all directories inside the vault, relative to the vault root.
@@ -928,7 +935,9 @@ fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
 fn delete_rules_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
     let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
-    db::delete_rules_in_folder(&conn, folder_path).map_err(|e| e.to_string())
+    db::delete_rules_in_folder(&conn, folder_path).map_err(|e| e.to_string())?;
+    search::invalidate_cache();
+    Ok(())
 }
 
 /// Ingests a new rulebook/SRD from raw markdown content.
