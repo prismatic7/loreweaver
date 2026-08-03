@@ -44,22 +44,7 @@ import "./App.css";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor"));
 const FolderCanvas = lazy(() => import("./components/FolderCanvas"));
 
-interface CampaignNote {
-  id: string;
-  title: string;
-  path: string;
-  frontmatter: Record<string, string | number | string[]>;
-  content: string;
-}
-
-interface RuleEntry {
-  id: string;
-  path: string;
-  title: string;
-  category: string;
-  source: string;
-  content: string;
-}
+import { CampaignNote, RuleEntry, SearchResult } from "./types";
 
 function App() {
   const [activeView, setActiveView] = useState<
@@ -70,15 +55,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchCategory] = useState<"all" | "notes" | "rules">("all");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchResults, setSearchResults] = useState<
-    Array<{
-      type: "note" | "rule";
-      title: string;
-      snippet: string;
-      score: number;
-      path: string;
-    }>
-  >([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   const [notes, setNotes] = useState<CampaignNote[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string>("");
