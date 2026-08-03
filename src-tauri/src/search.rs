@@ -19,6 +19,32 @@ pub struct SearchEngine {
 static ENGINE: OnceLock<Mutex<Option<SearchEngine>>> = OnceLock::new();
 static DB_PATH: OnceLock<String> = OnceLock::new();
 
+pub struct ChunkCache {
+    pub note_chunks: Vec<(String, String, Vec<f32>, String, String, String)>,
+    pub rule_chunks: Vec<(String, String, Vec<f32>, String, String, String)>,
+}
+
+static CACHE: OnceLock<Mutex<Option<ChunkCache>>> = OnceLock::new();
+
+pub fn invalidate_cache() {
+    if let Some(mutex) = CACHE.get() {
+        if let Ok(mut guard) = mutex.lock() {
+            *guard = None;
+        }
+    }
+}
+
+fn get_cache(conn: &rusqlite::Connection) -> Result<std::sync::MutexGuard<'_, Option<ChunkCache>>, String> {
+    let mut guard = CACHE.get_or_init(|| Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner());
+    if guard.is_none() {
+        let note_chunks = db::get_all_note_chunks(conn).map_err(|e| e.to_string())?;
+        let rule_chunks = db::get_all_rule_chunks(conn).map_err(|e| e.to_string())?;
+        *guard = Some(ChunkCache { note_chunks, rule_chunks });
+    }
+    Ok(guard)
+}
+
+
 fn engine() -> &'static Mutex<Option<SearchEngine>> {
     ENGINE.get_or_init(|| Mutex::new(None))
 }
