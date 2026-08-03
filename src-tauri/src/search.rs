@@ -523,10 +523,12 @@ pub fn hybrid_query(
         }
     };
 
-    // Query Notes Chunks (vector)
+    let cache_guard = get_cache(conn)?;
+    let cache = cache_guard.as_ref().ok_or("Failed to access search cache")?;
+
+    // Query Notes Chunks (vector cache)
     if category == "all" || category == "notes" {
-        let chunks = db::get_all_note_chunks(&conn).map_err(|e| e.to_string())?;
-        for (_chunk_id, note_id, chunk_embedding, chunk_text, title, _note_path) in chunks {
+        for (_chunk_id, _note_id, chunk_embedding, chunk_text, title, path) in &cache.note_chunks {
             let mut score = 0.0f32;
             let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
             for d in 0..dims {
@@ -534,17 +536,8 @@ pub fn hybrid_query(
             }
 
             if score > 0.4 {
-                // Fetch the note path for navigation
-                let note_path = conn
-                    .query_row::<String, _, _>(
-                        "SELECT path FROM notes WHERE id = ?1",
-                        [&note_id],
-                        |r| r.get(0),
-                    )
-                    .unwrap_or_else(|_| note_id.clone());
-
                 let key = format!("note:{}", title);
-                let combined_score = score * 0.7; // Weight vector score
+                let combined_score = score * 0.7;
                 match best_results.get(&key) {
                     Some(existing) if existing.score >= combined_score => {}
                     _ => {
@@ -552,10 +545,10 @@ pub fn hybrid_query(
                             key,
                             super::SearchResult {
                                 r#type: "note".to_string(),
-                                title,
-                                snippet: chunk_text,
+                                title: title.clone(),
+                                snippet: chunk_text.clone(),
                                 score: combined_score,
-                                path: note_path,
+                                path: path.clone(),
                             },
                         );
                     }
@@ -564,10 +557,9 @@ pub fn hybrid_query(
         }
     }
 
-    // Query Rules Chunks (vector)
+    // Query Rules Chunks (vector cache)
     if category == "all" || category == "rules" {
-        let chunks = db::get_all_rule_chunks(&conn).map_err(|e| e.to_string())?;
-        for (_chunk_id, rule_id, chunk_embedding, chunk_text, title, source) in chunks {
+        for (_chunk_id, rule_id, chunk_embedding, chunk_text, title, source) in &cache.rule_chunks {
             let mut score = 0.0f32;
             let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
             for d in 0..dims {
@@ -584,10 +576,10 @@ pub fn hybrid_query(
                             key,
                             super::SearchResult {
                                 r#type: "rule".to_string(),
-                                title,
+                                title: title.clone(),
                                 snippet: format!("[{}] {}", source, chunk_text),
                                 score: combined_score,
-                                path: rule_id,
+                                path: rule_id.clone(),
                             },
                         );
                     }
