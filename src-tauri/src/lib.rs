@@ -84,6 +84,26 @@ pub struct AppSettings {
     pub stt_api_key: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct TemplateProperty {
+    pub r#type: String,
+    pub default: serde_json::Value,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct TemplateAction {
+    pub label: String,
+    pub hook: String,
+    pub plugin: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct TemplateEntry {
+    pub name: String,
+    pub properties: std::collections::HashMap<String, TemplateProperty>,
+    pub actions: Vec<TemplateAction>,
+}
+
 // --- Tauri Commands ---
 
 /// Simple reversible obfuscation for API keys at rest.
@@ -1989,6 +2009,66 @@ fn save_canvas_file(state: State<AppState>, rel_path: &str, content: &str) -> Re
     std::fs::write(full_path, content).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn list_templates(state: tauri::State<AppState>) -> Result<Vec<TemplateEntry>, String> {
+    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let templates_dir = std::path::Path::new(&*vault_path_str).join(".templates");
+    if !templates_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    let matter = gray_matter::Matter::<gray_matter::engine::YAML>::new();
+
+    for entry in std::fs::read_dir(templates_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+            let name = path.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+
+            let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let parsed = matter.parse::<std::collections::HashMap<String, serde_json::Value>>(&content);
+            if let Ok(parsed_data) = parsed {
+                if let Some(data) = parsed_data.data {
+                    // Extract properties
+                    let mut properties = std::collections::HashMap::new();
+                    if let Some(props_val) = data.get("properties") {
+                        if let Some(props_map) = props_val.as_object() {
+                            for (k, v) in props_map {
+                                if let Ok(prop) = serde_json::from_value::<TemplateProperty>(v.clone()) {
+                                    properties.insert(k.clone(), prop);
+                                }
+                            }
+                        }
+                    }
+
+                    // Extract actions
+                    let mut actions = Vec::new();
+                    if let Some(actions_val) = data.get("actions") {
+                        if let Some(actions_arr) = actions_val.as_array() {
+                            for act_val in actions_arr {
+                                if let Ok(act) = serde_json::from_value::<TemplateAction>(act_val.clone()) {
+                                    actions.push(act);
+                                }
+                            }
+                        }
+                    }
+
+                    entries.push(TemplateEntry {
+                        name,
+                        properties,
+                        actions,
+                    });
+                }
+            }
+        }
+    }
+    Ok(entries)
+}
+
 /// Loads all third-party plugins from the configured plugins folder.
 #[tauri::command]
 fn load_plugins(state: State<'_, AppState>) -> Result<Vec<plugins::PluginInfo>, String> {
@@ -2247,7 +2327,8 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             load_vault_settings,
             save_vault_settings,
             load_canvas_file,
-            save_canvas_file
+            save_canvas_file,
+            list_templates
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

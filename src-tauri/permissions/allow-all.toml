@@ -37,4 +37,5 @@ commands = { allow = [
   "save_canvas_file",
   "load_canvas_file",
   "list_folders",
+  "list_templates",
 ] }
