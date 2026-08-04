@@ -2472,3 +2472,45 @@ mod tests {
         assert!(!note_dir.exists(), "Folder still exists");
     }
 }
+
+#[cfg(test)]
+mod template_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+
+    #[test]
+    fn test_list_templates_parser() {
+        let temp_dir = std::env::temp_dir().join(format!("vault_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let templates_dir = temp_dir.join(".templates");
+        fs::create_dir_all(&templates_dir).unwrap();
+
+        let template_path = templates_dir.join("Character.md");
+        let mut file = fs::File::create(&template_path).unwrap();
+        write!(file, "---\nname: Character\nproperties:\n  hp: {{ type: \"number\", default: 10 }}\nactions:\n  - label: \"Roll Initiative\"\n    hook: \"roll_initiative\"\n    plugin: \"character-roller\"\n---\n# Character Content").unwrap();
+
+        // Mock app state
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = std::sync::Arc::new(std::sync::Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let app_state = AppState {
+            db_path: std::sync::Mutex::new(db_path_str),
+            vault_path: std::sync::Mutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: std::sync::Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: std::sync::Mutex::new(None),
+            conn: std::sync::Mutex::new(std::sync::Arc::clone(&conn)),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+        };
+
+        let state: tauri::State<AppState> = unsafe { std::mem::transmute(&app_state) };
+        let entries = list_templates(state).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Character");
+        assert!(entries[0].properties.contains_key("hp"));
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+}
+
