@@ -2010,9 +2010,9 @@ fn save_canvas_file(state: State<AppState>, rel_path: &str, content: &str) -> Re
 }
 
 #[tauri::command]
-fn list_templates(state: tauri::State<AppState>) -> Result<Vec<TemplateEntry>, String> {
+fn list_templates(state: State<AppState>) -> Result<Vec<TemplateEntry>, String> {
     let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let templates_dir = std::path::Path::new(&*vault_path_str).join(".templates");
+    let templates_dir = validate_safe_path(&vault_path_str, ".templates")?;
     if !templates_dir.exists() {
         return Ok(Vec::new());
     }
