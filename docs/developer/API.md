@@ -244,3 +244,9 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Arguments:** `rel_path: &str`, `content: &str`
 - **Returns:** `Result<(), String>`
 - **Description:** Commits a `.canvas` JSON coordinate layout file.
+
+### `list_templates`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<TemplateEntry>, String>`
+- **Description:** Scans the active campaign vault's `.templates/` folder, parses YAML frontmatter configurations using `gray-matter`, and returns all registered document templates and script action mappings.
