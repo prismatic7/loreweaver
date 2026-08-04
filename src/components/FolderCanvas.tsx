@@ -19,21 +19,81 @@ const extractWikiLinks = (text: string): string[] => {
   return links;
 };
 
-const extractFrontmatterLinks = (frontmatter: Record<string, any>): string[] => {
-  const links: string[] = [];
-  for (const value of Object.values(frontmatter || {})) {
-    if (typeof value === "string") {
-      links.push(...extractWikiLinks(value));
-    } else if (Array.isArray(value)) {
-      for (const val of value) {
-        if (typeof val === "string") {
-          links.push(...extractWikiLinks(val));
+const getRelationColor = (key: string): string => {
+  const k = key.toLowerCase().trim();
+  const colors: Record<string, string> = {
+    location: "oklch(65% 0.2 260)", // Sleek Blue
+    owner: "oklch(60% 0.25 20)",    // Royal Crimson
+    room: "oklch(70% 0.18 140)",    // Soft Emerald Green
+    type: "oklch(75% 0.15 320)",    // Soft Purple
+    parent: "oklch(65% 0.15 80)",   // Ochre/Gold
+    npc: "oklch(60% 0.22 340)",     // Vibrant Magenta
+  };
+  return colors[k] || "oklch(60% 0.15 180)"; // Fallback Teal
+};
+
+interface FrontmatterRelationship {
+  key: string;
+  target: string;
+}
+
+const extractFrontmatterRelationships = (frontmatter: Record<string, any>): FrontmatterRelationship[] => {
+  const relationships: FrontmatterRelationship[] = [];
+  if (!frontmatter) return relationships;
+
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (["canvaspath", "aliases", "layout"].includes(key.toLowerCase())) {
+      continue;
+    }
+    
+    if (key.toLowerCase() === "tags" && Array.isArray(value)) {
+      value.forEach((tag) => {
+        if (typeof tag === "string" && tag.includes(":")) {
+          const parts = tag.split(":");
+          const relKey = parts[0].trim();
+          const targetVal = parts.slice(1).join(":").trim();
+          if (relKey && targetVal) {
+            relationships.push({ key: relKey, target: targetVal });
+          }
         }
-      }
+      });
+      continue;
+    }
+
+    if (["tags", "type"].includes(key.toLowerCase())) {
+      continue;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      relationships.push({ key, target: value.trim() });
+    } else if (Array.isArray(value)) {
+      value.forEach((val) => {
+        if (typeof val === "string" && val.trim()) {
+          relationships.push({ key, target: val.trim() });
+        }
+      });
     }
   }
-  return links;
+
+  return relationships;
 };
+
+export interface TemplateProperty {
+  type: "number" | "boolean" | "string";
+  default: any;
+}
+
+export interface TemplateAction {
+  label: string;
+  hook: string;
+  plugin: string;
+}
+
+export interface TemplateEntry {
+  name: string;
+  properties: Record<string, TemplateProperty>;
+  actions: TemplateAction[];
+}
 
 interface Note {
   id: string;
@@ -107,6 +167,46 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const [dynamicEdges, setDynamicEdges] = useState<EdgeConnection[]>([]);
+  const [dynamicContainers, setDynamicContainers] = useState<ContainerBox[]>([]);
+
+  const [templates, setTemplates] = useState<TemplateEntry[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; noteId: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 8000);
+  };
+
+  const handleActionClick = (action: TemplateAction, note: Note) => {
+    invoke<{ verdict?: string }>("execute_plugin_hook", {
+      pluginId: action.plugin,
+      hook: action.hook,
+      payload: JSON.stringify(note),
+    })
+      .then((res) => {
+        showToast(res.verdict || "Action executed successfully!");
+      })
+      .catch((err) => {
+        showToast(`Error: ${err.toString()}`);
+      });
+  };
+
+  useEffect(() => {
+    invoke<TemplateEntry[]>("list_templates")
+      .then((res) => setTemplates(res || []))
+      .catch((err) => console.error("Failed to list templates:", err));
+  }, [notes.length]);
+
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    if (contextMenu) {
+      window.addEventListener("click", handleClickOutside);
+    }
+    return () => {
+      window.removeEventListener("click", handleClickOutside);
+    };
+  }, [contextMenu]);
 
   // Filter notes belonging to current folder or subfolders
   const folderNotes = notes.filter((n) => {
@@ -114,34 +214,148 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
     return n.path.startsWith(currentFolder);
   });
 
-  useEffect(() => {
-    const derived: EdgeConnection[] = [];
-    folderNotes.forEach((note) => {
-      const targets = [
-        ...extractWikiLinks(note.content),
-        ...extractFrontmatterLinks(note.frontmatter || {}),
-      ];
+  const findTargetNote = (target: string) => {
+    const cleanTarget = target.replace(/[\[\]]/g, "").trim().toLowerCase();
+    if (!cleanTarget) return null;
 
-      targets.forEach((target) => {
-        const targetNote = notes.find(
-          (n) => n.title.toLowerCase() === target.toLowerCase()
-        );
+    const normalize = (str: string) => str.replace(/[\s\-_]/g, "").toLowerCase();
+    const normalizedTarget = normalize(cleanTarget);
+
+    return notes.find((n) => {
+      if (normalize(n.title) === normalizedTarget) return true;
+      const filename = n.path.split("/").pop()?.replace(/\.md$/, "") || "";
+      if (normalize(filename) === normalizedTarget) return true;
+      const aliases = n.frontmatter?.aliases || [];
+      if (Array.isArray(aliases)) {
+        return aliases.some(alias => normalize(String(alias)) === normalizedTarget);
+      }
+      return false;
+    });
+  };
+
+  useEffect(() => {
+    const derivedEdges: EdgeConnection[] = [];
+
+    folderNotes.forEach((note) => {
+      // 1. Content wiki links
+      const contentWikiLinks = extractWikiLinks(note.content);
+      contentWikiLinks.forEach((target) => {
+        const targetNote = findTargetNote(target);
         if (targetNote && targetNote.id !== note.id) {
           const edgeId = `dynamic-${note.id}-${targetNote.id}`;
-          if (!derived.some((e) => e.fromId === note.id && e.toId === targetNote.id)) {
-            derived.push({
+          if (!derivedEdges.some((e) => e.fromId === note.id && e.toId === targetNote.id)) {
+            derivedEdges.push({
               id: edgeId,
               fromId: note.id,
               toId: targetNote.id,
               label: "References",
-              color: "#3182ce",
+              color: "oklch(60% 0.12 220)",
+            });
+          }
+        }
+      });
+
+      // 2. Frontmatter relationships
+      const relationships = extractFrontmatterRelationships(note.frontmatter || {});
+      relationships.forEach((rel) => {
+        const targetNote = findTargetNote(rel.target);
+        if (targetNote && targetNote.id !== note.id) {
+          const edgeId = `dynamic-${note.id}-${targetNote.id}-${rel.key}`;
+          if (!derivedEdges.some((e) => e.fromId === note.id && e.toId === targetNote.id && e.label === rel.key)) {
+            derivedEdges.push({
+              id: edgeId,
+              fromId: note.id,
+              toId: targetNote.id,
+              label: rel.key,
+              color: getRelationColor(rel.key),
             });
           }
         }
       });
     });
-    setDynamicEdges(derived);
+
+    setDynamicEdges(derivedEdges);
   }, [notes, currentFolder]);
+
+  useEffect(() => {
+    const derivedContainers: ContainerBox[] = [];
+    const groups: Record<string, { title: string; noteIds: string[]; key: string }> = {};
+
+    folderNotes.forEach((note) => {
+      const tags = Array.isArray(note.frontmatter?.tags)
+        ? note.frontmatter.tags
+        : typeof note.frontmatter?.tags === "string"
+        ? [note.frontmatter.tags]
+        : [];
+
+      tags.forEach((tag: string) => {
+        if (typeof tag === "string" && tag.includes(":")) {
+          const [key, val] = tag.split(":").map(s => s.trim());
+          if (key && val) {
+            const groupKey = `${key.toLowerCase()}:${val.toLowerCase()}`;
+            if (!groups[groupKey]) {
+              groups[groupKey] = { title: `${key}: ${val}`, noteIds: [], key };
+            }
+            groups[groupKey].noteIds.push(note.id);
+          }
+        }
+      });
+
+      if (note.frontmatter) {
+        for (const [key, val] of Object.entries(note.frontmatter)) {
+          if (["tags", "type", "canvaspath", "aliases", "layout"].includes(key.toLowerCase())) {
+            continue;
+          }
+          if (typeof val === "string" && val.trim()) {
+            const groupKey = `${key.toLowerCase()}:${val.toLowerCase().trim()}`;
+            if (!groups[groupKey]) {
+              groups[groupKey] = { title: `${key}: ${val}`, noteIds: [], key };
+            }
+            groups[groupKey].noteIds.push(note.id);
+          }
+        }
+      }
+    });
+
+    Object.entries(groups).forEach(([groupKey, group]) => {
+      if (group.noteIds.length <= 1) return;
+
+      const groupNodes = nodes.filter((n) => group.noteIds.includes(n.id));
+      if (groupNodes.length === 0) return;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      groupNodes.forEach((node) => {
+        minX = Math.min(minX, node.x);
+        minY = Math.min(minY, node.y);
+        maxX = Math.max(maxX, node.x + 220);
+        maxY = Math.max(maxY, node.y + 160);
+      });
+
+      minX -= 16;
+      minY -= 24; // Extra top space for the floating label
+      maxX += 16;
+      maxY += 16;
+
+      const baseColor = getRelationColor(group.key);
+      const rgbaColor = baseColor.replace("oklch", "oklch").replace(")", " / 0.03)");
+
+      derivedContainers.push({
+        id: `dynamic-box-${groupKey}`,
+        title: group.title,
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        color: rgbaColor,
+      });
+    });
+
+    setDynamicContainers(derivedContainers);
+  }, [nodes, folderNotes]);
 
   // Load existing canvas file
   useEffect(() => {
@@ -375,25 +589,48 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           </svg>
 
           {/* Container Boxes */}
-          {containers.map((box) => (
-            <div
-              key={box.id}
-              style={{
-                position: "absolute",
-                left: box.x,
-                top: box.y,
-                width: box.width,
-                height: box.height,
-                background: box.color,
-                border: "2px dashed var(--accent)",
-                borderRadius: "8px",
-                padding: "8px",
-                pointerEvents: "none",
-              }}
-            >
-              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--accent)", textTransform: "uppercase" }}>{box.title}</span>
-            </div>
-          ))}
+          {[...containers, ...dynamicContainers].map((box) => {
+            const isDynamic = box.id.startsWith("dynamic-");
+            const relationKey = isDynamic ? box.title.split(":")[0] : "";
+            const borderColor = isDynamic ? getRelationColor(relationKey) : "var(--accent)";
+            return (
+              <div
+                key={box.id}
+                style={{
+                  position: "absolute",
+                  left: box.x,
+                  top: box.y,
+                  width: box.width,
+                  height: box.height,
+                  background: box.color,
+                  border: isDynamic ? `2px dashed ${borderColor}` : "2px dashed var(--accent)",
+                  borderRadius: "8px",
+                  padding: "8px",
+                  pointerEvents: "none",
+                  zIndex: 0,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    color: isDynamic ? borderColor : "var(--accent)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    background: "var(--surface)",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    border: "1px solid var(--border)",
+                    position: "absolute",
+                    top: "-10px",
+                    left: "12px",
+                  }}
+                >
+                  {box.title}
+                </span>
+              </div>
+            );
+          })}
 
           {/* Note Nodes */}
           {nodes.map((nodePos) => {
@@ -411,6 +648,11 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               <div
                 key={note.id}
                 onMouseDown={(e) => handleNodeMouseDown(e, note.id, nodePos.x, nodePos.y)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({ x: e.clientX, y: e.clientY, noteId: note.id });
+                }}
                 onDoubleClick={(e) => {
                   if (isCanvas) {
                     e.stopPropagation();
@@ -476,26 +718,68 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                   {note.content.replace(/#+/g, "").trim()}
                 </div>
 
-                {/* Surfaced Tags */}
-                {tags.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                    {tags.map((tag: any) => (
+                {/* Surfaced Tags & Frontmatter Relationships */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                  {tags.map((tag: any) => {
+                    const strTag = String(tag);
+                    if (strTag.includes(":")) {
+                      const [k, v] = strTag.split(":");
+                      return (
+                        <span
+                          key={strTag}
+                          style={{
+                            fontSize: "9px",
+                            padding: "2px 6px",
+                            borderRadius: "10px",
+                            background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
+                            color: getRelationColor(k),
+                            fontWeight: 600,
+                          }}
+                        >
+                          {k}: {v}
+                        </span>
+                      );
+                    }
+                    return (
                       <span
-                        key={String(tag)}
+                        key={strTag}
                         style={{
                           fontSize: "9px",
                           padding: "2px 6px",
                           borderRadius: "10px",
-                          background: String(tag) === "villain" ? "rgba(229, 62, 62, 0.2)" : "rgba(49, 130, 206, 0.2)",
-                          color: String(tag) === "villain" ? "#fc8181" : "#63b3ed",
+                          background: strTag === "villain" ? "rgba(229, 62, 62, 0.2)" : "rgba(49, 130, 206, 0.2)",
+                          color: strTag === "villain" ? "#fc8181" : "#63b3ed",
                           fontWeight: 600,
                         }}
                       >
-                        #{String(tag)}
+                        #{strTag}
                       </span>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+
+                  {Object.entries(note.frontmatter || {}).map(([k, val]) => {
+                    if (["tags", "type", "canvaspath", "aliases", "layout"].includes(k.toLowerCase())) {
+                      return null;
+                    }
+                    const strVal = Array.isArray(val) ? val.join(", ") : String(val);
+                    if (!strVal || strVal === "undefined" || strVal === "null" || strVal.trim() === "") return null;
+                    return (
+                      <span
+                        key={k}
+                        style={{
+                          fontSize: "9px",
+                          padding: "2px 6px",
+                          borderRadius: "10px",
+                          background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
+                          color: getRelationColor(k),
+                          fontWeight: 600,
+                        }}
+                      >
+                        {k}: {strVal}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -551,6 +835,124 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Custom Context Menu */}
+      {contextMenu && (() => {
+        const targetNote = notes.find((n) => n.id === contextMenu.noteId);
+        const noteType = targetNote?.frontmatter?.type;
+        const matchingTemplate = (templates || []).find(
+          (t) => t.name.toLowerCase() === (noteType ? String(noteType).toLowerCase() : "")
+        );
+
+        return (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 1000,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
+              padding: "6px",
+              minWidth: "180px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                padding: "4px 8px",
+                borderBottom: "1px solid var(--border)",
+                marginBottom: "2px",
+              }}
+            >
+              {matchingTemplate ? `${matchingTemplate.name} Actions` : noteType ? String(noteType) : "Actions"}
+            </div>
+            {matchingTemplate && matchingTemplate.actions && matchingTemplate.actions.length > 0 ? (
+              matchingTemplate.actions.map((action, idx) => (
+                <button
+                  key={idx}
+                  className="btn btn-sm"
+                  style={{
+                    justifyContent: "flex-start",
+                    width: "100%",
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    textAlign: "left",
+                    background: "transparent",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    color: "var(--fg)",
+                  }}
+                  onClick={() => {
+                    if (targetNote) {
+                      handleActionClick(action, targetNote);
+                    }
+                    setContextMenu(null);
+                  }}
+                >
+                  ⚡ {action.label}
+                </button>
+              ))
+            ) : (
+              <div style={{ fontSize: "11px", color: "var(--muted)", padding: "6px 8px" }}>
+                No actions defined for this type
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Canvas Rolling Results Toast */}
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            zIndex: 1000,
+            background: "var(--surface)",
+            border: "1px solid var(--accent)",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+            maxWidth: "360px",
+            color: "var(--fg)",
+            fontSize: "13px",
+            lineHeight: "1.4",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+          }}
+        >
+          <span>{toast}</span>
+          <button
+            onClick={() => setToast(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--muted)",
+              cursor: "pointer",
+              fontSize: "14px",
+              lineHeight: 1,
+              padding: "2px",
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

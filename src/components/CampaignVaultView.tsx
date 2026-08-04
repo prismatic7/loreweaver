@@ -111,11 +111,11 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
 
   useEffect(() => {
     invoke<TemplateEntry[]>("list_templates")
-      .then((data) => setTemplates(data))
+      .then((data) => setTemplates(data || []))
       .catch((err) => console.error("Failed loading templates:", err));
   }, [currentNote]);
 
-  const activeTemplate = templates.find(
+  const activeTemplate = (templates || []).find(
     (t) => t.name.toLowerCase() === (editFrontmatter.type || "").toLowerCase()
   );
 
