@@ -44,6 +44,39 @@ import { CampaignVaultView } from "./components/CampaignVaultView";
 
 import { CampaignNote, RuleEntry, SearchResult } from "./types";
 
+const loadPdfJs = (): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if ((window as any).pdfjsLib) {
+      resolve((window as any).pdfjsLib);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js";
+    script.onload = () => {
+      const pdfjsLib = (window as any).pdfjsLib;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
+      resolve(pdfjsLib);
+    };
+    script.onerror = () => reject(new Error("Failed to load PDF.js from CDN."));
+    document.head.appendChild(script);
+  });
+};
+
+const extractTextFromPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  const pdfjsLib = await loadPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  let fullText = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item: any) => item.str)
+      .join(" ");
+    fullText += `# Page ${i}\n\n${pageText}\n\n`;
+  }
+  return fullText;
+};
+
 function App() {
   const [activeView, setActiveView] = useState<
     "dashboard" | "vault" | "rules" | "ai" | "settings" | "canvas" | "trash"
@@ -1694,33 +1727,67 @@ function App() {
     const sourceName = file.name.replace(/\.[^/.]+$/, "");
     const reader = new FileReader();
 
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (!content) return;
+    if (file.name.toLowerCase().endsWith(".pdf")) {
+      reader.onload = async (event) => {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        if (!arrayBuffer) return;
 
-      invoke("ingest_srd_text", {
-        category: "Reference",
-        source: sourceName,
-        content,
-      })
-        .then(() => invoke<RuleEntry[]>("load_rules"))
-        .then((loadedRules) => {
-          if (loadedRules) {
-            setRules(loadedRules);
-            if (loadedRules.length > 0)
-              setSelectedRuleId(loadedRules[loadedRules.length - 1].id);
-            alert(
-              `Successfully ingested "${file.name}" and generated local semantic vector search chunks!`,
-            );
-          }
+        try {
+          const content = await extractTextFromPdf(arrayBuffer);
+          invoke("ingest_srd_text", {
+            category: "Reference",
+            source: sourceName,
+            content,
+          })
+            .then(() => invoke<RuleEntry[]>("load_rules"))
+            .then((loadedRules) => {
+              if (loadedRules) {
+                setRules(loadedRules);
+                if (loadedRules.length > 0)
+                  setSelectedRuleId(loadedRules[loadedRules.length - 1].id);
+                alert(
+                  `Successfully ingested "${file.name}" and generated local semantic vector search chunks!`,
+                );
+              }
+            })
+            .catch((err) => {
+              console.error("Failed to ingest SRD:", err);
+              alert("Error during SRD ingestion: " + err);
+            });
+        } catch (err: any) {
+          console.error("PDF Ingestion failed:", err);
+          alert("Failed to parse PDF: " + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        if (!content) return;
+
+        invoke("ingest_srd_text", {
+          category: "Reference",
+          source: sourceName,
+          content,
         })
-        .catch((err) => {
-          console.error("Failed to ingest SRD:", err);
-          alert("Error during SRD ingestion: " + err);
-        });
-    };
-
-    reader.readAsText(file);
+          .then(() => invoke<RuleEntry[]>("load_rules"))
+          .then((loadedRules) => {
+            if (loadedRules) {
+              setRules(loadedRules);
+              if (loadedRules.length > 0)
+                setSelectedRuleId(loadedRules[loadedRules.length - 1].id);
+              alert(
+                `Successfully ingested "${file.name}" and generated local semantic vector search chunks!`,
+              );
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to ingest SRD:", err);
+            alert("Error during SRD ingestion: " + err);
+          });
+      };
+      reader.readAsText(file);
+    }
   };
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
@@ -4639,7 +4706,7 @@ function App() {
         type="file"
         id="srd-file-input"
         style={{ display: "none" }}
-        accept=".md,.txt"
+        accept=".md,.txt,.pdf"
         onChange={handleIngestSRD}
       />
       <input

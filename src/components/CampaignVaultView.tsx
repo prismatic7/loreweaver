@@ -318,7 +318,10 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       }}
                     >
                       {folderNotes.map((note) => {
-                        const isCanvas = note.path.endsWith(".canvas.json");
+                        const isCanvas =
+                          note.frontmatter?.type === "Canvas" ||
+                          note.path.endsWith(".canvas.md") ||
+                          note.path.endsWith(".canvas");
                         let icon = <span>📄</span>;
                         if (isCanvas) icon = <span>🗺️</span>;
                         else if (
