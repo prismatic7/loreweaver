@@ -336,26 +336,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
             },
           )}
 
-          <input
-            type="file"
-            id="srd-file-input"
-            style={{ display: "none" }}
-            accept=".md,.txt,.pdf"
-            onChange={handleIngestSRD}
-          />
-          <input
-            type="file"
-            ref={assetFileInputRef}
-            style={{ display: "none" }}
-            accept={
-              pendingAssetTarget?.type === "image"
-                ? "image/*"
-                : pendingAssetTarget?.type === "audio"
-                  ? "audio/*"
-                  : "*/*"
-            }
-            onChange={handleAssetFileSelected}
-          />
+
           <div
             onClick={() =>
               document.getElementById("srd-file-input")?.click()

@@ -52,6 +52,20 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
+    // Migration: ensure `rules` table has `path` column
+    let has_path_col: bool = conn
+        .prepare("PRAGMA table_info(rules);")?
+        .query_map([], |row| {
+            let col_name: String = row.get(1)?;
+            Ok(col_name)
+        })?
+        .any(|col_res| col_res.map(|name| name == "path").unwrap_or(false));
+
+    if !has_path_col {
+        let _ = conn.execute("ALTER TABLE rules ADD COLUMN path TEXT NOT NULL DEFAULT '';", []);
+    }
+
+
     // Create note chunks for vector search
     conn.execute(
         "CREATE TABLE IF NOT EXISTS note_chunks (

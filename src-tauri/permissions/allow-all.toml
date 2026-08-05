@@ -38,4 +38,5 @@ commands = { allow = [
   "load_canvas_file",
   "list_folders",
   "list_templates",
+  "delete_rules_folder",
 ] }

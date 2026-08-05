@@ -104,6 +104,46 @@ function App() {
   }>({ open: false, message: "" });
   const pendingConfirmRef = useRef<(() => void) | null>(null);
 
+  const [promptDialog, setPromptDialog] = useState<{
+    open: boolean;
+    message: string;
+    defaultValue?: string;
+  }>({ open: false, message: "" });
+  const pendingPromptRef = useRef<((value: string) => void) | null>(null);
+
+  const [alertDialog, setAlertDialog] = useState<{
+    open: boolean;
+    message: string;
+  }>({ open: false, message: "" });
+
+  const showPrompt = (message: string, defaultValue?: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      pendingPromptRef.current = (val) => {
+        resolve(val);
+      };
+      setPromptDialog({
+        open: true,
+        message,
+        defaultValue,
+      });
+    });
+  };
+
+  const showAlert = (message: string) => {
+    setAlertDialog({ open: true, message });
+  };
+
+  const alert = showAlert;
+
+  useEffect(() => {
+    if (promptDialog.open) {
+      setTimeout(() => {
+        document.getElementById("custom-prompt-input")?.focus();
+      }, 50);
+    }
+  }, [promptDialog.open]);
+
+
   const [chatInput, setChatInput] = useState("");
   const [chatMessagesByVault, setChatMessagesByVault] = useState<
     Record<string, Array<{ role: "user" | "assistant"; text: string }>>
@@ -133,7 +173,7 @@ function App() {
     isRulebook: boolean;
   } | null>(null);
 
-  const handleAssetFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAssetFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!pendingAssetTarget) return;
 
@@ -142,7 +182,7 @@ function App() {
     const prefix = cleanFolder ? `${cleanFolder}/` : "";
     const cleanTitle = file
       ? file.name
-      : prompt(`Enter ${type} title:`) || `${type}-${Date.now()}`;
+      : (await showPrompt(`Enter ${type} title:`)) || `${type}-${Date.now()}`;
     const newId = isRulebook ? `rule-${Date.now()}` : `note-${Date.now()}`;
 
     if (!file) {
@@ -761,8 +801,8 @@ function App() {
     );
   };
 
-  const handleNewRuleFolder = () => {
-    const folderPath = prompt(
+  const handleNewRuleFolder = async () => {
+    const folderPath = await showPrompt(
       "Enter folder path (e.g. Combat/Reactions or Spellcasting/Evocation):",
     );
     if (!folderPath || !folderPath.trim()) return;
@@ -853,8 +893,8 @@ function App() {
     setActiveView("vault");
   };
 
-  const handleNewFolder = () => {
-    const folderName = prompt(
+  const handleNewFolder = async () => {
+    const folderName = await showPrompt(
       "Enter new folder name (e.g. Worldbuilding/Cities or Factions):",
     );
     if (!folderName) return;
@@ -1252,14 +1292,14 @@ function App() {
     });
   };
 
-  const handleCreatePluginAsset = (
+  const handleCreatePluginAsset = async (
     folderName: string,
     plugin: any,
     isRulebook: boolean = false,
   ) => {
     const cleanFolder = folderName === "Root" ? "" : folderName;
     const prefix = cleanFolder ? `${cleanFolder}/` : "";
-    const title = prompt(`Enter title for ${plugin.name || plugin.id} asset:`);
+    const title = await showPrompt(`Enter title for ${plugin.name || plugin.id} asset:`);
     if (!title || !title.trim()) return;
     const cleanTitle = title.trim();
 
@@ -1755,10 +1795,10 @@ function App() {
       });
   };
 
-  const handleRollCharacterSheet = () => {
-    const name = prompt("Enter character name:", "Valerius");
+  const handleRollCharacterSheet = async () => {
+    const name = await showPrompt("Enter character name:", "Valerius");
     if (!name) return;
-    const charClass = prompt("Enter character class:", "Fighter");
+    const charClass = await showPrompt("Enter character class:", "Fighter");
     if (!charClass) return;
 
     invoke<string>("execute_plugin_hook", {
@@ -1799,13 +1839,13 @@ function App() {
       });
   };
 
-  const handleEvaluateEncounterThreat = () => {
-    const levelsStr = prompt(
+  const handleEvaluateEncounterThreat = async () => {
+    const levelsStr = await showPrompt(
       "Enter party character levels (comma separated):",
       "3, 3, 3, 3",
     );
     if (!levelsStr) return;
-    const crsStr = prompt("Enter adversary CRs (comma separated):", "1, 2");
+    const crsStr = await showPrompt("Enter adversary CRs (comma separated):", "1, 2");
     if (!crsStr) return;
 
     const party_levels = levelsStr
@@ -4434,6 +4474,191 @@ function App() {
           </div>
         </div>
       )}
+
+      {promptDialog.open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => {
+            pendingPromptRef.current = null;
+            setPromptDialog((d) => ({ ...d, open: false }));
+          }}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              padding: "20px",
+              maxWidth: "360px",
+              width: "90%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: "14px", fontWeight: 600 }}>
+              {promptDialog.message}
+            </div>
+            <input
+              id="custom-prompt-input"
+              type="text"
+              defaultValue={promptDialog.defaultValue || ""}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: "13px",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: "4px",
+                color: "var(--fg)",
+                outline: "none",
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const inputVal = (document.getElementById("custom-prompt-input") as HTMLInputElement)?.value || "";
+                  pendingPromptRef.current?.(inputVal);
+                  pendingPromptRef.current = null;
+                  setPromptDialog((d) => ({ ...d, open: false }));
+                }
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  pendingPromptRef.current = null;
+                  setPromptDialog((d) => ({ ...d, open: false }));
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const inputVal = (document.getElementById("custom-prompt-input") as HTMLInputElement)?.value || "";
+                  pendingPromptRef.current?.(inputVal);
+                  pendingPromptRef.current = null;
+                  setPromptDialog((d) => ({ ...d, open: false }));
+                }}
+                style={{
+                  background: "var(--accent)",
+                  border: "none",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                }}
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {alertDialog.open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setAlertDialog((d) => ({ ...d, open: false }))}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              padding: "20px",
+              maxWidth: "360px",
+              width: "90%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: "14px", lineHeight: 1.5 }}>
+              {alertDialog.message}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setAlertDialog((d) => ({ ...d, open: false }))}
+                style={{
+                  background: "var(--accent)",
+                  border: "none",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <input
+        type="file"
+        id="srd-file-input"
+        style={{ display: "none" }}
+        accept=".md,.txt"
+        onChange={handleIngestSRD}
+      />
+      <input
+        type="file"
+        ref={assetFileInputRef}
+        style={{ display: "none" }}
+        accept={
+          pendingAssetTarget?.type === "image"
+            ? "image/*"
+            : pendingAssetTarget?.type === "audio"
+              ? "audio/*"
+              : "*/*"
+        }
+        onChange={handleAssetFileSelected}
+      />
     </div>
   );
 }
