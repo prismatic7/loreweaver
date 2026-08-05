@@ -69,9 +69,40 @@ const extractTextFromPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => item.str)
-      .join(" ");
+    const items = textContent.items as any[];
+    
+    // Group items by vertical position (Y-coordinate, which is transform[5])
+    const linesMap = new Map<number, any[]>();
+    for (const item of items) {
+      if (!item.str || item.str.trim() === "") continue;
+      const y = Math.round(item.transform[5]);
+      // Find a Y value close to current Y (tolerance of 4 points)
+      let foundKey = y;
+      for (const key of linesMap.keys()) {
+        if (Math.abs(key - y) <= 4) {
+          foundKey = key;
+          break;
+        }
+      }
+      if (!linesMap.has(foundKey)) {
+        linesMap.set(foundKey, []);
+      }
+      linesMap.get(foundKey)!.push(item);
+    }
+    
+    // Sort lines from top to bottom (descending Y coordinate)
+    const sortedKeys = Array.from(linesMap.keys()).sort((a, b) => b - a);
+    let pageText = "";
+    
+    for (const y of sortedKeys) {
+      const lineItems = linesMap.get(y)!;
+      // Sort items within the line from left to right (ascending X coordinate, transform[4])
+      lineItems.sort((a, b) => a.transform[4] - b.transform[4]);
+      
+      const lineStr = lineItems.map(item => item.str).join(" ");
+      pageText += lineStr + "\n";
+    }
+    
     fullText += `# Page ${i}\n\n${pageText}\n\n`;
   }
   return fullText;
