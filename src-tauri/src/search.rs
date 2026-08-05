@@ -373,26 +373,17 @@ pub fn chunk_text(text: &str, chunk_size_tokens: usize, overlap_tokens: usize) -
 
 /// Simple character-based chunking fallback when the BPE tokenizer is unavailable.
 fn chunk_text_by_chars(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
-    if text.len() <= chunk_size {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= chunk_size {
         return vec![text.to_string()];
     }
     let mut chunks = Vec::new();
     let mut start = 0;
-    while start < text.len() {
-        let end = std::cmp::min(start + chunk_size, text.len());
-        // Make sure we don't split in the middle of a multibyte char
-        let safe_end = if text[..end].is_char_boundary(end) || end == text.len() {
-            end
-        } else {
-            text[..end]
-                .char_indices()
-                .last()
-                .map(|(i, _)| i)
-                .unwrap_or(end)
-        };
-        let chunk = &text[start..safe_end];
+    while start < chars.len() {
+        let end = std::cmp::min(start + chunk_size, chars.len());
+        let chunk: String = chars[start..end].iter().collect();
         if !chunk.trim().is_empty() {
-            chunks.push(chunk.to_string());
+            chunks.push(chunk);
         }
         let step = chunk_size.saturating_sub(overlap);
         if step == 0 {
