@@ -103,16 +103,41 @@ for (const cmd of rustCommands) {
   }
 }
 
-// 4. Verify all invoke() calls in App.tsx correspond to Rust commands
+// 4. Verify all invoke() calls in App.tsx and components correspond to Rust commands
 console.log("Verifying frontend invoke() call destinations...");
-const appTspPath = resolvePath("src/App.tsx");
-const appTsContent = fs.readFileSync(appTspPath, "utf-8");
+
+function getFilesRecursively(dir, extensions) {
+  let results = [];
+  if (!fs.existsSync(dir)) return results;
+  const list = fs.readdirSync(dir);
+  list.forEach((file) => {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(getFilesRecursively(filePath, extensions));
+    } else {
+      if (extensions.includes(path.extname(filePath))) {
+        results.push(filePath);
+      }
+    }
+  });
+  return results;
+}
+
+const frontendFiles = [
+  resolvePath("src/App.tsx"),
+  ...getFilesRecursively(resolvePath("src/components"), [".tsx", ".ts"])
+].filter(file => !file.endsWith(".test.tsx") && !file.endsWith(".test.ts"));
 
 const invokeRegex = /invoke(?:<[^>]+>)?\(\s*["']([^"']+)["']/g;
-let invokeMatch;
 const frontendInvokes = new Set();
-while ((invokeMatch = invokeRegex.exec(appTsContent)) !== null) {
-  frontendInvokes.add(invokeMatch[1]);
+
+for (const file of frontendFiles) {
+  const content = fs.readFileSync(file, "utf-8");
+  let invokeMatch;
+  while ((invokeMatch = invokeRegex.exec(content)) !== null) {
+    frontendInvokes.add(invokeMatch[1]);
+  }
 }
 
 for (const inv of frontendInvokes) {
@@ -120,7 +145,7 @@ for (const inv of frontendInvokes) {
     logError(`Frontend invokes unknown Tauri command "${inv}" (not found in lib.rs)`);
   }
 }
-logSuccess(`Verified ${frontendInvokes.size} unique invoke calls`);
+logSuccess(`Verified ${frontendInvokes.size} unique invoke calls across ${frontendFiles.length} files`);
 
 if (hasError) {
   console.log("\n\x1b[31m[FAILURE]\x1b[0m Documentation verification failed with errors.");
@@ -129,3 +154,4 @@ if (hasError) {
   console.log("\n\x1b[32m[SUCCESS]\x1b[0m All documentation verification checks passed successfully!");
   process.exit(0);
 }
+

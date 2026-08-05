@@ -48,19 +48,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const isTestingConnection = isTestingConnectionProp ?? localIsTesting;
 
-  const llmProvider = watch("llm_provider");
-  const llmBaseUrl = watch("llm_base_url");
-  const llmApiKey = watch("llm_api_key");
-  const embedProvider = watch("embed_provider");
-  const embedBaseUrl = watch("embed_base_url");
-  const embedApiKey = watch("embed_api_key");
-  const imageProvider = watch("image_provider");
-  const imageBaseUrl = watch("image_base_url");
-  const imageApiKey = watch("image_api_key");
-  const ttsProvider = watch("tts_provider");
-  const ttsApiKey = watch("tts_api_key");
-  const sttProvider = watch("stt_provider");
-  const sttApiKey = watch("stt_api_key");
+  const getFieldName = (cap: string, suffix: string): string => {
+    if (cap === "tts" && suffix === "model") return "tts_voice";
+    return `${cap}_${suffix}`;
+  };
 
   const onProviderSelect = (
     tab: "llm" | "embed" | "image" | "tts" | "stt",
@@ -77,6 +68,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         gemini: "https://generativelanguage.googleapis.com",
       },
       embed: {
+        ollama: "http://localhost:11434",
         openai: "https://api.openai.com",
         gemini: "https://generativelanguage.googleapis.com",
       },
@@ -94,16 +86,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleTestConnection = () => {
-    const provider =
-      activeConfigTab === "llm"
-        ? llmProvider
-        : activeConfigTab === "embed"
-          ? embedProvider
-          : activeConfigTab === "image"
-            ? imageProvider
-            : activeConfigTab === "tts"
-              ? ttsProvider
-              : sttProvider;
+    const provider = watch(getFieldName(activeConfigTab, "provider"));
 
     if (testSettingsConnection) {
       testSettingsConnection(provider);
@@ -115,24 +98,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTestConnectionError(null);
 
     const baseUrl =
-      activeConfigTab === "llm"
-        ? llmBaseUrl
-        : activeConfigTab === "embed"
-          ? embedBaseUrl
-          : activeConfigTab === "image"
-            ? imageBaseUrl
-            : "";
+      activeConfigTab === "tts" || activeConfigTab === "stt"
+        ? ""
+        : watch(getFieldName(activeConfigTab, "base_url")) || "";
 
-    const apiKey =
-      activeConfigTab === "llm"
-        ? llmApiKey
-        : activeConfigTab === "embed"
-          ? embedApiKey
-          : activeConfigTab === "image"
-            ? imageApiKey
-            : activeConfigTab === "tts"
-              ? ttsApiKey
-              : sttApiKey;
+    const apiKey = watch(getFieldName(activeConfigTab, "api_key")) || "";
 
     invoke<string[]>("test_provider_connection", {
       provider,
@@ -442,49 +412,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               {(activeConfigTab === "llm"
                 ? [
-                    { id: "openai", name: "OpenAI", logo: "🟢" },
-                    {
-                      id: "anthropic",
-                      name: "Anthropic Claude",
-                      logo: "🟤",
-                    },
+                    { id: "ollama", name: "Ollama (Local)", logo: "🦙" },
+                    { id: "openai", name: "OpenAI (Cloud)", logo: "🟢" },
+                    { id: "gemini", name: "Google Gemini (Cloud)", logo: "🔵" },
                     {
                       id: "openai-compatible",
-                      name: "OpenAI API Compatible",
+                      name: "Custom OpenAI Compatible",
                       logo: "⚙️",
-                    },
-                    {
-                      id: "aws-bedrock",
-                      name: "AWS Bedrock",
-                      logo: "🟠",
-                    },
-                    { id: "ollama", name: "Ollama", logo: "🦙" },
-                    {
-                      id: "openrouter",
-                      name: "OpenRouter",
-                      logo: "🌀",
-                    },
-                    {
-                      id: "gemini",
-                      name: "Google Gemini",
-                      logo: "🔵",
-                    },
-                    {
-                      id: "ollama-cloud",
-                      name: "Ollama Cloud",
-                      logo: "☁️",
-                    },
-                    {
-                      id: "copilot",
-                      name: "GitHub Copilot",
-                      logo: "🤖",
-                    },
-                    { id: "z-ai", name: "z.ai", logo: "⚡" },
-                    { id: "kilo", name: "Kilo", logo: "⚖️" },
-                    {
-                      id: "huggingface",
-                      name: "Hugging Face",
-                      logo: "🤗",
                     },
                   ]
                 : activeConfigTab === "embed"
@@ -494,18 +428,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         name: "Local ONNX (all-MiniLM)",
                         logo: "💻",
                       },
-                      { id: "openai", name: "OpenAI", logo: "🟢" },
-                      {
-                        id: "gemini",
-                        name: "Google Gemini",
-                        logo: "🔵",
-                      },
-                      { id: "z-ai", name: "z.ai", logo: "⚡" },
-                      {
-                        id: "huggingface",
-                        name: "Hugging Face",
-                        logo: "🤗",
-                      },
+                      { id: "ollama", name: "Ollama (Local)", logo: "🦙" },
+                      { id: "openai", name: "OpenAI (Cloud)", logo: "🟢" },
+                      { id: "gemini", name: "Google Gemini (Cloud)", logo: "🔵" },
                     ]
                   : activeConfigTab === "image"
                     ? [
@@ -524,12 +449,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           name: "Stability AI API",
                           logo: "🎨",
                         },
-                        { id: "z-ai", name: "z.ai", logo: "⚡" },
-                        {
-                          id: "huggingface",
-                          name: "Hugging Face",
-                          logo: "🤗",
-                        },
                       ]
                     : activeConfigTab === "tts"
                       ? [
@@ -543,17 +462,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             name: "OpenAI TTS",
                             logo: "🟢",
                           },
-                          {
-                            id: "elevenlabs",
-                            name: "ElevenLabs API",
-                            logo: "🗣️",
-                          },
-                          { id: "z-ai", name: "z.ai", logo: "⚡" },
-                          {
-                            id: "huggingface",
-                            name: "Hugging Face",
-                            logo: "🤗",
-                          },
                         ]
                       : [
                           {
@@ -566,24 +474,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             name: "OpenAI Whisper",
                             logo: "🟢",
                           },
-                          { id: "z-ai", name: "z.ai", logo: "⚡" },
-                          {
-                            id: "huggingface",
-                            name: "Hugging Face",
-                            logo: "🤗",
-                          },
                         ]
               ).map((item) => {
-                const isSelected =
-                  activeConfigTab === "llm"
-                    ? llmProvider === item.id
-                    : activeConfigTab === "embed"
-                      ? embedProvider === item.id
-                      : activeConfigTab === "image"
-                        ? imageProvider === item.id
-                        : activeConfigTab === "tts"
-                          ? ttsProvider === item.id
-                          : sttProvider === item.id;
+                const isSelected = watch(getFieldName(activeConfigTab, "provider")) === item.id;
                 return (
                   <div
                     key={item.id}
@@ -684,15 +577,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </label>
                   <input
                     type="text"
-                    {...register(
-                      activeConfigTab === "llm"
-                        ? "llm_model"
-                        : activeConfigTab === "embed"
-                          ? "embed_model"
-                          : activeConfigTab === "image"
-                            ? "image_model"
-                            : "tts_voice",
-                    )}
+                    {...register(getFieldName(activeConfigTab, "model"))}
                     style={{
                       width: "100%",
                       padding: "8px 10px",
@@ -712,15 +597,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             : "e.g. alloy"
                     }
                   />
-                  {errors[
-                    activeConfigTab === "llm"
-                      ? "llm_model"
-                      : activeConfigTab === "embed"
-                        ? "embed_model"
-                        : activeConfigTab === "image"
-                          ? "image_model"
-                          : "tts_voice"
-                  ] && (
+                  {errors[getFieldName(activeConfigTab, "model")] && (
                     <span
                       style={{
                         fontSize: "11px",
@@ -729,17 +606,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         display: "block",
                       }}
                     >
-                      {
-                        errors[
-                          activeConfigTab === "llm"
-                            ? "llm_model"
-                            : activeConfigTab === "embed"
-                              ? "embed_model"
-                              : activeConfigTab === "image"
-                                ? "image_model"
-                                : "tts_voice"
-                        ]?.message as string
-                      }
+                      {errors[getFieldName(activeConfigTab, "model")]?.message as string}
                     </span>
                   )}
                 </div>
@@ -761,13 +628,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </label>
                     <input
                       type="text"
-                      {...register(
-                        activeConfigTab === "llm"
-                          ? "llm_base_url"
-                          : activeConfigTab === "embed"
-                            ? "embed_base_url"
-                            : "image_base_url",
-                      )}
+                      {...register(getFieldName(activeConfigTab, "base_url"))}
                       style={{
                         width: "100%",
                         padding: "8px 10px",
@@ -779,13 +640,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }}
                       placeholder="Provider base URL override if using proxy/local server"
                     />
-                    {errors[
-                      activeConfigTab === "llm"
-                        ? "llm_base_url"
-                        : activeConfigTab === "embed"
-                          ? "embed_base_url"
-                          : "image_base_url"
-                    ] && (
+                    {errors[getFieldName(activeConfigTab, "base_url")] && (
                       <span
                         style={{
                           fontSize: "11px",
@@ -794,15 +649,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           display: "block",
                         }}
                       >
-                        {
-                          errors[
-                            activeConfigTab === "llm"
-                              ? "llm_base_url"
-                              : activeConfigTab === "embed"
-                                ? "embed_base_url"
-                                : "image_base_url"
-                          ]?.message as string
-                        }
+                        {errors[getFieldName(activeConfigTab, "base_url")]?.message as string}
                       </span>
                     )}
                   </div>
@@ -823,17 +670,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
               <input
                 type="password"
-                {...register(
-                  activeConfigTab === "llm"
-                    ? "llm_api_key"
-                    : activeConfigTab === "embed"
-                      ? "embed_api_key"
-                      : activeConfigTab === "image"
-                        ? "image_api_key"
-                        : activeConfigTab === "tts"
-                          ? "tts_api_key"
-                          : "stt_api_key",
-                )}
+                {...register(getFieldName(activeConfigTab, "api_key"))}
                 style={{
                   width: "100%",
                   padding: "8px 10px",
@@ -933,14 +770,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           key={modelName}
                           onClick={() => {
-                            const field =
-                              activeConfigTab === "llm"
-                                ? "llm_model"
-                                : activeConfigTab === "embed"
-                                  ? "embed_model"
-                                  : activeConfigTab === "image"
-                                    ? "image_model"
-                                    : "tts_voice";
+                            const field = getFieldName(activeConfigTab, "model");
                             setValue(field, modelName, {
                               shouldDirty: true,
                             });

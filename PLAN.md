@@ -30,10 +30,10 @@ This document outlines the core architecture and development phases for building
 - [x] Build interactive visual node-edge Knowledge Graph canvas (`FolderCanvas.tsx`).
 
 ## Phase 5: Documentation & Onboarding
-- [ ] Reconcile root `README.md` and `ARCHITECTURE.md` with the actual implemented feature set.
-- [ ] Refresh `docs/codebase/*.md` to remove stale `[TODO]` markers and intent-vs-reality gaps.
-- [ ] Add user-facing docs: quickstart, feature guide, and settings reference.
-- [ ] Add developer docs: API/command reference, plugin authoring guide, contributing guide, troubleshooting.
-- [ ] Add a lightweight doc-verification script to keep docs consistent with code.
+- [x] Reconcile root `README.md` and `ARCHITECTURE.md` with the actual implemented feature set.
+- [x] Refresh `docs/codebase/*.md` to remove stale `[TODO]` markers and intent-vs-reality gaps.
+- [x] Add user-facing docs: quickstart, feature guide, and settings reference.
+- [x] Add developer docs: API/command reference, plugin authoring guide, contributing guide, troubleshooting.
+- [x] Add a lightweight doc-verification script to keep docs consistent with code.
 
 See [docs/DOCUMENTATION_PLAN.md](docs/DOCUMENTATION_PLAN.md) for the detailed overnight execution plan.

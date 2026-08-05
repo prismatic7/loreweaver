@@ -10,15 +10,11 @@ import { listen } from "@tauri-apps/api/event";
 import {
   BookOpen,
   Brain,
-  ChevronRight,
   Compass,
   Copy,
   Download,
-  Eye,
-  FilePlus,
   FileText,
   FolderOpen,
-  FolderPlus,
   Layers,
   Link2,
   Moon,
@@ -29,7 +25,7 @@ import {
   Sun,
   Trash2,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -38,13 +34,13 @@ import { useOnClickOutside } from "usehooks-ts";
 import { z } from "zod";
 import "./App.css";
 
-const MarkdownEditor = lazy(() => import("./components/MarkdownEditor"));
-const FolderCanvas = lazy(() => import("./components/FolderCanvas"));
+
 import { DashboardView } from "./components/DashboardView";
 import { SettingsView } from "./components/SettingsView";
 import { TrashView } from "./components/TrashView";
 import { RulesView } from "./components/RulesView";
 import { AiView } from "./components/AiView";
+import { CampaignVaultView } from "./components/CampaignVaultView";
 
 import { CampaignNote, RuleEntry, SearchResult } from "./types";
 
@@ -67,8 +63,6 @@ function App() {
   const [editFrontmatter, setEditFrontmatter] = useState<Record<string, any>>(
     {},
   );
-  const [newMetaKey, setNewMetaKey] = useState("");
-  const [newMetaVal, setNewMetaVal] = useState("");
 
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
   const [newRuleTitle, setNewRuleTitle] = useState("");
@@ -2722,651 +2716,39 @@ function App() {
 
             {/* VIEW: VAULT */}
             {(activeView === "vault" || activeView === "canvas") && (
-              <div
-                className="view-container"
-                data-od-id="vault-view"
-                style={{ padding: 0, overflow: "hidden" }}
-              >
-                <div style={{ display: "flex", width: "100%", height: "100%" }}>
-                  <div
-                    style={{
-                      width: 220,
-                      borderRight: "1px solid var(--border)",
-                      overflowY: "auto",
-                      padding: "12px 8px",
-                      flexShrink: 0,
-                      background: "var(--surface)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "6px",
-                        margin: "4px 8px 12px 8px",
-                      }}
-                    >
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={handleNewNote}
-                        style={{
-                          flex: 1,
-                          padding: "6px 8px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "4px",
-                          fontSize: "11px",
-                          cursor: "pointer",
-                          borderRadius: "4px",
-                        }}
-                        title="Create a new note"
-                      >
-                        <FilePlus size={12} /> New Note
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        onClick={handleNewFolder}
-                        style={{
-                          flex: 1,
-                          padding: "6px 8px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "4px",
-                          fontSize: "11px",
-                          cursor: "pointer",
-                          background: "transparent",
-                          border: "1px solid var(--border)",
-                          borderRadius: "4px",
-                          color: "var(--fg)",
-                        }}
-                        title="Create a new folder"
-                      >
-                        <FolderPlus size={12} /> Folder
-                      </button>
-                    </div>
-
-                    <span
-                      className="section-label"
-                      style={{
-                        marginLeft: 8,
-                        display: "block",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      Campaign Notes
-                    </span>
-
-                    {Object.entries(notesByFolder).map(
-                      ([folderName, folderNotes]) => {
-                        const isCollapsed = !!collapsedFolders[folderName];
-                        return (
-                          <div key={folderName} style={{ marginBottom: "8px" }}>
-                            {/* Folder Header */}
-                            <div
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                setContextMenu({
-                                  x: e.clientX,
-                                  y: e.clientY,
-                                  type: "folder",
-                                  targetId: folderName,
-                                  isRulebook: false,
-                                });
-                              }}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                width: "100%",
-                                paddingRight: "8px",
-                                borderRadius: "4px",
-                              }}
-                              className="folder-item-header"
-                            >
-                              <div
-                                onClick={() =>
-                                  setCollapsedFolders((prev) => ({
-                                    ...prev,
-                                    [folderName]: !isCollapsed,
-                                  }))
-                                }
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  padding: "6px 8px",
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                  fontWeight: 600,
-                                  color: "var(--fg)",
-                                  userSelect: "none",
-                                  flex: 1,
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <ChevronRight
-                                  size={12}
-                                  style={{
-                                    transform: isCollapsed
-                                      ? "rotate(0deg)"
-                                      : "rotate(90deg)",
-                                    transition: "transform 0.15s ease",
-                                    color: "var(--muted)",
-                                  }}
-                                />
-                                <span style={{ fontSize: "13px" }}>📁</span>
-                                <span
-                                  style={{
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {folderName}
-                                </span>
-                              </div>
-
-                              {/* Plus button for folder-specific creation actions */}
-                              <div style={{ position: "relative" }}>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveFolderDropdown(
-                                      activeFolderDropdown === folderName
-                                        ? null
-                                        : folderName,
-                                    );
-                                  }}
-                                  style={{
-                                    background: "transparent",
-                                    border: "none",
-                                    color: "var(--muted)",
-                                    cursor: "pointer",
-                                    padding: "2px 6px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    fontSize: "14px",
-                                    fontWeight: "bold",
-                                  }}
-                                  title="Add Asset to folder..."
-                                >
-                                  +
-                                </button>
-
-                                {renderFolderDropdown(folderName, false)}
-                              </div>
-                            </div>
-
-                            {!isCollapsed && (
-                              <div
-                                style={{
-                                  paddingLeft: "16px",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "2px",
-                                }}
-                              >
-                                {(folderNotes as any[]).map((note: any) => {
-                                  const isCanvas =
-                                    note.frontmatter.type === "Canvas" ||
-                                    note.path.endsWith(".canvas");
-                                  const isAsset =
-                                    note.frontmatter.tags?.includes("asset");
-                                  let icon = <FileText size={12} />;
-                                  if (isCanvas) icon = <span>🎨</span>;
-                                  else if (
-                                    isAsset &&
-                                    note.frontmatter.type === "AUDIO"
-                                  )
-                                    icon = <span>🎵</span>;
-                                  else if (
-                                    isAsset &&
-                                    note.frontmatter.type === "IMAGE"
-                                  )
-                                    icon = <span>🖼️</span>;
-
-                                  return (
-                                    <button
-                                      key={note.id}
-                                      onContextMenu={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        setContextMenu({
-                                          x: e.clientX,
-                                          y: e.clientY,
-                                          type: "note",
-                                          targetId: note.id,
-                                          path: note.path,
-                                        });
-                                      }}
-                                      className={`nav-item ${selectedNoteId === note.id ? "active" : ""}`}
-                                      onClick={() => {
-                                        setSelectedNoteId(note.id);
-                                        if (isCanvas) {
-                                          const parts = note.path.split("/");
-                                          parts.pop();
-                                          const folderName = parts.join("/");
-                                          setCurrentCanvasFolder(folderName);
-                                          setActiveView("canvas");
-                                        } else {
-                                          setIsEditingNote(false);
-                                          setActiveView("vault");
-                                        }
-                                      }}
-                                      style={{
-                                        padding: "6px 8px",
-                                        fontSize: "12px",
-                                        display: "flex",
-                                        alignItems: "center",
-                                      }}
-                                      data-od-id={`note-${note.id}`}
-                                    >
-                                      {icon}{" "}
-                                      <span style={{ marginLeft: "6px" }}>
-                                        {note.title}
-                                      </span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      },
-                    )}
-                  </div>
-                  {activeView === "canvas" ? (
-                    <Suspense fallback={<div style={{ padding: "20px", color: "var(--muted)" }}>Loading Canvas...</div>}>
-                      <FolderCanvas
-                        currentFolder={currentCanvasFolder || ""}
-                        activeCanvasPath={
-                          (currentNote?.frontmatter?.canvasPath as string) ||
-                          currentNote?.path ||
-                          ""
-                        }
-                        notes={notes as any[]}
-                        onSelectNote={handleSelectNoteFromCanvas}
-                        onSelectCanvas={handleSelectCanvas}
-                      />
-                    </Suspense>
-                  ) : (
-                    <div
-                      style={{
-                        flex: 1,
-                        overflowY: "auto",
-                        padding: "32px 40px",
-                        display: "flex",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <div
-                        className="document-sheet"
-                        style={{ padding: "40px 48px" }}
-                      >
-                        {/* Mode Toggle at top-right */}
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "flex-end",
-                            gap: "8px",
-                            marginBottom: "16px",
-                          }}
-                        >
-                          <button
-                            onClick={handleNormalizeVaultMarkdown}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              border: "1px solid var(--border)",
-                              background: "var(--bg)",
-                              color: "var(--fg)",
-                              padding: "4px 10px",
-                              borderRadius: "4px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              fontFamily: "var(--font-body)",
-                              cursor: "pointer",
-                            }}
-                            title="Rewrite notes with canonical wiki links"
-                          >
-                            <Copy size={12} /> Normalize Vault
-                          </button>
-                          <div
-                            style={{
-                              display: "flex",
-                              background: "var(--bg)",
-                              border: "1px solid var(--border)",
-                              borderRadius: "6px",
-                              padding: "2px",
-                            }}
-                          >
-                            <button
-                              onClick={() => {
-                                triggerImmediateSave();
-                                setIsEditingNote(false);
-                              }}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                border: "none",
-                                background: !isEditingNote
-                                  ? "var(--surface)"
-                                  : "transparent",
-                                color: !isEditingNote
-                                  ? "var(--accent)"
-                                  : "var(--muted)",
-                                padding: "4px 10px",
-                                borderRadius: "4px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                fontFamily: "var(--font-body)",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <Eye size={12} /> Preview
-                            </button>
-                            <button
-                              onClick={() => setIsEditingNote(true)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                border: "none",
-                                background: isEditingNote
-                                  ? "var(--surface)"
-                                  : "transparent",
-                                color: isEditingNote
-                                  ? "var(--accent)"
-                                  : "var(--muted)",
-                                padding: "4px 10px",
-                                borderRadius: "4px",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                fontFamily: "var(--font-body)",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <PenLine size={12} /> Edit
-                            </button>
-                          </div>
-
-                          {selectedNoteId && currentNote && (
-                            <button
-                              className="btn btn-sm"
-                              onClick={() => handleTrashNote(currentNote.path)}
-                              style={{
-                                color: "var(--danger)",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                              title="Trash this note"
-                            >
-                              <Trash2 size={12} /> Trash Note
-                            </button>
-                          )}
-                        </div>
-
-                        {isEditingNote ? (
-                          <div>
-                            {/* Title Edit (Borderless) */}
-                            <div style={{ marginBottom: "16px" }}>
-                              <input
-                                type="text"
-                                value={editTitle}
-                                onChange={(e) => setEditTitle(e.target.value)}
-                                style={{
-                                  fontFamily: "var(--font-display)",
-                                  fontSize: "36px",
-                                  lineHeight: "1.1",
-                                  letterSpacing: "-0.02em",
-                                  fontWeight: 600,
-                                  border: "none",
-                                  outline: "none",
-                                  background: "transparent",
-                                  color: "var(--fg)",
-                                  width: "100%",
-                                  padding: "0 0 6px 0",
-                                  borderBottom: "1px dashed var(--border)",
-                                }}
-                                placeholder="Untitled Note"
-                              />
-                            </div>
-
-                            {/* Collapsible Metadata Editor */}
-                            <details
-                              style={{
-                                marginBottom: "20px",
-                                border: "1px solid var(--border)",
-                                borderRadius: "4px",
-                                padding: "10px 14px",
-                                background: "var(--surface)",
-                              }}
-                            >
-                              <summary
-                                style={{
-                                  fontSize: "11px",
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.08em",
-                                  color: "var(--muted)",
-                                  fontWeight: 600,
-                                  cursor: "pointer",
-                                  outline: "none",
-                                }}
-                              >
-                                Metadata Properties
-                              </summary>
-                              <div
-                                style={{
-                                  marginTop: "12px",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "8px",
-                                }}
-                              >
-                                {Object.entries(editFrontmatter).map(
-                                  ([key, val]) => (
-                                    <div
-                                      key={key}
-                                      style={{
-                                        display: "flex",
-                                        gap: "8px",
-                                        alignItems: "center",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          fontSize: "12px",
-                                          width: "100px",
-                                          color: "var(--muted)",
-                                          fontWeight: 500,
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          whiteSpace: "nowrap",
-                                        }}
-                                      >
-                                        {key}
-                                      </span>
-                                      <input
-                                        type="text"
-                                        value={
-                                          Array.isArray(val)
-                                            ? val.join(", ")
-                                            : String(val)
-                                        }
-                                        onChange={(e) => {
-                                          const newVal = e.target.value;
-                                          setEditFrontmatter((prev) => ({
-                                            ...prev,
-                                            [key]:
-                                              key === "tags"
-                                                ? newVal
-                                                    .split(",")
-                                                    .map((t) => t.trim())
-                                                : newVal,
-                                          }));
-                                        }}
-                                        style={{
-                                          flex: 1,
-                                          padding: "4px 8px",
-                                          fontSize: "12px",
-                                          background: "var(--bg)",
-                                          border: "1px solid var(--border)",
-                                          borderRadius: "4px",
-                                          color: "var(--fg)",
-                                        }}
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const { [key]: _, ...rest } =
-                                            editFrontmatter;
-                                          setEditFrontmatter(rest);
-                                        }}
-                                        className="btn btn-sm"
-                                        style={{
-                                          color: "var(--danger)",
-                                          padding: "4px 8px",
-                                        }}
-                                      >
-                                        Remove
-                                      </button>
-                                    </div>
-                                  ),
-                                )}
-
-                                {/* Add New Metadata Key-Value */}
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "8px",
-                                    marginTop: "12px",
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <input
-                                    placeholder="Key"
-                                    value={newMetaKey}
-                                    onChange={(e) =>
-                                      setNewMetaKey(e.target.value)
-                                    }
-                                    style={{
-                                      width: "100px",
-                                      padding: "4px 8px",
-                                      fontSize: "12px",
-                                      background: "var(--bg)",
-                                      border: "1px solid var(--border)",
-                                      borderRadius: "4px",
-                                      color: "var(--fg)",
-                                    }}
-                                  />
-                                  <input
-                                    placeholder="Value"
-                                    value={newMetaVal}
-                                    onChange={(e) =>
-                                      setNewMetaVal(e.target.value)
-                                    }
-                                    style={{
-                                      flex: 1,
-                                      padding: "4px 8px",
-                                      fontSize: "12px",
-                                      background: "var(--bg)",
-                                      border: "1px solid var(--border)",
-                                      borderRadius: "4px",
-                                      color: "var(--fg)",
-                                    }}
-                                  />
-                                  <button
-                                    onClick={() => {
-                                      if (!newMetaKey.trim()) return;
-                                      setEditFrontmatter((prev) => ({
-                                        ...prev,
-                                        [newMetaKey.trim()]: newMetaVal,
-                                      }));
-                                      setNewMetaKey("");
-                                      setNewMetaVal("");
-                                    }}
-                                    className="btn btn-sm"
-                                    style={{ padding: "4px 10px" }}
-                                  >
-                                    Add Field
-                                  </button>
-                                </div>
-                              </div>
-                            </details>
-
-                            {/* Content Body Edit (Borderless, inheriting styles) */}
-                            <div style={{ marginBottom: "20px" }}>
-                              <Suspense
-                                fallback={
-                                  <div
-                                    style={{
-                                      width: "100%",
-                                      height: "400px",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      border: "1px solid var(--border)",
-                                      borderRadius: "6px",
-                                      background: "var(--surface)",
-                                      color: "var(--muted)",
-                                      fontSize: "13px",
-                                    }}
-                                  >
-                                    Loading markdown editor...
-                                  </div>
-                                }
-                              >
-                                <MarkdownEditor
-                                  value={editContent}
-                                  onChange={setEditContent}
-                                  notes={notes}
-                                  activeNotePath={
-                                    currentNote ? currentNote.path : ""
-                                  }
-                                />
-                              </Suspense>
-                            </div>
-                            <div
-                              style={{
-                                fontSize: "11px",
-                                color: "var(--muted)",
-                                fontStyle: "italic",
-                                borderTop: "1px solid var(--border)",
-                                paddingTop: "8px",
-                              }}
-                            >
-                              ● Auto-saving in background...
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <div
-                              className="doc-title"
-                              style={{ wordBreak: "break-word" }}
-                            >
-                              {currentNote?.title}
-                            </div>
-                            <div className="doc-meta">
-                              <span className="doc-meta-tag">
-                                {String(currentNote?.frontmatter.type || "Note")}
-                              </span>
-                              <span>{currentNote?.path}</span>
-                            </div>
-                            <div className="doc-body">
-                              {currentNote
-                                ? renderMarkdown(currentNote.content)
-                                : null}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <CampaignVaultView
+                activeView={activeView}
+                notesByFolder={notesByFolder}
+                collapsedFolders={collapsedFolders}
+                setCollapsedFolders={setCollapsedFolders}
+                selectedNoteId={selectedNoteId}
+                setSelectedNoteId={setSelectedNoteId}
+                currentNote={currentNote}
+                isEditingNote={isEditingNote}
+                setIsEditingNote={setIsEditingNote}
+                editTitle={editTitle}
+                setEditTitle={setEditTitle}
+                editFrontmatter={editFrontmatter}
+                setEditFrontmatter={setEditFrontmatter}
+                editContent={editContent}
+                setEditContent={setEditContent}
+                setContextMenu={setContextMenu}
+                activeFolderDropdown={activeFolderDropdown}
+                setActiveFolderDropdown={setActiveFolderDropdown}
+                renderFolderDropdown={renderFolderDropdown}
+                handleNewNote={handleNewNote}
+                handleNewFolder={handleNewFolder}
+                handleTrashNote={handleTrashNote}
+                renderMarkdown={renderMarkdown}
+                currentCanvasFolder={currentCanvasFolder}
+                setCurrentCanvasFolder={setCurrentCanvasFolder}
+                handleNormalizeVaultMarkdown={handleNormalizeVaultMarkdown}
+                triggerImmediateSave={triggerImmediateSave}
+                notes={notes}
+                setActiveView={setActiveView}
+                onSelectNoteFromCanvas={handleSelectNoteFromCanvas}
+                onSelectCanvas={handleSelectCanvas}
+              />
             )}
 
             {/* VIEW: RULES */}
