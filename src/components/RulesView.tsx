@@ -42,14 +42,6 @@ export interface RulesViewProps {
   setIsEditingRule: (editing: boolean) => void;
   handleNewRule: (targetFolder?: string) => void;
   handleNewRuleFolder: () => void;
-  handleIngestSRD: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  assetFileInputRef: React.RefObject<HTMLInputElement | null>;
-  pendingAssetTarget: {
-    folderName: string;
-    type: "audio" | "image" | "file";
-    isRulebook: boolean;
-  } | null;
-  handleAssetFileSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleInsertRuleImage: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleDeleteRule: (ruleId: string) => void;
   editRuleTitle: string;
@@ -80,10 +72,6 @@ export const RulesView: React.FC<RulesViewProps> = ({
   setIsEditingRule,
   handleNewRule,
   handleNewRuleFolder,
-  handleIngestSRD,
-  assetFileInputRef,
-  pendingAssetTarget,
-  handleAssetFileSelected,
   handleInsertRuleImage,
   handleDeleteRule,
   editRuleTitle,

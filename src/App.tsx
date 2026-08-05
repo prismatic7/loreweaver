@@ -2807,10 +2807,6 @@ function App() {
                 setIsEditingRule={setIsEditingRule}
                 handleNewRule={handleNewRule}
                 handleNewRuleFolder={handleNewRuleFolder}
-                handleIngestSRD={handleIngestSRD}
-                assetFileInputRef={assetFileInputRef}
-                pendingAssetTarget={pendingAssetTarget}
-                handleAssetFileSelected={handleAssetFileSelected}
                 handleInsertRuleImage={handleInsertRuleImage}
                 handleDeleteRule={handleDeleteRule}
                 editRuleTitle={editRuleTitle}
