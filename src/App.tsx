@@ -1120,7 +1120,7 @@ function App() {
       activeEditingNoteIdRef.current = newId;
 
       invoke("save_canvas_file", {
-        rel_path: canvasPath,
+        relPath: canvasPath,
         content: JSON.stringify({ nodes: [], edges: [], containers: [] }),
       })
         .then(() => invoke("save_note", { note: canvasNote }))
