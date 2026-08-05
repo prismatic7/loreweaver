@@ -62,7 +62,14 @@ const loadPdfJs = (): Promise<any> => {
   });
 };
 
-const extractTextFromPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+const extractTextFromPdf = async (
+  arrayBuffer: ArrayBuffer,
+  mode: "text" | "ai",
+  llmProvider?: string,
+  llmModel?: string,
+  llmApiKey?: string,
+  llmBaseUrl?: string
+): Promise<string> => {
   const pdfjsLib = await loadPdfJs();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
   let fullText = "";
@@ -103,7 +110,27 @@ const extractTextFromPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => 
       pageText += lineStr + "\n";
     }
     
-    fullText += `# Page ${i}\n\n${pageText}\n\n`;
+    if (pageText.trim() === "") continue;
+
+    if (mode === "ai") {
+      const systemPrompt = `You are a document parser. Format the following raw page text into clean, structured Markdown. Reconstruct headers (#, ##, ###), lists, tables, and paragraphs where appropriate. Do NOT add conversational filler (like "Here is the markdown..."). Just output the raw Markdown content.\n\nPage Text:\n${pageText}`;
+      try {
+        const formattedPage = await invoke<string>("orchestrate_agent", {
+          prompt: systemPrompt,
+          provider: llmProvider || "local",
+          model: llmModel || "",
+          apiKey: llmApiKey || null,
+          baseUrl: llmBaseUrl || null,
+          activeNoteId: null,
+        });
+        fullText += `# Page ${i}\n\n${formattedPage}\n\n`;
+      } catch (err) {
+        console.error(`AI formatting failed for page ${i}, falling back to raw text.`, err);
+        fullText += `# Page ${i} (Raw)\n\n${pageText}\n\n`;
+      }
+    } else {
+      fullText += `# Page ${i}\n\n${pageText}\n\n`;
+    }
   }
   return fullText;
 };
@@ -179,6 +206,12 @@ function App() {
     open: boolean;
     message: string;
   }>({ open: false, message: "" });
+
+  const [ingestModeDialog, setIngestModeDialog] = useState<{
+    open: boolean;
+    fileName: string;
+    onSelect: (mode: "text" | "ai") => void;
+  }>({ open: false, fileName: "", onSelect: () => {} });
 
   const showPrompt = (message: string, defaultValue?: string): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -1755,6 +1788,18 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIngestModeDialog({
+      open: true,
+      fileName: file.name,
+      onSelect: (mode) => {
+        executeSRDIngestion(file, mode);
+      },
+    });
+
+    e.target.value = "";
+  };
+
+  const executeSRDIngestion = async (file: File, mode: "text" | "ai") => {
     const sourceName = file.name.replace(/\.[^/.]+$/, "");
     const reader = new FileReader();
 
@@ -1764,7 +1809,19 @@ function App() {
         if (!arrayBuffer) return;
 
         try {
-          const content = await extractTextFromPdf(arrayBuffer);
+          if (mode === "ai") {
+            showAlert("Starting AI Markdown ingestion... Each page is being processed by your LLM. Please wait for completion.");
+          }
+
+          const content = await extractTextFromPdf(
+            arrayBuffer,
+            mode,
+            llmProvider,
+            llmModel,
+            llmApiKey,
+            llmBaseUrl
+          );
+
           invoke("ingest_srd_text", {
             category: "Reference",
             source: sourceName,
@@ -1776,46 +1833,65 @@ function App() {
                 setRules(loadedRules);
                 if (loadedRules.length > 0)
                   setSelectedRuleId(loadedRules[loadedRules.length - 1].id);
-                alert(
-                  `Successfully ingested "${file.name}" and generated local semantic vector search chunks!`,
+                showAlert(
+                  `Successfully ingested "${file.name}" with ${mode === "ai" ? "AI parsing" : "raw text extraction"} and generated local semantic vector search chunks!`,
                 );
               }
             })
             .catch((err) => {
               console.error("Failed to ingest SRD:", err);
-              alert("Error during SRD ingestion: " + err);
+              showAlert("Error during SRD ingestion: " + err);
             });
         } catch (err: any) {
           console.error("PDF Ingestion failed:", err);
-          alert("Failed to parse PDF: " + err.message);
+          showAlert("Failed to parse PDF: " + err.message);
         }
       };
       reader.readAsArrayBuffer(file);
     } else {
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        if (!content) return;
+      reader.onload = async (event) => {
+        const rawContent = event.target?.result as string;
+        if (!rawContent) return;
 
-        invoke("ingest_srd_text", {
-          category: "Reference",
-          source: sourceName,
-          content,
-        })
-          .then(() => invoke<RuleEntry[]>("load_rules"))
-          .then((loadedRules) => {
-            if (loadedRules) {
-              setRules(loadedRules);
-              if (loadedRules.length > 0)
-                setSelectedRuleId(loadedRules[loadedRules.length - 1].id);
-              alert(
-                `Successfully ingested "${file.name}" and generated local semantic vector search chunks!`,
-              );
-            }
+        try {
+          let content = rawContent;
+          if (mode === "ai") {
+            showAlert("Starting AI Markdown ingestion... Processing file content through your LLM.");
+            const systemPrompt = `You are a document parser. Format the following text into clean, structured Markdown. Reconstruct headers (#, ##, ###), lists, tables, and paragraphs where appropriate. Do NOT add conversational filler. Just output the raw Markdown content.\n\nText:\n${rawContent}`;
+            content = await invoke<string>("orchestrate_agent", {
+              prompt: systemPrompt,
+              provider: llmProvider || "local",
+              model: llmModel || "",
+              apiKey: llmApiKey || null,
+              baseUrl: llmBaseUrl || null,
+              activeNoteId: null,
+            });
+          }
+
+          invoke("ingest_srd_text", {
+            category: "Reference",
+            source: sourceName,
+            content,
           })
-          .catch((err) => {
-            console.error("Failed to ingest SRD:", err);
-            alert("Error during SRD ingestion: " + err);
-          });
+            .then(() => invoke<RuleEntry[]>("load_rules"))
+            .then((loadedRules) => {
+              if (loadedRules) {
+                setRules(loadedRules);
+                if (loadedRules.length > 0)
+                  setSelectedRuleId(loadedRules[loadedRules.length - 1].id);
+                showAlert(
+                  `Successfully ingested "${file.name}" with ${mode === "ai" ? "AI parsing" : "raw text"}!`,
+                );
+              }
+            })
+            .catch((err) => {
+              console.error("Failed to ingest SRD:", err);
+              showAlert("Error during SRD ingestion: " + err);
+            });
+        } catch (err: any) {
+          console.error("Ingestion failed:", err);
+          showAlert("Failed to ingest: " + err.message);
+        }
       };
       reader.readAsText(file);
     }
@@ -4727,6 +4803,123 @@ function App() {
                 }}
               >
                 OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ingestModeDialog.open && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => {
+            setIngestModeDialog((d) => ({ ...d, open: false }));
+          }}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              padding: "20px",
+              maxWidth: "400px",
+              width: "90%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "4px" }}>
+                Select Import Mode
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--muted)", lineHeight: 1.4 }}>
+                Choose how you want to ingest the rulebook file:
+                <div style={{ fontWeight: 600, marginTop: "6px", color: "var(--fg)" }}>
+                  {ingestModeDialog.fileName}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  ingestModeDialog.onSelect("text");
+                  setIngestModeDialog((d) => ({ ...d, open: false }));
+                }}
+                style={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  padding: "12px",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>Raw Layout-Preserving (Local)</span>
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  Quickly extracts text line-by-line using local layouts.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  ingestModeDialog.onSelect("ai");
+                  setIngestModeDialog((d) => ({ ...d, open: false }));
+                }}
+                style={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  padding: "12px",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontSize: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                }}
+              >
+                <span style={{ fontWeight: 600, color: "var(--accent)" }}>
+                  ✨ AI Markdown Parser (ML)
+                </span>
+                <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                  Uses your configured LLM provider page-by-page to format headers, lists, and tables.
+                </span>
+              </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setIngestModeDialog((d) => ({ ...d, open: false }))}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted)",
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Cancel
               </button>
             </div>
           </div>
