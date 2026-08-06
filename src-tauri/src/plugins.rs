@@ -1,3 +1,22 @@
+//! # JavaScript Plugin Host Architecture (Boa Engine)
+//!
+//! Loreweaver supports user-defined extensions via JavaScript plugins executed inside an
+//! embedded ECMAScript engine powered by [`boa_engine`].
+//!
+//! ## Architectural Principles
+//! 1. **Embedded Synchronous JS Sandbox**: Plugins run strictly within synchronous Boa `Context`s
+//!    without access to Node.js / browser APIs or direct file system access.
+//! 2. **Strict Permission Allow-List**: Plugins must declare explicit permissions in `manifest.json`.
+//!    Currently, only the `"hooks"` permission (`ALLOWED_PERMISSIONS`) is permitted.
+//! 3. **Per-Vault State Isolation**: State mutated by plugins (`globalThis.__state`) is serialized
+//!    to JSON and isolated per vault path in `PLUGIN_STATES`, preventing cross-vault state leakage.
+//! 4. **Resource Constraints & Safety Caps**:
+//!    - Maximum script size: 1 MiB (`MAX_SCRIPT_SIZE`).
+//!    - Maximum hook payload: 32 KiB.
+//!    - Loop iteration limit: 50,000 iterations per execution context to prevent infinite loops.
+//! 5. **Safe Injection**: Plugin state is parsed using `JSON.parse()` rather than string interpolation,
+//!    eliminating code injection vulnerabilities.
+
 use boa_engine::{value::JsValue, Context, Source};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -5,22 +24,29 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-/// Plugin System Host Architecture
-/// Evaluates Javascript plugin files inside isolated, synchronous Boa contexts.
-/// Restricts execution privileges exclusively to whitelisted hook callbacks.
-
-
+/// Represents metadata and script content for a loaded plugin.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PluginInfo {
+    /// Unique identifier for the plugin (e.g. `"dice-roller"`).
     pub id: String,
+    /// Human-readable display name.
     pub name: String,
+    /// Semantic version string.
     pub version: String,
+    /// Short description of plugin features.
     pub description: String,
+    /// Explicit permission requests declared in `manifest.json`.
     pub permissions: Vec<String>,
+    /// Raw JavaScript code loaded from the entry file (e.g. `index.js`).
     pub script_content: String,
+    /// Flag indicating whether the plugin is enabled for execution.
     pub active: bool,
 }
 
+/// Validates requested permissions against the host's strict allow-list.
+///
+/// Currently, only `"hooks"` is permitted. Any plugin requesting undeclared or unknown
+/// permissions will be rejected during discovery.
 fn validate_permissions(permissions: &[String]) -> Result<(), String> {
     const ALLOWED_PERMISSIONS: [&str; 1] = ["hooks"];
 
@@ -33,25 +59,37 @@ fn validate_permissions(permissions: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Checks whether a loaded plugin possesses a specific permission.
 fn has_permission(plugin: &PluginInfo, permission: &str) -> bool {
     plugin.permissions.iter().any(|value| value == permission)
 }
 
+/// Thread-safe process-wide storage for active plugin definitions.
 static ACTIVE_PLUGINS: OnceLock<Mutex<HashMap<String, PluginInfo>>> = OnceLock::new();
+
+/// Thread-safe process-wide storage for vault-scoped plugin state maps (`vault_path -> (plugin_id -> state_json)`).
 static PLUGIN_STATES: OnceLock<Mutex<HashMap<String, HashMap<String, String>>>> = OnceLock::new();
 
+/// Accessor for global active plugins registry.
 fn active_plugins() -> &'static Mutex<HashMap<String, PluginInfo>> {
     ACTIVE_PLUGINS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Accessor for global vault-scoped plugin state storage.
 fn plugin_states() -> &'static Mutex<HashMap<String, HashMap<String, String>>> {
     PLUGIN_STATES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Maximum plugin script size: 1 MiB.
+/// Maximum allowed size for a single plugin entry script (1 MiB).
 const MAX_SCRIPT_SIZE: usize = 1024 * 1024;
 
-/// Scans the plugins directory and loads all plugin scripts into active memory.
+/// Scans the specified plugins directory, loading and validating all plugins.
+///
+/// Discovery & Ingestion Steps:
+/// 1. Iterates subdirectories in `plugins_dir_str`.
+/// 2. Reads `manifest.json` and parses metadata via `load_single_plugin`.
+/// 3. Performs a dry-run JS compilation in a throwaway Boa `Context` (with a 50,000 loop iteration cap).
+/// 4. Registers validated plugins into global `ACTIVE_PLUGINS` and initializes vault state in `PLUGIN_STATES`.
 pub fn load_all_plugins(
     vault_path: &str,
     plugins_dir_str: &str,
@@ -107,6 +145,8 @@ pub fn load_all_plugins(
     Ok(loaded_plugins)
 }
 
+/// Reads a single plugin directory manifest and entry script.
+/// Validates permissions and checks script content length against `MAX_SCRIPT_SIZE`.
 fn load_single_plugin(plugin_dir: &Path, manifest_path: &Path) -> Result<PluginInfo, String> {
     let manifest_str = fs::read_to_string(manifest_path).map_err(|e| e.to_string())?;
     let manifest_json: serde_json::Value =
@@ -167,7 +207,17 @@ fn load_single_plugin(plugin_dir: &Path, manifest_path: &Path) -> Result<PluginI
     })
 }
 
-/// Executes a hook inside the sandboxed Boa JS context.
+/// Executes a plugin hook callback function inside an isolated Boa JavaScript runtime environment.
+///
+/// ### Execution Security & Lifecycle
+/// 1. **Permission Guard**: Verifies the plugin is registered and holds the `"hooks"` permission.
+/// 2. **Payload Safety Guard**: Enforces a 32 KiB cap on incoming `payload` text.
+/// 3. **Hook Name Sanitization**: Rejects non-alphanumeric/underscore hook names to prevent injection.
+/// 4. **State Hydration**: Retrieves JSON state for `(vault_path, plugin_id)` and sets `globalThis.__state` safely via `JSON.parse`.
+/// 5. **Context Setup**: Configures a fresh Boa `Context` with a 50,000 loop iteration limit.
+/// 6. **Function Calling**: Evaluates the script, extracts the target hook function, and calls it with `payload`.
+/// 7. **State Persistence**: Serializes `globalThis.__state` back to string via `JSON.stringify` and saves it in `PLUGIN_STATES`.
+/// 8. **Output Return**: Returns the string result returned by the JavaScript hook call.
 pub fn run_plugin_hook(
     vault_path: &str,
     plugin_id: &str,

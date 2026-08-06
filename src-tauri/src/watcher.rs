@@ -1,19 +1,35 @@
+//! # Directory Watcher & Vault Synchronization Pipeline
+//!
+//! This module provides real-time filesystem monitoring and automated SQLite index
+//! synchronization for user Campaign Vaults.
+//!
+//! ## Key Architectural Responsibilities
+//! 1. **Initial Full Directory Sync (`sync_entire_directory`)**: Performs a recursive walk over
+//!    the vault directory at startup to ingest Markdown (`.md`) and Canvas (`.canvas`) files,
+//!    upserting note records in SQLite, generating vector search embeddings (unless suppressed),
+//!    and purging orphaned DB entries for files deleted while the app was closed.
+//! 2. **Debounced Real-Time File Watching (`start_directory_watcher`)**: Uses cross-platform `notify`
+//!    file system notifications coupled with a background flusher thread. Rapid file write events
+//!    (e.g., auto-saves during typing) are coalesced over a 500ms window to reduce DB and CPU churn.
+//! 3. **Path & Frontmatter Metadata Extraction (`parse_markdown_file`, `parse_canvas_file`)**:
+//!    Parses YAML frontmatter, extracts custom titles or H1 header fallbacks, and cleans links.
+//! 4. **AI Indexing Opt-Out Scoping (`should_ai_index`)**: Enforces file-level frontmatter toggles
+//!    (`ai_index: false`) and tree-level `.noai` marker files to respect user privacy boundaries.
+
 use crate::db;
 use gray_matter::{engine::YAML, Matter};
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use tauri::Emitter;
-
-/// Directory Watcher & Syncing Pipeline
-/// Recursively monitors Campaign Vault directories for file additions, modifications, and deletions.
-/// Spawns background debouncing loops to process and update indexes in SQLite.
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tauri::Emitter;
 
+
+/// Sanitizes note title strings by stripping markdown links (`[Label](loreweaver-note:Target)`),
+/// brackets, parentheses, and wiki-link pipe aliases (`Target|Label`).
 fn clean_title(title: &str) -> String {
     let mut s = title.trim().to_string();
 
@@ -48,6 +64,11 @@ fn clean_title(title: &str) -> String {
     s.trim().to_string()
 }
 
+/// Evaluates whether a note file should be processed for semantic vector search embeddings.
+///
+/// Returns `false` if:
+/// 1. The note frontmatter explicitly contains `ai_index: false` (or `"false"` / `"0"`).
+/// 2. Any ancestor directory in the vault path contains a `.noai` marker file.
 pub fn should_ai_index(path: &Path, frontmatter: &HashMap<String, Value>) -> bool {
     // 1. Check frontmatter toggle (ai_index: false)
     if let Some(val) = frontmatter.get("ai_index") {
@@ -74,7 +95,12 @@ pub fn should_ai_index(path: &Path, frontmatter: &HashMap<String, Value>) -> boo
     true
 }
 
-/// Parses a Markdown file, extracts YAML frontmatter and H1 title.
+/// Parses a Markdown file using `gray_matter`, extracting YAML frontmatter and note content.
+///
+/// Title Determination Hierarchy:
+/// 1. `title` field in YAML frontmatter.
+/// 2. First H1 heading (`# Heading Title`) in raw content.
+/// 3. Filename stem fallback if neither is available.
 pub fn parse_markdown_file(
     path: &Path,
 ) -> Result<(String, String, HashMap<String, Value>), String> {
@@ -107,6 +133,8 @@ pub fn parse_markdown_file(
     Ok((title, parsed.content, frontmatter))
 }
 
+/// Parses an Obsidian-compatible `.canvas` file.
+/// Extracts filename as title and raw JSON text as content with a default `type: Canvas` frontmatter map.
 fn parse_canvas_file(path: &Path) -> Result<(String, String, HashMap<String, Value>), String> {
     let title = path
         .file_stem()
@@ -118,8 +146,14 @@ fn parse_canvas_file(path: &Path) -> Result<(String, String, HashMap<String, Val
     Ok((title, content, frontmatter))
 }
 
-/// Recursively scans and indexes a directory.
-/// After indexing existing files, removes any DB rows whose files no longer exist on disk.
+/// Recursively scans and indexes an entire vault directory into SQLite.
+///
+/// Workflow:
+/// 1. Walks `vault_path` recursively skipping `.trash` directories.
+/// 2. Ingests all `.md` and `.canvas` files into the `notes` table via `db::upsert_note`.
+/// 3. If AI vector indexing is permitted (`should_ai_index`), generates semantic embeddings via `crate::search::index_note_vectors`.
+/// 4. Compares disk files against SQLite records and purges DB rows for files removed from disk while offline.
+/// 5. Invalidates in-memory search caches.
 pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> Result<(), String> {
     let mut disk_paths: HashSet<String> = HashSet::new();
 
@@ -198,9 +232,14 @@ pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> 
     Ok(())
 }
 
-/// Spawns a filesystem watcher that runs in the background.
-/// Events are debounced: rapid successive events for the same file are
-/// coalesced into a single DB update after 500ms of quiet.
+/// Spawns a background filesystem watcher monitoring the active vault.
+///
+/// ### Architecture & Debouncing Strategy
+/// - Performs an initial synchronous directory walk (`sync_entire_directory`) prior to event registration.
+/// - Spawns a dedicated flusher thread (`std::thread::spawn`) that wakes every 500ms.
+/// - Collects raw filesystem events (`RecommendedWatcher`) into a shared `pending` queue (`Arc<Mutex<HashMap<PathBuf, (bool, Instant)>>>`).
+/// - Coalesces events: only processes files whose last event timestamp is older than 400ms.
+/// - On processing, invokes `process_file_event` to sync SQLite and emits a `vault-changed` event to the React frontend via Tauri IPC.
 pub fn start_directory_watcher(
     vault_path_str: String,
     conn: Arc<Mutex<rusqlite::Connection>>,
@@ -295,7 +334,11 @@ pub fn start_directory_watcher(
     Ok(watcher)
 }
 
-/// Process a single file event — parse, upsert/delete in DB, re-index vectors.
+/// Processes a single file change or deletion event.
+///
+/// Handlers:
+/// - Deletion (`is_remove` or `!path.exists()`): Removes note record from SQLite.
+/// - Creation / Modification: Parses note frontmatter/content, upserts SQLite record, updates AI search vectors (if allowed), invalidates search cache, and broadcasts `vault-changed` to frontend window.
 fn process_file_event(
     path: &Path,
     is_remove: bool,
