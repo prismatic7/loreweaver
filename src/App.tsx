@@ -136,6 +136,12 @@ const extractTextFromPdf = async (
 };
 
 function App() {
+  /**
+   * Monolithic React State Structure
+   * App.tsx hosts all top-level states for the campaign workspace to minimize prop drilling
+   * across heavy sub-components like the Canvas, Chat, and Editor.
+   * State is deeply tied to the currently loaded vault path.
+   */
   const [activeView, setActiveView] = useState<
     "dashboard" | "vault" | "rules" | "ai" | "settings" | "canvas" | "trash"
   >("dashboard");
@@ -186,6 +192,13 @@ function App() {
     path?: string;
     isRulebook?: boolean;
   } | null>(null);
+
+  /**
+   * Active Vault Path Tracking
+   * Safety constraint: all backend commands (save_note, load_notes, etc.) rely on the backend's
+   * internal thread-local vault state. The frontend `vaultPath` here is strictly for display
+   * and isolated caching (like Chat Messages) rather than providing path access privileges.
+   */
   const [vaultPath, setVaultPath] = useState("");
   const [trashedNotes, setTrashedNotes] = useState<CampaignNote[]>([]);
 
@@ -531,6 +544,12 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  /**
+   * Tauri `invoke` execution wrapper hooks
+   * Fetches fresh vault context from the backend state. Note that backend commands
+   * resolve contextual limits (like which SQLite DB to read from) securely on the Rust side
+   * rather than accepting path arguments from the frontend.
+   */
   const refreshVaultData = () => {
     invoke<CampaignNote[]>("load_notes")
       .then((loadedNotes) => {
