@@ -1,3 +1,38 @@
+//! # Loreweaver Rust Backend (`lib.rs`)
+//!
+//! Main entry point and Tauri v2 application bootstrapper for Loreweaver.
+//!
+//! ## Architectural Overview & Key Responsibilities
+//!
+//! 1. **Tauri Application Lifecycle (`run`)**:
+//!    - Initializes local-first application storage directories (`app_data_dir`, campaign vaults, plugins).
+//!    - Initializes SQLite persistence (`db::init_db`) and seeds default TTRPG rules (`db::seed_default_rules`).
+//!    - Spawns the real-time directory file watcher (`watcher::start_directory_watcher`).
+//!    - Launches background vector embedding initialization and indexing (`search::init_search_engine`).
+//!    - Exposes the Tauri IPC command interface (`tauri::generate_handler!`) for React frontend invocation.
+//!
+//! 2. **Shared State Management (`AppState`)**:
+//!    - Process-wide thread-safe state managed by Tauri and injected into command handlers via `state: State<AppState>`.
+//!    - Double-locking design (`Mutex<Arc<Mutex<rusqlite::Connection>>>`) allows background threads (file watcher,
+//!      vector indexing flusher) to execute concurrent database operations while permitting live vault switching.
+//!
+//! 3. **Tauri IPC Command Contract (`Result<T, String>`)**:
+//!    - All exposed command handlers (`#[tauri::command]`) return `Result<T, String>`.
+//!    - `Ok(T)` values automatically serialize into JSON to resolve JavaScript Promises on the React frontend.
+//!    - `Err(String)` error messages serialize into rejected Promises, enabling standard `try { await invoke(...) } catch (err)` handling.
+//!
+//! 4. **Security & Vault Boundary Validation (`validate_safe_path`)**:
+//!    - Strict path normalization and boundary checking prevents directory traversal attacks (`../`).
+//!    - Guarantees all filesystem I/O is strictly contained within the active campaign vault directory.
+//!
+//! 5. **Submodule Orchestration**:
+//!    - [`agent`]: Multi-provider AI LLM client integration, RAG prompt assembly, and agentic workflows.
+//!    - [`db`]: SQLite schema setup, note/rule metadata storage, and FTS5 lexical indexing.
+//!    - [`ingest`]: SRD rule text ingestion and markdown section chunking.
+//!    - [`plugins`]: Boa JavaScript engine host executing user-provided plugins in a restricted sandbox.
+//!    - [`search`]: Fastembed local vector search engine and cosine similarity ranking.
+//!    - [`watcher`]: Real-time notify file watcher, frontmatter parser, and auto-sync flusher.
+
 use base64::{engine::general_purpose, Engine as _};
 use notify::RecommendedWatcher;
 use rusqlite::params;
@@ -14,18 +49,33 @@ mod plugins;
 mod search;
 mod watcher;
 
-/// Tauri Bootstrapper & Command Registry
-/// Integrates all core modules (DB, watcher, AI agent, plugins, search)
-/// and exposes the Tauri IPC command interface.
-
 // --- App State ---
 
+/// Shared, thread-safe application state managed by Tauri (`app.manage(...)`).
+///
+/// Injected into Tauri command handlers via `state: State<AppState>`.
+///
+/// ### Multi-Threading & Locking Architecture
+/// - **Path Fields** (`db_path`, `vault_path`, `plugins_path`): Wrapped in `Mutex<String>` to permit live vault
+///   switching without requiring application restarts.
+/// - **Watcher Handle** (`watcher`): Wrapped in `Mutex<Option<RecommendedWatcher>>` to allow stopping and replacing
+///   the active file watcher when switching active campaign vaults.
+/// - **Database Handle** (`conn`): Uses double-mutex nesting (`Mutex<Arc<Mutex<rusqlite::Connection>>>`).
+///   - The outer `Mutex` allows replacing the database connection reference during vault switching.
+///   - The inner `Arc<Mutex<...>>` allows sharing the active SQLite handle safely across background watcher
+///     and vector-indexing threads.
 pub struct AppState {
+    /// Absolute filesystem path to the current campaign's SQLite database.
     pub db_path: Mutex<String>,
+    /// Absolute filesystem path to the active campaign vault root directory.
     pub vault_path: Mutex<String>,
+    /// Absolute filesystem path to the plugins directory.
     pub plugins_path: Mutex<String>,
+    /// Active directory file watcher handle monitoring vault markdown changes.
     pub watcher: Mutex<Option<RecommendedWatcher>>,
+    /// Thread-safe shared connection handle to the active SQLite database.
     pub conn: Mutex<Arc<Mutex<rusqlite::Connection>>>,
+    /// Root directory containing all campaign vault folders.
     pub campaigns_root: std::path::PathBuf,
 }
 
@@ -156,6 +206,10 @@ fn greet(name: &str) -> String {
 }
 
 /// Load all campaign notes from the local SQLite database.
+///
+/// ### IPC Error Contract
+/// Returns `Result<Vec<CampaignNote>, String>`. If locking the SQLite connection fails,
+/// the error is converted to a readable `String` which rejects the frontend Promise.
 #[tauri::command]
 fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
     let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
@@ -163,6 +217,14 @@ fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
     db::load_all_notes(&conn).map_err(|e| e.to_string())
 }
 
+/// Normalizes and validates that `note_path` stays strictly within `vault_path`.
+///
+/// ### Security & Directory Traversal Defense
+/// Prevents malicious paths (e.g., `../../etc/passwd`) from escaping the vault boundary.
+/// 1. Combines `vault_path` and `note_path`.
+/// 2. Iterates over path components using a `VecDeque` stack to resolve relative `.` and `..` segments.
+/// 3. Normalizes both the target path and vault path.
+/// 4. Enforces that `normalized.starts_with(&normalized_vault)`, returning an error if traversal is detected.
 fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::PathBuf, String> {
     let vault = std::path::Path::new(vault_path);
     let target = vault.join(note_path);
@@ -227,7 +289,7 @@ fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::Pa
     Ok(normalized)
 }
 
-/// Validates that `path` is inside the current vault's parent (campaigns) directory.
+/// Validates that `target_path` is inside the current vault's parent (campaigns) directory.
 /// Returns the canonicalized path on success.
 fn validate_campaigns_path(
     campaigns_root: &std::path::Path,
@@ -251,6 +313,7 @@ fn validate_campaigns_path(
     Ok(canonical_target)
 }
 
+/// Serializes YAML frontmatter and markdown body, writing the note file to disk.
 fn write_note_to_disk(
     file_path: &std::path::Path,
     content: &str,
@@ -275,8 +338,10 @@ fn write_note_to_disk(
     Ok(())
 }
 
-/// Save note directly to disk and upsert into SQLite immediately (the watcher
-/// will also fire, but the DB is already current so there's no stale read).
+/// Save note directly to disk and upsert into SQLite immediately.
+///
+/// Dual-writes to both filesystem and SQLite database so that subsequent queries
+/// (like `load_notes`) immediately reflect modifications without waiting for the watcher flusher.
 #[tauri::command]
 fn save_note(state: State<AppState>, note: CampaignNote) -> Result<(), String> {
     let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
@@ -2089,6 +2154,18 @@ fn execute_plugin_hook(
     plugins::run_plugin_hook(&vault_path, plugin_id, hook, payload)
 }
 
+/// Main entry point and bootstrapper for the Tauri v2 desktop application.
+///
+/// ### Bootstrapping Sequence
+/// 1. **Local Storage Setup**: Resolves OS-specific `app_data_dir` and creates `campaigns/default` and `plugins` directories.
+/// 2. **Sample Plugin & Note Seeding**: Seeds a default `dice-roller` JS plugin and starter worldbuilding notes if uninitialized.
+/// 3. **Database Initialization**: Connects SQLite (`db::init_db`) and seeds default TTRPG SRD rulebook entries (`db::seed_default_rules`).
+/// 4. **Directory Watcher**: Spawns real-time `notify` filesystem watcher (`watcher::start_directory_watcher`).
+/// 5. **Background Search Thread**: Spawns a background thread to load fastembed models (`search::init_search_engine`),
+///    vector-index existing notes & rules, perform directory sync, and purge expired trash.
+/// 6. **State Injection**: Injects initialized `AppState` into Tauri runtime (`app.manage(...)`).
+/// 7. **IPC Command Registration**: Registers all exposed `#[tauri::command]` functions via `tauri::generate_handler![...]`.
+/// 8. **Event Loop Launch**: Hands off execution to the Tauri window runtime with `tauri::generate_context!()`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
