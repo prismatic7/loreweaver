@@ -5,27 +5,91 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokenizers::Tokenizer;
 
-/// Hybrid Search Indexer & Matcher
-/// Blends classic full-text keyword indexing (SQLite FTS5) with dense vector search.
-/// Vector embeddings are calculated via ONNX Runtime and ranked using cosine dot-products.
+/// # Hybrid Search Engine & Local Vector Indexer
+///
+/// This module implements Loreweaver's hybrid search engine, blending lexical
+/// full-text keyword indexing (SQLite FTS5) with dense semantic vector search
+/// (local ONNX embeddings via `all-MiniLM-L6-v2` or remote OpenAI/Gemini models).
+///
+/// ## Architectural Overview
+///
+/// ```text
+///                     +---------------------------------------+
+///                     |         Query String Input            |
+///                     +-------------------+-------------------+
+///                                         |
+///                     +-------------------+-------------------+
+///                     |                                       |
+///                     v                                       v
+///         +------------------------+             +------------------------+
+///         |   SQLite FTS5 Match    |             | Vector Embedding Model |
+///         | (Lexical BM25 ranking) |             |  (384-dim normalized)  |
+///         +-----------+------------+             +-----------+------------+
+///                     |                                       |
+///           Score * 0.3 (weight)                    Score * 0.7 (weight)
+///                     |                                       |
+///                     v                                       v
+///         +-----------------------------------------------------------+
+///         |         Hybrid Score Fusion & Result Deduplication        |
+///         +-----------------------------------------------------------+
+/// ```
+///
+/// ### Key Architectural Concepts
+///
+/// 1. **Lexical Search (SQLite FTS5):** Performs fast string/prefix keyword matching
+///    using SQLite's built-in Full Text Search 5 extension. Scores are weighted by 0.3.
+/// 2. **Dense Vector Search (Cosine Similarity):** Generates 384-dimensional float
+///    embeddings for text chunks, normalizing vectors to unit length ($\|v\|_2 = 1.0$).
+///    At query time, cosine similarity is computed efficiently via vector dot products ($A \cdot B$).
+///    Vector similarity scores above cutoff threshold 0.4 are weighted by 0.7.
+/// 3. **Local ONNX Neural Inference:** Uses `ort` (ONNX Runtime) to execute the
+///    `all-MiniLM-L6-v2` sentence-transformer model directly on device without external API dependencies.
+/// 4. **Sliding Window Chunking:** Splits long campaign notes and rules into ~120-token chunks
+///    with a 20-token overlap window (~480 chars with ~80 char overlap) to preserve semantic
+///    context across chunk boundaries.
+/// 5. **Thread-Safe In-Memory Vector Cache:** Loads stored byte BLOB vectors from SQLite into an `Arc<ChunkCache>`
+///    guarded by a `Mutex<Option<...>>` (`OnceLock`). When notes or rules are re-indexed,
+///    `invalidate_cache()` clears the cache so subsequent queries fetch updated vectors.
+/// 6. **Byte Serialization in SQLite BLOBs:** 384-dimensional float arrays (`Vec<f32>`) are stored
+///    as 1536 raw little-endian IEEE-754 bytes (`384 * 4 bytes`) in SQLite BLOB columns for compact,
+///    fast vector persistence without JSON parsing overhead.
 
 // --- Global Search Engine State ---
 
+/// Holds the loaded ONNX Runtime session and HuggingFace tokenization engine.
+///
+/// - `session`: Compiled `ort::session::Session` running `all-MiniLM-L6-v2` ONNX graph.
+/// - `tokenizer`: HuggingFace `Tokenizer` compiled from `tokenizer.json` for WordPiece BPE encoding.
 pub struct SearchEngine {
     pub session: Session,
     pub tokenizer: Tokenizer,
 }
 
+/// Global static singleton holding the active `SearchEngine` wrapped in a thread-safe `Mutex`.
 static ENGINE: OnceLock<Mutex<Option<SearchEngine>>> = OnceLock::new();
+
+/// Global static storing the active SQLite database path for embedding provider lookups.
 static DB_PATH: OnceLock<String> = OnceLock::new();
 
+/// In-memory cache holding pre-extracted vector chunks for notes and rules.
+///
+/// Avoids repeatedly querying raw SQLite BLOB columns and deserializing little-endian
+/// byte arrays (`Vec<u8>` -> `Vec<f32>`) during interactive search query evaluation.
+///
+/// Tuple format for `note_chunks`: `(chunk_id, note_id, embedding_vec, chunk_text, title, path)`
+/// Tuple format for `rule_chunks`: `(chunk_id, rule_id, embedding_vec, chunk_text, title, source)`
 pub struct ChunkCache {
     pub note_chunks: Vec<(String, String, Vec<f32>, String, String, String)>,
     pub rule_chunks: Vec<(String, String, Vec<f32>, String, String, String)>,
 }
 
+/// Global static storing the cached `ChunkCache` wrapped in `Arc` for lock-free read access after creation.
 static CACHE: OnceLock<Mutex<Option<Arc<ChunkCache>>>> = OnceLock::new();
 
+/// Evicts the in-memory vector chunk cache.
+///
+/// Must be called whenever notes or rules are added, edited, re-indexed, or removed,
+/// forcing the next `hybrid_query` call to re-query SQLite BLOBs and rebuild `ChunkCache`.
 pub fn invalidate_cache() {
     if let Some(mutex) = CACHE.get() {
         let mut guard = mutex.lock().unwrap_or_else(|e| e.into_inner());
@@ -33,6 +97,10 @@ pub fn invalidate_cache() {
     }
 }
 
+/// Retrieves the thread-safe `Arc<ChunkCache>`, initializing it from SQLite if empty.
+///
+/// Queries `db::get_all_note_chunks` and `db::get_all_rule_chunks`, deserializing SQLite BLOB byte arrays
+/// into `Vec<f32>` embedding vectors.
 fn get_cache(conn: &rusqlite::Connection) -> Result<Arc<ChunkCache>, String> {
     let mut guard = CACHE
         .get_or_init(|| Mutex::new(None))
@@ -49,12 +117,11 @@ fn get_cache(conn: &rusqlite::Connection) -> Result<Arc<ChunkCache>, String> {
     Ok(guard.as_ref().unwrap().clone())
 }
 
-
 fn engine() -> &'static Mutex<Option<SearchEngine>> {
     ENGINE.get_or_init(|| Mutex::new(None))
 }
 
-/// Set the current DB path for embedding provider lookups.
+/// Sets the current DB path for embedding provider preference lookups.
 /// Called during search engine initialization.
 pub fn set_db_path(path: &str) {
     let _ = DB_PATH.set(path.to_string());
@@ -67,7 +134,13 @@ fn get_db_path() -> String {
         .unwrap_or_else(|| "loreweaver.db".to_string())
 }
 
-/// Download standard MiniLM vector model files on start if not already present.
+/// Initializes local search engine neural assets on startup.
+///
+/// 1. Resolves local model directory at `<app_data_path>/models/all-MiniLM-L6-v2`.
+/// 2. Downloads `model.onnx` and `tokenizer.json` from Hugging Face if not locally present.
+/// 3. Loads HuggingFace tokenizer from `tokenizer.json`.
+/// 4. Instantiates ONNX Runtime `Session` from ONNX model file.
+/// 5. Stores initialized engine in `ENGINE` singleton `OnceLock`.
 pub fn init_search_engine(app_data_path: &str) -> Result<(), String> {
     // Check if dynamic libraries for ONNX need initialization
     #[cfg(target_os = "macos")]
@@ -111,6 +184,7 @@ pub fn init_search_engine(app_data_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Helper utility downloading a remote file over HTTP via `ureq` and streaming to local disk.
 fn download_file(url: &str, dest_path: &Path) -> Result<(), String> {
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -129,11 +203,12 @@ fn download_file(url: &str, dest_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Generates a normalized embedding vector for a string.
-/// If embed_provider is set to "openai" or "gemini" in settings, uses the remote API.
-/// Otherwise uses the local ONNX model.
+/// Entry point for embedding generation.
+///
+/// Dynamically routes to remote provider (OpenAI `text-embedding-3-small` or Gemini `text-embedding-004`)
+/// if configured in SQLite database settings (`embed_provider`), falling back to local ONNX execution.
 pub fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
-    // Check if a remote embedding provider is configured
+    // Check if a remote embedding provider is configured in database settings
     let db_path = get_db_path();
     if let Ok(conn) = db::init_db(&db_path) {
         if let Ok(Some(provider)) = db::get_setting(&conn, "embed_provider") {
@@ -169,11 +244,12 @@ pub fn generate_embedding(text: &str) -> Result<Vec<f32>, String> {
         }
     }
 
-    // Fall back to local ONNX model
+    // Fall back to local ONNX model execution
     generate_embedding_local(text)
 }
 
-/// Generate embedding using OpenAI-compatible API.
+/// Generates an embedding vector using an OpenAI-compatible REST API endpoint (`/v1/embeddings`).
+/// L2-normalizes output vector before returning.
 fn generate_embedding_openai(
     text: &str,
     api_key: &str,
@@ -212,7 +288,7 @@ fn generate_embedding_openai(
         return Err("OpenAI returned empty embedding".to_string());
     }
 
-    // L2 normalize
+    // L2 normalize vector so dot products correspond to cosine similarities
     let mut norm = 0.0f32;
     for &val in &embedding {
         norm += val * val;
@@ -229,7 +305,8 @@ fn generate_embedding_openai(
     Ok(embedding)
 }
 
-/// Generate embedding using Google Gemini API.
+/// Generates an embedding vector using Google Gemini REST API (`embedContent`).
+/// L2-normalizes output vector before returning.
 fn generate_embedding_gemini(text: &str, api_key: &str, model: &str) -> Result<Vec<f32>, String> {
     let url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:embedContent",
@@ -264,7 +341,7 @@ fn generate_embedding_gemini(text: &str, api_key: &str, model: &str) -> Result<V
         return Err("Gemini returned empty embedding".to_string());
     }
 
-    // L2 normalize
+    // L2 normalize vector so dot products correspond to cosine similarities
     let mut norm = 0.0f32;
     for &val in &embedding {
         norm += val * val;
@@ -281,14 +358,21 @@ fn generate_embedding_gemini(text: &str, api_key: &str, model: &str) -> Result<V
     Ok(embedding)
 }
 
-/// Generates a normalized 384-dimensional embedding vector using the local ONNX model.
+/// Generates a normalized 384-dimensional float vector using the local ONNX `all-MiniLM-L6-v2` transformer model.
+///
+/// ### Local Inference Pipeline:
+/// 1. **Tokenization:** Converts input text into WordPiece BPE token IDs, attention mask, and token type IDs.
+/// 2. **Tensor Preparation:** Constructs 2D input tensors of shape `[1, sequence_length]`.
+/// 3. **ONNX Model Inference:** Evaluates session model, extracting `last_hidden_state` tensor of shape `[1, sequence_length, 384]`.
+/// 4. **Mean Pooling:** Sums hidden state vectors across valid non-padded tokens (`attention_mask == 1`) and computes arithmetic mean.
+/// 5. **L2 Normalization:** Divides embedding vector by its Euclidean norm $\|v\|_2 = \sqrt{\sum v_i^2}$, ensuring vector has unit length.
 fn generate_embedding_local(text: &str) -> Result<Vec<f32>, String> {
     let mut engine_guard = engine().lock().unwrap_or_else(|e| e.into_inner());
     let engine = engine_guard
         .as_mut()
         .ok_or("Search engine not initialized")?;
 
-    // Tokenize
+    // Step 1: Tokenize input text using HuggingFace Tokenizer
     let encoding = engine
         .tokenizer
         .encode(text, true)
@@ -308,7 +392,7 @@ fn generate_embedding_local(text: &str) -> Result<Vec<f32>, String> {
 
     let seq_len = input_ids.len();
 
-    // Run inference using tuple shape/data representations to bypass ndarray conflicts
+    // Step 2 & 3: Run ONNX inference using tuple shape/data representations `[1, seq_len]`
     let outputs = engine.session.run(inputs![
         "input_ids" => ort::value::Tensor::from_array((vec![1usize, seq_len], input_ids)).map_err(|e| e.to_string())?,
         "attention_mask" => ort::value::Tensor::from_array((vec![1usize, seq_len], attention_mask.clone())).map_err(|e| e.to_string())?,
@@ -323,7 +407,7 @@ fn generate_embedding_local(text: &str) -> Result<Vec<f32>, String> {
         .try_extract_tensor::<f32>()
         .map_err(|e| format!("Tensor extraction error: {:?}", e))?;
 
-    // Mean Pooling over attention mask tokens
+    // Step 4: Mean Pooling over non-padded tokens (attention_mask == 1)
     let mut sum_embedding = vec![0.0f32; 384];
     let mut count = 0.0f32;
 
@@ -343,7 +427,7 @@ fn generate_embedding_local(text: &str) -> Result<Vec<f32>, String> {
         }
     }
 
-    // Cosine similarity normalization (L2 norm)
+    // Step 5: L2 Normalization (unit length conversion for fast cosine dot products)
     let mut norm = 0.0f32;
     for &val in &embedding {
         norm += val * val;
@@ -359,11 +443,12 @@ fn generate_embedding_local(text: &str) -> Result<Vec<f32>, String> {
     Ok(embedding)
 }
 
-/// Chunking logic for rules and campaign notes.
+/// Splits text into overlapping sliding-window chunks for vector embedding generation.
 ///
-/// Uses character-based chunking with approximate token sizing (~4 chars/token)
-/// to avoid BPE decode artifacts from arbitrary token window slicing.
-/// Falls back gracefully if the BPE tokenizer is unavailable.
+/// Uses character-based windowing approximating ~4 characters per token for English text
+/// (e.g. 120 tokens ~ 480 characters, 20 tokens overlap ~ 80 characters).
+///
+/// Overlap ensures semantic continuity across chunk boundaries, preventing split phrases or terms from losing context.
 pub fn chunk_text(text: &str, chunk_size_tokens: usize, overlap_tokens: usize) -> Vec<String> {
     // Approximate 4 characters per token for English text
     let char_chunk_size = chunk_size_tokens * 4;
@@ -372,6 +457,8 @@ pub fn chunk_text(text: &str, chunk_size_tokens: usize, overlap_tokens: usize) -
 }
 
 /// Simple character-based chunking fallback when the BPE tokenizer is unavailable.
+///
+/// Advances window by `chunk_size - overlap` characters per step, preserving contiguous text segments.
 fn chunk_text_by_chars(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     if chars.len() <= chunk_size {
@@ -394,7 +481,13 @@ fn chunk_text_by_chars(text: &str, chunk_size: usize, overlap: usize) -> Vec<Str
     chunks
 }
 
-/// Chunks and indexes a note into the vector database.
+/// Chunks and indexes a single campaign note into SQLite vector tables.
+///
+/// 1. Clears existing chunks for `note_id`.
+/// 2. Splits content into 120-token chunks with 20-token overlap.
+/// 3. Computes 384-dimensional vector embedding for each chunk (or 0-vector fallback if model unavailable).
+/// 4. Inserts chunk text & binary byte-blob embedding into SQLite `note_chunks` table.
+/// 5. Evicts `ChunkCache` so new note vectors are available for search.
 pub fn index_note_vectors(
     conn: &rusqlite::Connection,
     note_id: &str,
@@ -402,7 +495,7 @@ pub fn index_note_vectors(
 ) -> Result<(), String> {
     db::clear_note_chunks(conn, note_id).map_err(|e| e.to_string())?;
 
-    // Split note content into paragraphs/chunks
+    // Split note content into paragraphs/chunks using sliding window
     let chunks = chunk_text(content, 120, 20);
 
     for chunk in chunks {
@@ -433,17 +526,26 @@ pub fn index_note_vectors(
     Ok(())
 }
 
-/// Performs a hybrid similarity ranking over notes and rules chunks.
-/// Combines FTS5 keyword search with vector similarity search.
+/// Executes a hybrid search query blending FTS5 lexical keyword matching with vector similarity.
+///
+/// ### Hybrid Search Scoring Strategy:
+/// 1. **FTS5 Keyword Match:** Queries SQLite FTS5 index for notes/rules matching `query_text`.
+///    Raw FTS match scores are weighted by **0.3** (`score = fts_score * 0.3`).
+/// 2. **Vector Similarity Match:** Generates a 384-dim query embedding vector and compares it
+///    against cached chunk embeddings using cosine dot product ($A \cdot B$).
+///    Hits exceeding similarity threshold **0.4** are weighted by **0.7** (`score = cosine_score * 0.7`).
+/// 3. **Score Fusion & Deduplication:** Aggregates hits by document key (`note:title` or `rule:title`).
+///    If a document matches both FTS5 and vector search, the higher weighted score is preserved.
+/// 4. **Sorting:** Returns deduplicated results ordered by final composite score descending.
 pub fn hybrid_query(
     conn: &rusqlite::Connection,
     query_text: &str,
     category: &str,
 ) -> Result<Vec<super::SearchResult>, String> {
-    // Collect results: key = "type:title" -> (SearchResult, has_fts, has_vector)
+    // Collect results: key = "type:title" -> SearchResult
     let mut best_results: HashMap<String, super::SearchResult> = HashMap::new();
 
-    // --- FTS5 Keyword Search ---
+    // --- Phase 1: FTS5 Keyword Search (Lexical Matching) ---
     if category == "all" || category == "notes" {
         if let Ok(fts_results) = db::fts_search_notes(&conn, query_text, 20) {
             for (note_id, title, snippet, fts_score) in fts_results {
@@ -457,7 +559,7 @@ pub fn hybrid_query(
                     .unwrap_or_else(|_| note_id.clone());
 
                 let key = format!("note:{}", title);
-                let score = fts_score * 0.3;
+                let score = fts_score * 0.3; // Lexical score component weight
                 match best_results.get(&key) {
                     Some(existing) if existing.score >= score => {}
                     _ => {
@@ -481,7 +583,7 @@ pub fn hybrid_query(
         if let Ok(fts_results) = db::fts_search_rules(&conn, query_text, 20) {
             for (rule_id, title, snippet, fts_score) in fts_results {
                 let key = format!("rule:{}", title);
-                let score = fts_score * 0.3;
+                let score = fts_score * 0.3; // Lexical score component weight
                 match best_results.get(&key) {
                     Some(existing) if existing.score >= score => {}
                     _ => {
@@ -501,7 +603,7 @@ pub fn hybrid_query(
         }
     }
 
-    // --- Vector Similarity Search ---
+    // --- Phase 2: Vector Similarity Search (Semantic Matching) ---
     let query_vector = match generate_embedding(query_text) {
         Ok(v) => v,
         Err(e) => {
@@ -522,7 +624,7 @@ pub fn hybrid_query(
 
     let cache = get_cache(conn)?;
 
-    // Query Notes Chunks (vector cache)
+    // Query Notes Chunks (vector cache dot-product evaluation)
     if category == "all" || category == "notes" {
         for (_chunk_id, _note_id, chunk_embedding, chunk_text, title, path) in &cache.note_chunks {
             let mut score = 0.0f32;
@@ -533,7 +635,7 @@ pub fn hybrid_query(
 
             if score > 0.4 {
                 let key = format!("note:{}", title);
-                let combined_score = score * 0.7;
+                let combined_score = score * 0.7; // Dense semantic score component weight
                 match best_results.get(&key) {
                     Some(existing) if existing.score >= combined_score => {}
                     _ => {
@@ -553,7 +655,7 @@ pub fn hybrid_query(
         }
     }
 
-    // Query Rules Chunks (vector cache)
+    // Query Rules Chunks (vector cache dot-product evaluation)
     if category == "all" || category == "rules" {
         for (_chunk_id, rule_id, chunk_embedding, chunk_text, title, source) in &cache.rule_chunks {
             let mut score = 0.0f32;
@@ -564,7 +666,7 @@ pub fn hybrid_query(
 
             if score > 0.4 {
                 let key = format!("rule:{}", title);
-                let combined_score = score * 0.7;
+                let combined_score = score * 0.7; // Dense semantic score component weight
                 match best_results.get(&key) {
                     Some(existing) if existing.score >= combined_score => {}
                     _ => {
@@ -584,6 +686,7 @@ pub fn hybrid_query(
         }
     }
 
+    // --- Phase 3: Result Consolidation & Ranking ---
     let mut final_results: Vec<super::SearchResult> = best_results.into_values().collect();
     final_results.sort_by(|a, b| {
         b.score
@@ -594,7 +697,8 @@ pub fn hybrid_query(
     Ok(final_results)
 }
 
-/// Chunks and indexes all rules in the database.
+/// Chunks and indexes all rules in the database into SQLite `rule_chunks` table.
+/// Evicts `ChunkCache` upon completion.
 pub fn index_all_rules_vectors(conn: &rusqlite::Connection) -> Result<(), String> {
     let mut stmt = conn
         .prepare("SELECT id, content FROM rules")
