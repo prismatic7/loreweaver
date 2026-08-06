@@ -3,18 +3,42 @@ use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// Database Initialization
-/// Creates structured SQLite tables for Notes, Rules, Settings, and Vector Chunks.
-/// Enables Write-Ahead Logging (WAL) and foreign keys for high performance and integrity.
+/// Database Initialization & Persistence Architecture
+///
+/// Loreweaver uses an embedded SQLite database managed via `rusqlite` to store structured campaign
+/// notes, system rules, application configuration settings, and binary vector embeddings for hybrid search.
+///
+/// ### Core Architectural Concepts:
+/// - **Write-Ahead Logging (WAL Mode)**: Enabled via `PRAGMA journal_mode = WAL;`. In standard rollback journal mode,
+///   write operations acquire an exclusive lock that blocks all readers. WAL mode writes changes to a separate `-wal`
+///   sidecar file first while allowing concurrent readers to access the main database file. This ensures UI queries
+///   remain snappy and non-blocking even when background file watching or batch indexing jobs commit updates.
+/// - **Busy Timeout**: Configured via `conn.busy_timeout(...)`. When SQLite encounters a temporary table or database
+///   lock under concurrent access, it automatically waits and retries for up to 5000ms instead of immediately failing
+///   with a `SQLITE_BUSY` error.
+/// - **Foreign Key Constraints (`PRAGMA foreign_keys = ON;`)**: SQLite has foreign keys disabled by default for legacy
+///   backward compatibility. Explicitly executing `PRAGMA foreign_keys = ON;` enforces referential integrity across all
+///   table relationships (such as note metadata and vector chunk parent keys).
+/// - **Cascading Deletes (`ON DELETE CASCADE`)**: Configured on foreign keys (`note_metadata` -> `notes`,
+///   `note_chunks` -> `notes`, `rule_chunks` -> `rules`). When a parent note or rule row is deleted, SQLite automatically
+///   purges all associated metadata rows and vector embedding chunks in a single atomic transaction, preventing
+///   orphaned records without requiring verbose manual deletion logic.
+/// - **Dynamic Schema Migrations**: Safe, lightweight inline migration checks inspect table schema metadata at runtime
+///   (e.g., using `PRAGMA table_info(rules)` to detect if new columns like `path` exist) and issue `ALTER TABLE`
+///   modifications if missing. This pattern guarantees backward compatibility across application updates without
+///   requiring full migration framework overhead for simple schema evolutions.
 pub fn init_db(db_path: &str) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
-    // Enable foreign keys, set WAL journal mode and busy timeout
+    // 1. Database Configuration Pragmas:
+    // Enforce foreign key constraints, set WAL journal mode for non-blocking concurrent reads,
+    // and configure a 5-second busy timeout for lock resolution.
     conn.execute("PRAGMA foreign_keys = ON;", [])?;
     conn.pragma_update(None, "journal_mode", &"WAL")?;
     conn.busy_timeout(std::time::Duration::from_millis(5000))?;
 
-    // Create notes table
+    // 2. Primary Notes Table:
+    // Stores core campaign note metadata and raw markdown body content indexed by unique file path.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS notes (
             id TEXT PRIMARY KEY,
@@ -26,7 +50,10 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
-    // Create note frontmatter metadata table
+    // 3. Note Metadata Table:
+    // Stores key-value frontmatter attributes extracted from notes.
+    // Demonstrates Foreign Keys & Cascading Deletes: ON DELETE CASCADE automatically purges metadata
+    // rows when the parent note is removed from the `notes` table.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS note_metadata (
             id TEXT PRIMARY KEY,
@@ -39,7 +66,8 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
-    // Create rules table
+    // 4. Rules Reference Table:
+    // Stores game mechanics, SRD content, and campaign rules indexed by category and source.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rules (
             id TEXT PRIMARY KEY,
@@ -52,7 +80,9 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
-    // Migration: ensure `rules` table has `path` column
+    // 5. Dynamic Schema Migration Check:
+    // Inspects `rules` table columns via `PRAGMA table_info(rules)`. If a legacy database is loaded
+    // missing the `path` column, dynamically appends it with ALTER TABLE to preserve backward compatibility.
     let has_path_col: bool = conn
         .prepare("PRAGMA table_info(rules);")?
         .query_map([], |row| {
@@ -65,8 +95,9 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         let _ = conn.execute("ALTER TABLE rules ADD COLUMN path TEXT NOT NULL DEFAULT '';", []);
     }
 
-
-    // Create note chunks for vector search
+    // 6. Vector Chunk Storage Tables:
+    // Stores segmented note text snippets alongside binary float array vector embeddings (BLOBs).
+    // Configured with ON DELETE CASCADE to automatically clean up vectors when notes/rules are deleted.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS note_chunks (
             id TEXT PRIMARY KEY,
@@ -78,7 +109,6 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
-    // Create rule chunks for vector search
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rule_chunks (
             id TEXT PRIMARY KEY,
@@ -90,7 +120,8 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
-    // Create settings table
+    // 7. Application Settings Table:
+    // Key-value store for app configuration, selected AI models, prompt templates, and active settings.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,
@@ -99,7 +130,8 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
-    // Create FTS5 virtual tables for high-performance keyword search
+    // 8. FTS5 Virtual Tables for Full-Text Search:
+    // High-performance SQLite FTS5 index structures for fast full-text keyword matching and BM25 ranking.
     let _ = conn.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
             note_id UNINDEXED,

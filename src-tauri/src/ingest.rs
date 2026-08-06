@@ -4,10 +4,25 @@ use rusqlite::params;
 use uuid::Uuid;
 
 /// SRD Ingestion & Parsing Engine
-/// Iterates over raw Markdown rulebooks, parses and chunks headers (#, ##, ###),
-/// and generates indexing embeddings in the SQLite rules reference tables.
+///
+/// Converts raw Markdown system reference documents (SRD) or campaign rulebooks into structured database
+/// records and vector embeddings for hybrid retrieval.
+///
+/// ### Core Architectural Concepts:
+/// - **SRD Ingestion & Parsing Engine**: Automated pipeline for turning monolithic markdown rulebooks into
+///   discrete queryable rules and searchable vector chunks stored in SQLite.
+/// - **Header-Based Chunk Split Parsing (`#`, `##`, `###`)**: Line-by-line scanning detects Markdown header syntax
+///   (`#`, `##`, `###`). The parser partitions continuous text into distinct sections based on header boundaries,
+///   using the header text as the rule title. This creates granular topic entries (e.g., individual spell or action rules)
+///   rather than storing unsegmented multi-page documents.
+/// - **Chunk Overlapping Windows**: Each parsed section is segmented into vector search chunks using a sliding window
+///   approach (`search::chunk_text(content, 120, 20)`). Specifying 120 words per chunk with a 20-word overlap preserves
+///   context across boundaries, preventing vital rules or keywords from being cut off mid-sentence.
+/// - **Database Index Embedding Insertion**: Text chunks are passed to `search::generate_embedding(...)` to derive
+///   384-dimensional vector representations. The vector and chunk text are inserted into SQLite (`rule_chunks`). If
+///   embedding generation fails, a zero-filled vector fallback is saved to ensure database consistency without losing chunk records.
 
-/// Ingests raw markdown text content directly.
+/// Ingests raw markdown text content directly, parsing header-delimited sections into structured rule entries.
 pub fn ingest_markdown_text(
     conn: &rusqlite::Connection,
     content: &str,
@@ -22,7 +37,9 @@ pub fn ingest_markdown_text(
     let mut current_title = format!("{} Introduction", source);
     let mut current_body = Vec::new();
 
-    // Iterate through lines, split sections by headers
+    // 1. Header-Based Chunk Split Parsing:
+    // Scans markdown line-by-line. When a header line starting with `#`, `##`, or `###` is encountered,
+    // the accumulated text lines in `current_body` are finalized and saved as a discrete rule entry.
     for line in content.lines() {
         if line.starts_with("# ") || line.starts_with("## ") || line.starts_with("### ") {
             // Save the previous section
@@ -32,7 +49,7 @@ pub fn ingest_markdown_text(
             }
             current_body.clear();
 
-            // Set new section title
+            // Set new section title from header text
             current_title = line.trim_start_matches('#').trim().to_string();
         } else {
             current_body.push(line);
@@ -45,11 +62,13 @@ pub fn ingest_markdown_text(
         save_rule_entry(&conn, &current_title, category, source, &section_text)?;
     }
 
+    // Invalidate search engine memory caches so new rules take effect immediately
     search::invalidate_cache();
     println!("SRD text content ingestion complete!");
     Ok(())
 }
 
+/// Helper function to save a single parsed rule section and compute its vector embedding chunks.
 fn save_rule_entry(
     conn: &rusqlite::Connection,
     title: &str,
@@ -65,7 +84,9 @@ fn save_rule_entry(
     )
     .map_err(|e| e.to_string())?;
 
-    // Create vector chunks for this rule
+    // 2. Chunk Overlapping Windows & 3. Database Index Embedding Insertion:
+    // Break section text into 120-word windows with 20-word overlap (`search::chunk_text`).
+    // Generate 384-dimensional embeddings for each chunk and insert into `rule_chunks`.
     let chunks = search::chunk_text(content, 120, 20);
     for chunk in chunks {
         if chunk.trim().is_empty() {
@@ -79,6 +100,7 @@ fn save_rule_entry(
             }
             Err(e) => {
                 eprintln!("Could not generate rule embedding: {:?}", e);
+                // Zero-filled fallback vector insertion to ensure record consistency
                 let empty_emb = vec![0.0f32; 384];
                 db::insert_rule_chunk(conn, &rule_id, &chunk, &empty_emb)
                     .map_err(|e| e.to_string())?;
