@@ -74,6 +74,22 @@ export interface CampaignVaultViewProps {
   onSelectCanvas: (canvasPath: string) => void;
 }
 
+/**
+ * CampaignVaultView Component
+ * 
+ * Renders the primary filesystem-first tree navigation for the campaign vault.
+ * 
+ * Educational Notes:
+ * - Tree Filesystem-First Rendering: Notes are grouped by their physical folder paths on disk. 
+ *   The component relies on the `notesByFolder` map to render a collapsible tree structure.
+ * - Custom React Action Confirmation Modals: Destructive actions like trashing a note do not 
+ *   use native `window.confirm()` as per project rules. They delegate to `handleTrashNote`, 
+ *   which should trigger a custom React overlay modal.
+ * - Trash/Restore Process: Moving notes to the trash delegates path operations to the backend, 
+ *   abstracting away direct filesystem deletion from the frontend view.
+ * - Cross-Vault Scoping Constraint: All workspace access (e.g., tree rendering and filesystem operations) 
+ *   must be strictly scoped by the active campaign vault path to prevent cross-vault data leaks.
+ */
 export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   activeView,
   notesByFolder,

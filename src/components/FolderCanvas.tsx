@@ -6,6 +6,16 @@ import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye } from "luci
  * FolderCanvas Component
  * Implements an interactive board canvas rendering connections, locations, and notes using vector SVGs.
  * Performs coordinate tracking, pan/zoom transformations, and binds nodes directly to campaign notes.
+ * 
+ * Educational Notes:
+ * - Viewport Zoom/Pan Transforms: Uses SVG coordinate space mapping. `transform: translate(pan.x, pan.y) scale(zoom)` 
+ *   is applied to the main container, allowing infinite panning and semantic zooming.
+ * - Node Dragging Offset Translations: Dragging calculates the mouse delta scaled inversely by the current zoom level 
+ *   to ensure the node stays exactly under the cursor regardless of zoom state.
+ * - Folder-to-Node Layout Algorithms: Dynamically generates bounding container boxes for nodes grouped by 
+ *   frontmatter tags or folder relationships, computing the bounding box (minX, minY, maxX, maxY) of all child nodes.
+ * - Cross-Vault Scoping Constraint: Workspace state access (such as loading folders and nodes) must be 
+ *   explicitly scoped by the active campaign vault path to prevent cross-vault data leaks.
  */
 
 
