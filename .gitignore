@@ -28,3 +28,4 @@ dist-ssr
 *.db-journal
 *.db-wal
 *.db-shm
+.worktrees/
