@@ -39,6 +39,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{async_runtime, Manager, State};
 use tokio::sync::Mutex as TokioMutex;
@@ -82,6 +83,11 @@ pub struct AppState {
     pub conn: TokioMutex<Arc<Mutex<rusqlite::Connection>>>,
     /// Root directory containing all campaign vault folders.
     pub campaigns_root: std::path::PathBuf,
+    /// Cooperative shutdown signal for background watcher/indexer threads.
+    ///
+    /// Held inside a `tokio::sync::Mutex` so `switch_vault` can atomically replace the flag
+    /// shared with the active watcher flusher thread.
+    pub shutdown: TokioMutex<Arc<AtomicBool>>,
 }
 
 // --- Data Structures ---
@@ -2097,7 +2103,10 @@ async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &
         return Err("Target vault path does not exist or is not a directory".to_string());
     }
 
+    // Signal old watcher/indexer threads to shut down and drop the old watcher.
     {
+        let old_shutdown = state.shutdown.lock().await;
+        old_shutdown.store(true, Ordering::Relaxed);
         let mut watcher_guard = state.watcher.lock().await;
         *watcher_guard = None;
     }
@@ -2123,8 +2132,19 @@ async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &
         *conn_guard = Arc::clone(&new_conn);
     }
 
-    let new_watcher =
-        watcher::start_directory_watcher(new_vault_path_str.clone(), Arc::clone(&new_conn), app)?;
+    // Reset shutdown flag for the new vault's background threads.
+    let new_shutdown = Arc::new(AtomicBool::new(false));
+    {
+        let mut shutdown_guard = state.shutdown.lock().await;
+        *shutdown_guard = Arc::clone(&new_shutdown);
+    }
+
+    let new_watcher = watcher::start_directory_watcher(
+        new_vault_path_str.clone(),
+        Arc::clone(&new_conn),
+        app,
+        Arc::clone(&new_shutdown),
+    )?;
     {
         let mut watcher_guard = state.watcher.lock().await;
         *watcher_guard = Some(new_watcher);
@@ -2488,11 +2508,15 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 .map_err(|e| err(format!("Failed to seed default rules: {}", e)))?;
             let conn = Arc::new(Mutex::new(conn));
 
+            // Cooperative shutdown flag shared by watcher flusher and background indexer threads.
+            let shutdown = Arc::new(AtomicBool::new(false));
+
             // Spawn Fs Watcher (triggers initial index scan automatically)
             let watcher = watcher::start_directory_watcher(
                 vault_path.clone(),
                 Arc::clone(&conn),
                 app_handle.clone(),
+                Arc::clone(&shutdown),
             )
             .map_err(|e| err(format!("Failed to start directory watcher: {}", e)))?;
 
@@ -2533,6 +2557,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 watcher: TokioMutex::new(Some(watcher)),
                 conn: TokioMutex::new(conn),
                 campaigns_root,
+                shutdown: TokioMutex::new(shutdown),
             });
 
             Ok(())
@@ -2607,6 +2632,7 @@ mod tests {
             watcher: TokioMutex::new(None),
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
         tauri::async_runtime::block_on(async {
@@ -2715,6 +2741,7 @@ mod tests {
             watcher: TokioMutex::new(None),
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
         tauri::async_runtime::block_on(async {
@@ -2829,6 +2856,7 @@ mod tests {
             watcher: TokioMutex::new(None),
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
         tauri::async_runtime::block_on(async {
@@ -2907,6 +2935,7 @@ mod template_tests {
             watcher: TokioMutex::new(None),
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
         tauri::async_runtime::block_on(async {

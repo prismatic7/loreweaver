@@ -23,6 +23,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -236,7 +237,8 @@ pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> 
 ///
 /// ### Architecture & Debouncing Strategy
 /// - Performs an initial synchronous directory walk (`sync_entire_directory`) prior to event registration.
-/// - Spawns a dedicated flusher thread (`std::thread::spawn`) that wakes every 500ms.
+/// - Spawns a dedicated flusher thread (`std::thread::spawn`) that wakes every 500ms and exits
+///   cleanly when the provided `shutdown` flag is set.
 /// - Collects raw filesystem events (`RecommendedWatcher`) into a shared `pending` queue (`Arc<Mutex<HashMap<PathBuf, (bool, Instant)>>>`).
 /// - Coalesces events: only processes files whose last event timestamp is older than 400ms.
 /// - On processing, invokes `process_file_event` to sync SQLite and emits a `vault-changed` event to the React frontend via Tauri IPC.
@@ -244,6 +246,7 @@ pub fn start_directory_watcher(
     vault_path_str: String,
     conn: Arc<Mutex<rusqlite::Connection>>,
     app_handle: tauri::AppHandle,
+    shutdown: Arc<AtomicBool>,
 ) -> Result<RecommendedWatcher, String> {
     let vault_path = PathBuf::from(&vault_path_str);
     let vault_path_clone = vault_path.clone();
@@ -264,7 +267,13 @@ pub fn start_directory_watcher(
     let vault_path_flush = vault_path_clone.clone();
     let app_handle_flush = app_handle.clone();
     std::thread::spawn(move || loop {
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
         std::thread::sleep(Duration::from_millis(500));
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
         let to_process: Vec<(PathBuf, bool)> = {
             let mut p = pending_flush.lock().unwrap_or_else(|e| e.into_inner());
             if p.is_empty() {
