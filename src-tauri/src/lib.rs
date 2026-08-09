@@ -371,6 +371,22 @@ fn save_note(state: State<AppState>, note: CampaignNote) -> Result<(), String> {
     Ok(())
 }
 
+/// Sanitizes an asset filename so it is a single, non-hidden, non-empty file name.
+/// Rejects paths containing directory separators or parent-directory references.
+fn sanitize_asset_name(name: &str) -> Result<String, String> {
+    let path = std::path::Path::new(name);
+    if path.components().count() != 1 {
+        return Err("Asset filename must not contain directories".to_string());
+    }
+    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+        return Err("Invalid asset filename".to_string());
+    };
+    if file_name.is_empty() || file_name.starts_with('.') {
+        return Err("Asset filename cannot be empty or hidden".to_string());
+    }
+    Ok(file_name.to_string())
+}
+
 /// Saves a base64 encoded asset into the note's co-located `_assets` subdirectory.
 #[tauri::command]
 fn save_note_asset(
@@ -392,12 +408,9 @@ fn save_note_asset(
     std::fs::create_dir_all(&assets_dir)
         .map_err(|e| format!("Failed to create _assets directory: {}", e))?;
 
-    let clean_filename = std::path::Path::new(filename)
-        .file_name()
-        .ok_or_else(|| "Invalid asset filename".to_string())?
-        .to_string_lossy();
+    let clean_filename = sanitize_asset_name(filename)?;
 
-    let asset_file_path = assets_dir.join(&*clean_filename);
+    let asset_file_path = assets_dir.join(&clean_filename);
 
     let bytes = base64::prelude::BASE64_STANDARD
         .decode(base64_data)
@@ -423,9 +436,10 @@ fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<Campai
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_");
+    let like_pattern = format!("%/{escaped_name}.md");
     let existing_note = conn.query_row(
         "SELECT id, path, title, content FROM notes WHERE LOWER(title) = LOWER(?1) OR LOWER(path) LIKE LOWER(?2) ESCAPE '\\'",
-        params![target_name, format!("%/{}.md", escaped_name)],
+        params![target_name, like_pattern],
         |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -2615,6 +2629,90 @@ mod tests {
         assert!(!legacy_ciphertext.contains(key));
         let decrypted = decrypt_api_key(&legacy_ciphertext, provider).unwrap();
         assert_eq!(decrypted, key);
+    }
+
+    #[test]
+    fn test_save_note_asset_rejects_traversal_filename() {
+        assert!(sanitize_asset_name("../../../etc/passwd").is_err());
+        assert_eq!(sanitize_asset_name("evil.png").unwrap(), "evil.png");
+        assert!(sanitize_asset_name(".hidden").is_err());
+        assert!(sanitize_asset_name("dir/file.png").is_err());
+    }
+
+    #[test]
+    fn test_resolve_wiki_link_escaped_wildcards() {
+        let temp_dir = std::env::temp_dir().join("loreweaver_wiki_test");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let world_dir = temp_dir.join("Worldbuilding");
+        std::fs::create_dir_all(&world_dir).unwrap();
+
+        // Seed two notes: one whose title contains a literal '%' and another that would match a wildcard.
+        std::fs::write(
+            world_dir.join("50% discount.md"),
+            "# 50% discount\n\ncontent",
+        )
+        .unwrap();
+        std::fs::write(
+            world_dir.join("Goblin.md"),
+            "# Goblin\n\ncontent",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let state = AppState {
+            db_path: Mutex::new(db_path_str),
+            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: Mutex::new(None),
+            conn: Mutex::new(Arc::clone(&conn)),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+        };
+
+        // Create notes in DB from disk content
+        let binding = state.conn.lock().unwrap();
+        let conn_guard = binding.lock().unwrap();
+        let _ = db::upsert_note(
+            &conn_guard,
+            "Worldbuilding/50% discount.md",
+            "50% discount",
+            "content",
+            &HashMap::new(),
+        )
+        .unwrap();
+        let _ = db::upsert_note(
+            &conn_guard,
+            "Worldbuilding/Goblin.md",
+            "Goblin",
+            "content",
+            &HashMap::new(),
+        )
+        .unwrap();
+        drop(conn_guard);
+        drop(binding);
+
+        // Resolve the literal '%' target. It should match the exact note, not every note.
+        let note = unsafe {
+            let s: tauri::State<AppState> = std::mem::transmute(&state);
+            resolve_wiki_link(s, "50% discount")
+        };
+        assert!(note.is_ok(), "resolve_wiki_link failed: {:?}", note);
+        let note = note.unwrap();
+        assert_eq!(note.title, "50% discount");
+
+        // A wildcard-only target should not match all notes; it should auto-create a new one.
+        let wildcard = unsafe {
+            let s: tauri::State<AppState> = std::mem::transmute(&state);
+            resolve_wiki_link(s, "%")
+        };
+        assert!(wildcard.is_ok(), "resolve_wiki_link wildcard failed: {:?}", wildcard);
+        let wildcard = wildcard.unwrap();
+        assert_eq!(wildcard.title, "%");
+        assert!(wildcard.path.contains("Worldbuilding/_.md"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
 
