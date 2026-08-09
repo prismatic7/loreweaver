@@ -44,23 +44,10 @@ import { CampaignVaultView } from "./components/CampaignVaultView";
 
 import { CampaignNote, RuleEntry, SearchResult } from "./types";
 
-const loadPdfJs = (): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if ((window as any).pdfjsLib) {
-      resolve((window as any).pdfjsLib);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js";
-    script.onload = () => {
-      const pdfjsLib = (window as any).pdfjsLib;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
-      resolve(pdfjsLib);
-    };
-    script.onerror = () => reject(new Error("Failed to load PDF.js from CDN."));
-    document.head.appendChild(script);
-  });
-};
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker&url";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 const extractTextFromPdf = async (
   arrayBuffer: ArrayBuffer,
@@ -70,7 +57,6 @@ const extractTextFromPdf = async (
   llmApiKey?: string,
   llmBaseUrl?: string
 ): Promise<string> => {
-  const pdfjsLib = await loadPdfJs();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
   let fullText = "";
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -2392,7 +2378,7 @@ function App() {
         }
 
         return (
-          <a href={linkHref} className="markdown-external-link">
+          <a href={linkHref} target="_blank" rel="noopener noreferrer" className="markdown-external-link">
             {children}
           </a>
         );
