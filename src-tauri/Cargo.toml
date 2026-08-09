@@ -41,6 +41,9 @@ urlencoding = "2"
 rfd = "0.15"
 walkdir = "2"
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native", "sync-secret-service"] }
+url = "2.5.8"
+ipnetwork = "0.21.1"
+reqwest = "0.13.4"
 
 [dev-dependencies]
 tempfile = "3.27.0"

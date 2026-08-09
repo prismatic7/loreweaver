@@ -21,6 +21,7 @@ pub fn generate_response(
     api_key: Option<&str>,
     base_url: Option<&str>,
     active_note_id: Option<&str>,
+    allow_local: bool,
 ) -> Result<String, String> {
     // 1. Gather Context via Hybrid Search (RAG)
     let context_results = match search::hybrid_query(conn, prompt, "all") {
@@ -75,6 +76,7 @@ pub fn generate_response(
                 .unwrap_or("http://localhost:11434")
                 .trim()
                 .trim_end_matches('/');
+            crate::validate_provider_url(base, allow_local)?;
             call_ollama(model, &system_prompt, prompt, base)
         }
         "openai" | "openai-compatible" | "openrouter" | "copilot" | "z-ai" | "kilo"
@@ -95,6 +97,7 @@ pub fn generate_response(
                 .unwrap_or(default_url)
                 .trim()
                 .trim_end_matches('/');
+            crate::validate_provider_url(base, allow_local)?;
             call_openai_compatible(model, key, &system_prompt, prompt, base, provider)
         }
         "gemini" => {
@@ -106,6 +109,7 @@ pub fn generate_response(
                 .unwrap_or("https://generativelanguage.googleapis.com")
                 .trim()
                 .trim_end_matches('/');
+            crate::validate_provider_url(base, allow_local)?;
             call_gemini(model, key, &system_prompt, prompt, base)
         }
         "anthropic" => {
@@ -117,6 +121,7 @@ pub fn generate_response(
                 .unwrap_or("https://api.anthropic.com")
                 .trim()
                 .trim_end_matches('/');
+            crate::validate_provider_url(base, allow_local)?;
             call_anthropic(model, key, &system_prompt, prompt, base)
         }
         other => Err(format!("Unsupported LLM provider: {}", other)),
@@ -282,6 +287,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         );
         assert!(res.is_err());
         assert_eq!(
@@ -294,7 +300,7 @@ mod tests {
     fn test_missing_api_keys() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         // OpenAI missing key
-        let res_openai = generate_response(&conn, "Hello", "openai", "gpt-4o", None, None, None);
+        let res_openai = generate_response(&conn, "Hello", "openai", "gpt-4o", None, None, None, false);
         assert!(res_openai.is_err());
         assert!(res_openai.unwrap_err().contains("API key missing"));
 
@@ -307,6 +313,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         );
         assert!(res_gemini.is_err());
         assert!(res_gemini.unwrap_err().contains("Gemini API key missing"));
@@ -320,6 +327,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         );
         assert!(res_anthropic.is_err());
         assert!(res_anthropic

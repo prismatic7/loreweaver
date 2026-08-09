@@ -132,6 +132,8 @@ pub struct AppSettings {
 
     pub stt_provider: String,
     pub stt_api_key: String,
+
+    pub allow_local_providers: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -296,6 +298,50 @@ fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::Pa
         return Err("Security Violation: Attempted directory traversal outside the vault boundary.".to_string());
     }
     Ok(canonical_target)
+}
+
+/// Validates an AI provider URL to prevent SSRF through private ranges or credential leaks.
+///
+/// - Only `http` and `https` schemes are permitted.
+/// - URLs with userinfo (username/password) are rejected.
+/// - Loopback, private, link-local, and multicast IPs are blocked unless
+///   `allow_local` is `true`.
+/// - `localhost`, `.local`, and `127.0.0.1` domain names are also blocked unless
+///   `allow_local` is `true`.
+pub fn validate_provider_url(raw: &str, allow_local: bool) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(raw).map_err(|e| format!("Invalid provider URL: {}", e))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("Provider URL must use http or https".to_string());
+    }
+    if parsed.username() != "" || parsed.password().is_some() {
+        return Err("Provider URL must not contain credentials".to_string());
+    }
+    if !allow_local {
+        if let Some(host) = parsed.host() {
+            match host {
+                url::Host::Domain(d) => {
+                    if d == "localhost" || d.ends_with(".local") || d == "127.0.0.1" {
+                        return Err("Private/localhost provider URLs are not allowed".to_string());
+                    }
+                }
+                url::Host::Ipv4(ip) => {
+                    if ip.is_loopback()
+                        || ip.is_private()
+                        || ip.is_link_local()
+                        || ip.is_multicast()
+                    {
+                        return Err("Private IP provider URLs are not allowed".to_string());
+                    }
+                }
+                url::Host::Ipv6(ip) => {
+                    if ip.is_loopback() {
+                        return Err("Loopback IPv6 provider URLs are not allowed".to_string());
+                    }
+                }
+            }
+        }
+    }
+    Ok(parsed)
 }
 
 /// Validates that `target_path` is inside the current vault's parent (campaigns) directory.
@@ -1075,6 +1121,14 @@ async fn orchestrate_agent(
 ) -> Result<String, String> {
     let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    let allow_local = db::get_setting(&conn, "allow_local_providers")
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if let Some(base) = base_url {
+        validate_provider_url(base, allow_local)?;
+    }
     agent::generate_response(
         &conn,
         prompt,
@@ -1083,6 +1137,7 @@ async fn orchestrate_agent(
         api_key,
         base_url,
         active_note_id,
+        allow_local,
     )
 }
 
@@ -1433,6 +1488,8 @@ fn generate_image(
                 .unwrap_or("https://api.openai.com")
                 .trim()
                 .trim_end_matches('/');
+            let allow_local = false;
+            validate_provider_url(base, allow_local)?;
             if base.is_empty() {
                 return Err("Image provider base URL is required".to_string());
             }
@@ -1479,6 +1536,10 @@ fn generate_speech(
 ) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("Text is required for speech generation".to_string());
+    }
+
+    if let Some(base) = base_url {
+        validate_provider_url(base, false)?;
     }
 
     match provider {
@@ -1551,6 +1612,11 @@ fn generate_speech(
 fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+
+    let allow_local_providers = db::get_setting(&conn, "allow_local_providers")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "false".to_string())
+        == "true";
 
     let llm_provider = db::get_setting(&conn, "llm_provider")
         .unwrap_or(None)
@@ -1629,6 +1695,7 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     .unwrap_or_default();
 
     Ok(AppSettings {
+        allow_local_providers,
         llm_provider,
         llm_model,
         llm_api_key,
@@ -1653,6 +1720,17 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
 fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
     let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+
+    db::set_setting(
+        &conn,
+        "allow_local_providers",
+        if settings.allow_local_providers {
+            "true"
+        } else {
+            "false"
+        },
+    )
+    .map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "llm_provider", &settings.llm_provider).map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_model", &settings.llm_model).map_err(|e| e.to_string())?;
@@ -1703,6 +1781,10 @@ async fn test_provider_connection(
     api_key: Option<&str>,
 ) -> Result<Vec<String>, String> {
     let clean_base = base_url.trim().trim_end_matches('/');
+
+    if !clean_base.is_empty() {
+        validate_provider_url(clean_base, false)?;
+    }
 
     match provider {
         "local" => {
@@ -2637,6 +2719,25 @@ mod tests {
         assert_eq!(sanitize_asset_name("evil.png").unwrap(), "evil.png");
         assert!(sanitize_asset_name(".hidden").is_err());
         assert!(sanitize_asset_name("dir/file.png").is_err());
+    }
+
+    #[test]
+    fn test_provider_url_blocks_private_ranges() {
+        for bad in &[
+            "http://localhost:11434",
+            "http://127.0.0.1",
+            "http://192.168.1.1",
+            "http://10.0.0.1",
+            "http://[::1]",
+        ] {
+            assert!(
+                validate_provider_url(bad, false).is_err(),
+                "{} should be blocked",
+                bad
+            );
+        }
+        assert!(validate_provider_url("https://api.openai.com", false).is_ok());
+        assert!(validate_provider_url("http://localhost:11434", true).is_ok());
     }
 
     #[test]
