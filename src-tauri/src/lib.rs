@@ -189,10 +189,9 @@ fn legacy_decrypt_api_key(ciphertext: &str, _provider_id: &str) -> Result<String
     }
 }
 
-/// Legacy repeating-XOR encrypt, exposed to tests so the round-trip can be
-/// exercised without relying on the OS keyring in headless environments.
-#[cfg(test)]
-fn legacy_decrypt_api_key_helper(plaintext: &str, _provider_id: &str) -> String {
+/// Legacy repeating-XOR encrypt. Kept non-test-only because `encrypt_api_key`
+/// falls back to legacy obfuscation when the OS keyring is unavailable.
+fn legacy_encrypt_api_key(plaintext: &str, _provider_id: &str) -> String {
     if plaintext.is_empty() {
         return String::new();
     }
@@ -222,15 +221,22 @@ fn encrypt_api_key(key: &str, provider_id: &str) -> String {
     }
     if keyring_is_available() {
         let entry = keyring_entry(provider_id);
-        if let Err(e) = entry.set_password(key) {
-            eprintln!(
-                "Failed to store API key in keyring for provider {}: {}",
-                provider_id, e
-            );
+        match entry.set_password(key) {
+            Ok(()) => {
+                // Return an opaque handle so the existing settings schema still stores a string.
+                return format!("keyring:{}", provider_id);
+            }
+            Err(e) => {
+                eprintln!(
+                    "Keyring unavailable for provider {}, falling back to legacy obfuscation: {}",
+                    provider_id, e
+                );
+            }
         }
     }
-    // Return an opaque handle so the existing settings schema still stores a string.
-    format!("keyring:{}", provider_id)
+    // Fallback: keep storing with legacy repeating-XOR obfuscation for one release
+    // so the key is not lost when the OS keyring cannot be accessed.
+    legacy_encrypt_api_key(key, provider_id)
 }
 
 fn decrypt_api_key(ciphertext: &str, provider_id: &str) -> Result<String, String> {
@@ -238,15 +244,10 @@ fn decrypt_api_key(ciphertext: &str, provider_id: &str) -> Result<String, String
         if stored_provider != provider_id {
             return Err("Provider mismatch for keyring key".to_string());
         }
-        if keyring_is_available() {
-            let entry = keyring_entry(provider_id);
-            entry.get_password().map_err(|e| format!("Keyring error: {}", e))
-        } else {
-            // Keyring unavailable (e.g. headless CI); return empty key.
-            Ok(String::new())
-        }
+        let entry = keyring_entry(provider_id);
+        entry.get_password().map_err(|e| format!("Keyring error: {}", e))
     } else {
-        // Legacy repeating-XOR fallback for migration.
+        // Legacy repeating-XOR fallback for migration and headless environments.
         legacy_decrypt_api_key(ciphertext, provider_id)
     }
 }
@@ -2586,11 +2587,31 @@ mod tests {
 
     #[test]
     fn test_api_key_round_trip() {
-        // The OS keyring is unavailable in headless/CI environments, so this test
-        // only verifies the legacy repeating-XOR fallback path remains intact.
         let key = "sk-test-12345";
         let provider = "test-provider";
-        let legacy_ciphertext = legacy_decrypt_api_key_helper(key, provider);
+
+        if !keyring_is_available() {
+            // OS keyring is unavailable in headless/CI environments; skip rather
+            // than silently testing the legacy fallback. The legacy path is
+            // covered separately by `test_legacy_api_key_round_trip`.
+            println!(
+                "Skipping keyring round-trip: OS keyring unavailable in this environment"
+            );
+            return;
+        }
+
+        let encrypted = encrypt_api_key(key, provider);
+        assert!(!encrypted.contains(key));
+        assert!(encrypted.starts_with("keyring:"));
+        let decrypted = decrypt_api_key(&encrypted, provider).unwrap();
+        assert_eq!(decrypted, key);
+    }
+
+    #[test]
+    fn test_legacy_api_key_round_trip() {
+        let key = "sk-test-12345";
+        let provider = "test-provider";
+        let legacy_ciphertext = legacy_encrypt_api_key(key, provider);
         assert!(!legacy_ciphertext.contains(key));
         let decrypted = decrypt_api_key(&legacy_ciphertext, provider).unwrap();
         assert_eq!(decrypted, key);

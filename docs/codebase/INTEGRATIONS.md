@@ -22,6 +22,9 @@
 
 - `agent.rs` supports Ollama, OpenAI, and Gemini for chat/orchestration.
 - `test_provider_connection` also knows about several provider IDs in settings UI, but the implemented request branches are limited to Ollama, OpenAI-compatible endpoints, and Gemini.
+- API keys are stored in the OS keyring under `api-key-{provider_id}` (service `loreweaver`).
+  The SQLite settings table only holds an opaque `keyring:{provider_id}` handle.
+  For one release, legacy repeating-XOR obfuscated keys are still decrypted as a fallback if the keyring is unavailable or the stored value predates the keyring migration.
 
 ## Plugins
 
