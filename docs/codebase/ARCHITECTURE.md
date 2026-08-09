@@ -27,8 +27,16 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 - `watcher.rs` owns filesystem synchronization.
 - `search.rs` owns embedding generation and similarity search.
 - `ingest.rs` converts Markdown SRD text into rule rows and vector chunks.
-- `agent.rs` assembles context and calls Ollama, OpenAI, or Gemini.
+- `agent.rs` assembles RAG context and delegates provider calls to `providers/llm.rs`.
 - `plugins.rs` loads plugin manifests and runs Boa-based hook functions.
+- `providers/` centralizes AI provider HTTP logic: `llm.rs` (chat), `image.rs` (image generation), `speech.rs` (TTS), `models.rs` (model listing).
+
+## Frontend Structure
+
+- `src/App.tsx` is the top-level orchestrator that composes domain hooks and renders shell components.
+- `src/hooks/` contains domain hooks that encapsulate Tauri IPC calls and local state.
+- `src/components/` contains shell components (`AppShell`, `RightDrawer`, `Modals`) and feature views (`CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`).
+- `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`).
 
 ## Plugin Model
 
