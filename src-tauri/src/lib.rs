@@ -1178,325 +1178,6 @@ async fn orchestrate_agent(
     .await
 }
 
-fn image_data_url_from_bytes(bytes: &[u8]) -> String {
-    let encoded = general_purpose::STANDARD.encode(bytes);
-    format!("data:image/png;base64,{}", encoded)
-}
-
-fn image_bytes_from_response(response: serde_json::Value) -> Result<Vec<u8>, String> {
-    if let Some(b64_json) = response["data"][0]["b64_json"].as_str() {
-        return general_purpose::STANDARD
-            .decode(b64_json)
-            .map_err(|e| format!("Failed to decode image payload: {}", e));
-    }
-
-    if let Some(url) = response["data"][0]["url"].as_str() {
-        let image_response = ureq::get(url)
-            .call()
-            .map_err(|e| format!("Failed to download generated image: {:?}", e))?;
-        let mut reader = image_response.into_reader();
-        let mut bytes = Vec::new();
-        std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-        return Ok(bytes);
-    }
-
-    if let Some(images) = response["images"].as_array() {
-        if let Some(image) = images.first().and_then(|value| value.as_str()) {
-            return general_purpose::STANDARD
-                .decode(image)
-                .map_err(|e| format!("Failed to decode Stable Diffusion image payload: {}", e));
-        }
-    }
-
-    if let Some(artifacts) = response["artifacts"].as_array() {
-        if let Some(image) = artifacts
-            .first()
-            .and_then(|value| value["base64"].as_str().or(value["base64_data"].as_str()))
-        {
-            return general_purpose::STANDARD
-                .decode(image)
-                .map_err(|e| format!("Failed to decode Stability image payload: {}", e));
-        }
-    }
-
-    Err("Image service returned no usable image payload".to_string())
-}
-
-fn generate_comfyui_image(
-    prompt: &str,
-    style: &str,
-    model: &str,
-    base_url: Option<&str>,
-) -> Result<String, String> {
-    let base = base_url
-        .unwrap_or("http://127.0.0.1:8188")
-        .trim()
-        .trim_end_matches('/');
-
-    if base.is_empty() {
-        return Err("ComfyUI base URL is required".to_string());
-    }
-
-    let client_id = uuid::Uuid::new_v4().to_string();
-    let positive_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{}, style: {}", prompt.trim(), style.trim())
-    };
-
-    let negative_prompt = "blurry, low quality, distorted, watermark, text, extra limbs";
-    let checkpoint = if model.trim().is_empty() {
-        "stable-diffusion-v1-5.safetensors"
-    } else {
-        model.trim()
-    };
-
-    let workflow = serde_json::json!({
-        "3": {
-            "inputs": {
-                "seed": uuid::Uuid::new_v4().as_u128() as u64,
-                "steps": 28,
-                "cfg": 7,
-                "sampler_name": "dpmpp_2m",
-                "scheduler": "karras",
-                "denoise": 1,
-                "model": [4, 0],
-                "positive": [6, 0],
-                "negative": [7, 0],
-                "latent_image": [5, 0]
-            },
-            "class_type": "KSampler",
-            "_meta": { "title": "KSampler" }
-        },
-        "4": {
-            "inputs": {
-                "ckpt_name": checkpoint
-            },
-            "class_type": "CheckpointLoaderSimple",
-            "_meta": { "title": "CheckpointLoaderSimple" }
-        },
-        "5": {
-            "inputs": {
-                "width": 768,
-                "height": 768,
-                "batch_size": 1
-            },
-            "class_type": "EmptyLatentImage",
-            "_meta": { "title": "EmptyLatentImage" }
-        },
-        "6": {
-            "inputs": {
-                "text": positive_prompt,
-                "clip": [4, 1]
-            },
-            "class_type": "CLIPTextEncode",
-            "_meta": { "title": "CLIPTextEncode" }
-        },
-        "7": {
-            "inputs": {
-                "text": negative_prompt,
-                "clip": [4, 1]
-            },
-            "class_type": "CLIPTextEncode",
-            "_meta": { "title": "CLIPTextEncode" }
-        },
-        "8": {
-            "inputs": {
-                "samples": [3, 0],
-                "vae": [4, 2]
-            },
-            "class_type": "VAEDecode",
-            "_meta": { "title": "VAEDecode" }
-        },
-        "9": {
-            "inputs": {
-                "images": [8, 0]
-            },
-            "class_type": "SaveImage",
-            "_meta": { "title": "SaveImage" }
-        }
-    });
-
-    let prompt_body = serde_json::json!({
-        "prompt": workflow,
-        "client_id": client_id
-    });
-
-    let prompt_response = ureq::post(&format!("{}/prompt", base))
-        .set("Content-Type", "application/json")
-        .send_json(prompt_body)
-        .map_err(|e| format!("ComfyUI prompt submission failed: {:?}", e))?;
-
-    let prompt_json: serde_json::Value = prompt_response
-        .into_json()
-        .map_err(|e| format!("Failed to parse ComfyUI prompt response: {:?}", e))?;
-    let prompt_id = prompt_json["prompt_id"]
-        .as_str()
-        .ok_or("ComfyUI did not return a prompt_id")?;
-
-    let history_url = format!("{}/history/{}", base, prompt_id);
-    let mut history_json: Option<serde_json::Value> = None;
-
-    for _ in 0..60 {
-        let response = ureq::get(&history_url)
-            .call()
-            .map_err(|e| format!("ComfyUI history request failed: {:?}", e))?;
-        let parsed: serde_json::Value = response
-            .into_json()
-            .map_err(|e| format!("Failed to parse ComfyUI history response: {:?}", e))?;
-
-        if parsed.get(prompt_id).is_some() {
-            history_json = Some(parsed);
-            break;
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-
-    let history_json = history_json.ok_or("Timed out waiting for ComfyUI image generation")?;
-    let images = history_json[prompt_id]["outputs"]["9"]["images"]
-        .as_array()
-        .ok_or("ComfyUI history response did not include output images")?;
-    let image_info = images
-        .first()
-        .ok_or("ComfyUI returned no generated images")?;
-
-    let filename = image_info["filename"]
-        .as_str()
-        .ok_or("ComfyUI image filename missing")?;
-    let subfolder = image_info["subfolder"].as_str().unwrap_or("");
-    let image_type = image_info["type"].as_str().unwrap_or("output");
-
-    let image_url = format!(
-        "{}/view?filename={}&subfolder={}&type={}",
-        base,
-        urlencoding::encode(filename),
-        urlencoding::encode(subfolder),
-        urlencoding::encode(image_type)
-    );
-
-    let image_response = ureq::get(&image_url)
-        .call()
-        .map_err(|e| format!("Failed to download ComfyUI image: {:?}", e))?;
-    let mut reader = image_response.into_reader();
-    let mut bytes = Vec::new();
-    std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-    Ok(image_data_url_from_bytes(&bytes))
-}
-
-#[allow(dead_code)]
-fn generate_local_stable_diffusion(
-    prompt: &str,
-    style: &str,
-    model: &str,
-    base_url: Option<&str>,
-) -> Result<String, String> {
-    let base = base_url
-        .unwrap_or("http://127.0.0.1:7860")
-        .trim()
-        .trim_end_matches('/');
-
-    if base.is_empty() {
-        return Err("Local Stable Diffusion base URL is required".to_string());
-    }
-
-    let clean_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{}, style: {}", prompt.trim(), style.trim())
-    };
-
-    let mut body = serde_json::json!({
-        "prompt": clean_prompt,
-        "negative_prompt": "blurry, low quality, distorted, watermark, text, extra limbs",
-        "steps": 28,
-        "cfg_scale": 7,
-        "width": 768,
-        "height": 768,
-        "sampler_name": "DPM++ 2M Karras",
-        "batch_size": 1,
-        "n_iter": 1,
-        "send_images": true,
-        "save_images": false,
-        "override_settings_restore_afterwards": true
-    });
-
-    if !model.trim().is_empty() {
-        body["override_settings"] = serde_json::json!({
-            "sd_model_checkpoint": model.trim()
-        });
-    }
-
-    let url = format!("{}/sdapi/v1/txt2img", base);
-    let response = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .send_json(body)
-        .map_err(|e| format!("Local Stable Diffusion request failed: {:?}", e))?;
-
-    let response_json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse Stable Diffusion response: {:?}", e))?;
-    let image_bytes = image_bytes_from_response(response_json)?;
-    Ok(image_data_url_from_bytes(&image_bytes))
-}
-
-fn generate_stability_image(
-    prompt: &str,
-    style: &str,
-    model: &str,
-    api_key: Option<&str>,
-    base_url: Option<&str>,
-) -> Result<String, String> {
-    let key = api_key
-        .filter(|value| !value.trim().is_empty())
-        .ok_or("Stability API key is required")?;
-
-    let base = base_url
-        .unwrap_or("https://api.stability.ai")
-        .trim()
-        .trim_end_matches('/');
-
-    if base.is_empty() {
-        return Err("Stability API base URL is required".to_string());
-    }
-
-    let clean_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{}, style: {}", prompt.trim(), style.trim())
-    };
-
-    let engine_id = if model.trim().is_empty() {
-        "stable-diffusion-xl-1024-v1-0"
-    } else {
-        model.trim()
-    };
-
-    let url = format!("{}/v1/generation/{}/text-to-image", base, engine_id);
-    let body = serde_json::json!({
-        "text_prompts": [{ "text": clean_prompt }],
-        "cfg_scale": 7,
-        "clip_guidance_preset": "FAST_BLUE",
-        "height": 768,
-        "width": 768,
-        "samples": 1,
-        "steps": 30
-    });
-
-    let response = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .set("Accept", "application/json")
-        .set("Authorization", &format!("Bearer {}", key.trim()))
-        .send_json(body)
-        .map_err(|e| format!("Stability image generation request failed: {:?}", e))?;
-
-    let response_json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse Stability response: {:?}", e))?;
-    let image_bytes = image_bytes_from_response(response_json)?;
-    Ok(image_data_url_from_bytes(&image_bytes))
-}
-
 #[tauri::command]
 async fn generate_image(
     prompt: &str,
@@ -1506,67 +1187,32 @@ async fn generate_image(
     api_key: Option<&str>,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    let clean_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{} Style: {}.", prompt.trim(), style.trim())
-    };
-
-    let image_model = if model.trim().is_empty() {
-        "dall-e-3"
-    } else {
-        model.trim()
-    };
+    if let Some(base) = base_url {
+        if !base.trim().is_empty() {
+            validate_provider_url(base.trim().trim_end_matches('/'), false)?;
+        }
+    }
 
     let provider_owned = provider.to_string();
     let prompt_owned = prompt.to_string();
     let style_owned = style.to_string();
-    let image_model_owned = image_model.to_string();
+    let model_owned = model.to_string();
     let api_key_owned = api_key.map(|k| k.to_string());
     let base_url_owned = base_url.map(|b| b.to_string());
 
-    run_blocking(move || match provider_owned.as_str() {
-        "local" => generate_comfyui_image(&prompt_owned, &style_owned, &image_model_owned, base_url_owned.as_deref()),
-        "openai" | "openai-compatible" => {
-            let base = base_url_owned
-                .as_deref()
-                .unwrap_or("https://api.openai.com")
-                .trim()
-                .trim_end_matches('/');
-            let allow_local = false;
-            validate_provider_url(base, allow_local)?;
-            if base.is_empty() {
-                return Err("Image provider base URL is required".to_string());
-            }
-
-            let url = format!("{}/v1/images/generations", base);
-            let body = serde_json::json!({
-                "model": image_model_owned,
-                "prompt": clean_prompt,
-                "size": "1024x1024",
-                "response_format": "b64_json"
-            });
-
-            let mut request = ureq::post(&url).set("Content-Type", "application/json");
-            if let Some(key) = &api_key_owned {
-                if !key.trim().is_empty() {
-                    request = request.set("Authorization", &format!("Bearer {}", key.trim()));
-                }
-            }
-
-            let response = request
-                .send_json(body)
-                .map_err(|e| format!("Image generation request failed: {:?}", e))?;
-
-            let response_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse image generation response: {:?}", e))?;
-            let image_bytes = image_bytes_from_response(response_json)?;
-            Ok(image_data_url_from_bytes(&image_bytes))
-        }
-        "stability" => generate_stability_image(&prompt_owned, &style_owned, &image_model_owned, api_key_owned.as_deref(), base_url_owned.as_deref()),
-        other => Err(format!("Unsupported image provider: {}", other)),
-    }).await
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::image::generate_image(
+            &prompt_owned,
+            &style_owned,
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            &agent,
+        )
+    })
+    .await
 }
 
 /// Generates speech audio from text using the configured TTS provider.
@@ -1584,7 +1230,9 @@ async fn generate_speech(
     }
 
     if let Some(base) = base_url {
-        validate_provider_url(base, false)?;
+        if !base.trim().is_empty() {
+            validate_provider_url(base.trim().trim_end_matches('/'), false)?;
+        }
     }
 
     let provider_owned = provider.to_string();
@@ -1593,79 +1241,18 @@ async fn generate_speech(
     let voice_owned = voice.map(|v| v.to_string());
     let base_url_owned = base_url.map(|b| b.to_string());
 
-    run_blocking(move || match provider_owned.as_str() {
-        "openai" => {
-            let key = api_key_owned
-                .as_deref()
-                .filter(|k| !k.trim().is_empty())
-                .ok_or("OpenAI TTS API key is required")?;
-            let base = base_url_owned
-                .as_deref()
-                .filter(|b| !b.trim().is_empty())
-                .unwrap_or("https://api.openai.com")
-                .trim()
-                .trim_end_matches('/');
-            let voice_name = voice_owned
-                .as_deref()
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or("alloy");
-
-            let url = format!("{}/v1/audio/speech", base);
-            let body = serde_json::json!({
-                "model": "tts-1",
-                "voice": voice_name,
-                "input": text_owned,
-                "response_format": "mp3",
-            });
-
-            let response = ureq::post(&url)
-                .timeout(std::time::Duration::from_secs(30))
-                .set("Authorization", &format!("Bearer {}", key.trim()))
-                .set("Content-Type", "application/json")
-                .send_json(body)
-                .map_err(|e| format!("OpenAI TTS request failed: {:?}", e))?;
-
-            let mut reader = response.into_reader();
-            let mut bytes = Vec::new();
-            std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-
-            let encoded = general_purpose::STANDARD.encode(&bytes);
-            Ok(format!("data:audio/mp3;base64,{}", encoded))
-        }
-        "elevenlabs" => {
-            let key = api_key_owned
-                .as_deref()
-                .filter(|k| !k.trim().is_empty())
-                .ok_or("ElevenLabs API key is required")?;
-            let voice_id = voice_owned
-                .as_deref()
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or("21m00Tcm4TlvDq8ikWAM");
-
-            let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}", voice_id);
-            let body = serde_json::json!({
-                "text": text_owned,
-                "model_id": "eleven_monolingual_v1",
-                "voice_settings": { "stability": 0.5, "similarity_boost": 0.5 },
-            });
-
-            let response = ureq::post(&url)
-                .timeout(std::time::Duration::from_secs(30))
-                .set("xi-api-key", key.trim())
-                .set("Content-Type", "application/json")
-                .send_json(body)
-                .map_err(|e| format!("ElevenLabs TTS request failed: {:?}", e))?;
-
-            let mut reader = response.into_reader();
-            let mut bytes = Vec::new();
-            std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-
-            let encoded = general_purpose::STANDARD.encode(&bytes);
-            Ok(format!("data:audio/mp3;base64,{}", encoded))
-        }
-        "local" => Err("Local TTS is not yet implemented. Configure an API-based provider (OpenAI or ElevenLabs) in Settings.".to_string()),
-        other => Err(format!("Unsupported TTS provider: {}", other)),
-    }).await
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::speech::generate_speech(
+            &text_owned,
+            &provider_owned,
+            api_key_owned.as_deref(),
+            voice_owned.as_deref(),
+            base_url_owned.as_deref(),
+            &agent,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1850,180 +1437,14 @@ async fn test_provider_connection(
     let clean_base_owned = clean_base.to_string();
     let api_key_owned = api_key.map(|k| k.to_string());
 
-    run_blocking(move || match provider_owned.as_str() {
-        "local" => {
-            let url = if clean_base_owned.is_empty() {
-                "http://127.0.0.1:8188/object_info".to_string()
-            } else {
-                format!("{}/object_info", clean_base_owned)
-            };
-
-            let response = ureq::get(&url)
-                .call()
-                .map_err(|e| format!("Failed to connect to ComfyUI: {:?}", e))?;
-
-            let _: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse ComfyUI object info: {:?}", e))?;
-
-            Ok(Vec::new())
-        }
-        "stability" => {
-            let url = if clean_base_owned.is_empty() {
-                "https://api.stability.ai/v1/engines/list".to_string()
-            } else {
-                format!("{}/v1/engines/list", clean_base_owned)
-            };
-
-            let key = api_key_owned.ok_or("Stability API key is missing")?;
-            let response = ureq::get(&url)
-                .set("Authorization", &format!("Bearer {}", key))
-                .call()
-                .map_err(|e| format!("Failed to connect to Stability AI: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse Stability engine list: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(list) = res_json["engines"].as_array() {
-                for item in list {
-                    if let Some(id) = item["id"].as_str() {
-                        models.push(id.to_string());
-                    }
-                }
-            }
-
-            Ok(models)
-        }
-        "ollama" | "ollama-cloud" => {
-            let url = if clean_base_owned.is_empty() {
-                "http://localhost:11434/api/tags".to_string()
-            } else {
-                format!("{}/api/tags", clean_base_owned)
-            };
-
-            let response = ureq::get(&url)
-                .call()
-                .map_err(|e| format!("Failed to connect to Ollama: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse response JSON: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(list) = res_json["models"].as_array() {
-                for item in list {
-                    if let Some(name) = item["name"].as_str() {
-                        models.push(name.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        "openai" | "copilot" | "z-ai" | "kilo" | "huggingface" | "openai-compatible"
-        | "openrouter" => {
-            let default_url = match provider_owned.as_str() {
-                "openrouter" => "https://openrouter.ai/api",
-                "copilot" => "https://api.githubcopilot.com",
-                "z-ai" => "https://api.z.ai/api",
-                "kilo" => "https://api.kilo.ai/api",
-                "huggingface" => "https://api-inference.huggingface.co",
-                _ => "https://api.openai.com",
-            };
-            let url = if clean_base_owned.is_empty() {
-                format!("{}/v1/models", default_url)
-            } else {
-                format!("{}/v1/models", clean_base_owned)
-            };
-
-            let mut request = ureq::get(&url);
-            if let Some(key) = &api_key_owned {
-                if !key.is_empty() {
-                    request = request.set("Authorization", &format!("Bearer {}", key));
-                }
-            }
-
-            let response = request
-                .call()
-                .map_err(|e| format!("Request failed: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(data) = res_json["data"].as_array() {
-                for item in data {
-                    if let Some(id) = item["id"].as_str() {
-                        models.push(id.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        "gemini" => {
-            let key = api_key_owned.ok_or("Gemini API key missing")?;
-            let base = if clean_base_owned.is_empty() {
-                "https://generativelanguage.googleapis.com"
-            } else {
-                clean_base_owned.as_str()
-            };
-            let url = format!("{}/v1beta/models", base);
-
-            let response = ureq::get(&url)
-                .set("x-goog-api-key", &key)
-                .call()
-                .map_err(|e| format!("Failed to connect to Gemini API: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse Gemini response: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(list) = res_json["models"].as_array() {
-                for item in list {
-                    if let Some(name) = item["name"].as_str() {
-                        let clean_name = name.strip_prefix("models/").unwrap_or(name);
-                        models.push(clean_name.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        "anthropic" => {
-            let key = api_key_owned.ok_or("Anthropic API key missing")?;
-            let base = if clean_base_owned.is_empty() {
-                "https://api.anthropic.com"
-            } else {
-                clean_base_owned.as_str()
-            };
-            let url = format!("{}/v1/models", base);
-
-            let response = ureq::get(&url)
-                .set("x-api-key", &key)
-                .set("anthropic-version", "2023-06-01")
-                .call()
-                .map_err(|e| format!("Failed to connect to Anthropic API: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse Anthropic response: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(data) = res_json["data"].as_array() {
-                for item in data {
-                    if let Some(id) = item["id"].as_str() {
-                        models.push(id.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        _ => Err(format!(
-            "Connection test not supported for provider: {}",
-            provider_owned
-        )),
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::models::list_models(
+            &provider_owned,
+            &clean_base_owned,
+            api_key_owned.as_deref(),
+            &agent,
+        )
     })
     .await
 }
