@@ -41,6 +41,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{async_runtime, Manager, State};
+use tokio::sync::Mutex as TokioMutex;
 
 pub mod agent;
 mod db;
@@ -66,15 +67,19 @@ mod watcher;
 ///     and vector-indexing threads.
 pub struct AppState {
     /// Absolute filesystem path to the current campaign's SQLite database.
-    pub db_path: Mutex<String>,
+    pub db_path: TokioMutex<String>,
     /// Absolute filesystem path to the active campaign vault root directory.
-    pub vault_path: Mutex<String>,
+    pub vault_path: TokioMutex<String>,
     /// Absolute filesystem path to the plugins directory.
-    pub plugins_path: Mutex<String>,
+    pub plugins_path: TokioMutex<String>,
     /// Active directory file watcher handle monitoring vault markdown changes.
-    pub watcher: Mutex<Option<RecommendedWatcher>>,
+    pub watcher: TokioMutex<Option<RecommendedWatcher>>,
     /// Thread-safe shared connection handle to the active SQLite database.
-    pub conn: Mutex<Arc<Mutex<rusqlite::Connection>>>,
+    ///
+    /// Outer `tokio::sync::Mutex` permits async command handlers to await the lock without
+    /// blocking the runtime; inner `std::sync::Mutex<Arc<...>>` lets background threads clone
+    /// and share the SQLite connection, which is not `Send`.
+    pub conn: TokioMutex<Arc<Mutex<rusqlite::Connection>>>,
     /// Root directory containing all campaign vault folders.
     pub campaigns_root: std::path::PathBuf,
 }
@@ -265,8 +270,8 @@ fn greet(name: &str) -> String {
 /// Returns `Result<Vec<CampaignNote>, String>`. If locking the SQLite connection fails,
 /// the error is converted to a readable `String` which rejects the frontend Promise.
 #[tauri::command]
-fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn load_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     db::load_all_notes(&conn).map_err(|e| e.to_string())
 }
@@ -398,13 +403,13 @@ fn write_note_to_disk(
 /// Dual-writes to both filesystem and SQLite database so that subsequent queries
 /// (like `load_notes`) immediately reflect modifications without waiting for the watcher flusher.
 #[tauri::command]
-fn save_note(state: State<AppState>, note: CampaignNote) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn save_note(state: State<'_, AppState>, note: CampaignNote) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
     let file_path = validate_safe_path(&vault_path, &note.path)?;
     write_note_to_disk(&file_path, &note.content, &note.frontmatter)?;
 
     // Also upsert directly into the DB so load_notes immediately reflects changes
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let _ = db::upsert_note(
         &conn,
@@ -435,15 +440,15 @@ fn sanitize_asset_name(name: &str) -> Result<String, String> {
 
 /// Saves a base64 encoded asset into the note's co-located `_assets` subdirectory.
 #[tauri::command]
-fn save_note_asset(
-    state: State<AppState>,
+async fn save_note_asset(
+    state: State<'_, AppState>,
     note_path: &str,
     filename: &str,
     base64_data: &str,
 ) -> Result<String, String> {
     use base64::Engine;
 
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let vault_path = state.vault_path.lock().await;
 
     let note_file_path = validate_safe_path(&vault_path, note_path)?;
     let parent_dir = note_file_path
@@ -470,10 +475,10 @@ fn save_note_asset(
 
 /// Resolves or auto-creates a note from a [[Wiki-link]] target.
 #[tauri::command]
-fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<CampaignNote, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn resolve_wiki_link(state: State<'_, AppState>, target_name: &str) -> Result<CampaignNote, String> {
+    let vault_path = state.vault_path.lock().await;
 
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     // 1. Check if note already exists by title or path
@@ -575,9 +580,9 @@ fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<Campai
 }
 
 #[tauri::command]
-fn trash_note(state: State<AppState>, note_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn trash_note(state: State<'_, AppState>, note_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     trash_note_impl(&vault_path, &conn, note_path)
 }
@@ -647,9 +652,9 @@ fn trash_note_impl(
 }
 
 #[tauri::command]
-fn trash_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn trash_folder(state: State<'_, AppState>, folder_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     trash_folder_impl(&vault_path, &conn, folder_path)
 }
@@ -726,9 +731,9 @@ fn trash_folder_impl(
 }
 
 #[tauri::command]
-fn restore_note(state: State<AppState>, trash_note_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn restore_note(state: State<'_, AppState>, trash_note_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     restore_note_impl(&vault_path, &conn, trash_note_path)
 }
@@ -794,8 +799,8 @@ fn restore_note_impl(
 }
 
 #[tauri::command]
-fn load_trash_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_trash_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
+    let vault_path = state.vault_path.lock().await;
     load_trash_notes_impl(&vault_path)
 }
 
@@ -836,9 +841,9 @@ fn load_trash_notes_impl(vault_path: &str) -> Result<Vec<CampaignNote>, String> 
 }
 
 #[tauri::command]
-fn empty_trash(state: State<AppState>) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn empty_trash(state: State<'_, AppState>) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let trash_dir = std::path::Path::new(&*vault_path).join(".trash");
     if trash_dir.exists() {
@@ -872,9 +877,9 @@ fn empty_trash(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_trashed_note(state: State<AppState>, trash_note_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn delete_trashed_note(state: State<'_, AppState>, trash_note_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let file_path = validate_safe_path(&vault_path, trash_note_path)?;
     if file_path.exists() {
@@ -951,18 +956,14 @@ fn cleanup_expired_trash(vault_path_str: &str, conn: &rusqlite::Connection) -> R
 
 /// Retrieve the active campaign vault path.
 #[tauri::command]
-fn get_vault_path(state: State<AppState>) -> String {
-    state
-        .vault_path
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+async fn get_vault_path(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.vault_path.lock().await.clone())
 }
 
 /// Load rulebooks from the SQLite database.
 #[tauri::command]
-fn load_rules(state: State<AppState>) -> Result<Vec<RuleEntry>, String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn load_rules(state: State<'_, AppState>) -> Result<Vec<RuleEntry>, String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare("SELECT id, path, title, category, source, content FROM rules")
@@ -990,20 +991,20 @@ fn load_rules(state: State<AppState>) -> Result<Vec<RuleEntry>, String> {
 
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).
 #[tauri::command]
-fn search_vault(
-    state: State<AppState>,
+async fn search_vault(
+    state: State<'_, AppState>,
     query: &str,
     category: &str,
 ) -> Result<Vec<SearchResult>, String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     search::hybrid_query(&conn, query, category)
 }
 
 /// Saves (creates or updates) a rule entry to the database.
 #[tauri::command]
-fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+async fn save_rule(state: State<'_, AppState>, rule: RuleEntry) -> Result<String, String> {
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::upsert_rule(
         &conn,
@@ -1025,8 +1026,8 @@ fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> 
 
 /// Deletes a rule entry from the database by id.
 #[tauri::command]
-fn delete_rule(state: State<AppState>, rule_id: &str) -> Result<(), String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+async fn delete_rule(state: State<'_, AppState>, rule_id: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::delete_rule(&conn, rule_id).map_err(|e| e.to_string())?;
     search::invalidate_cache();
@@ -1036,8 +1037,8 @@ fn delete_rule(state: State<AppState>, rule_id: &str) -> Result<(), String> {
 /// Recursively lists all directories inside the vault, relative to the vault root.
 /// Excludes `.trash` and hidden directories starting with `.`.
 #[tauri::command]
-fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let vault_path = state.vault_path.lock().await;
     let vault = std::path::Path::new(&*vault_path);
     if !vault.exists() {
         return Ok(Vec::new());
@@ -1087,8 +1088,8 @@ fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
 
 /// Deletes all rules whose path lives inside `folder_path` (e.g. a rulebook folder).
 #[tauri::command]
-fn delete_rules_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+async fn delete_rules_folder(state: State<'_, AppState>, folder_path: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::delete_rules_in_folder(&conn, folder_path).map_err(|e| e.to_string())?;
     search::invalidate_cache();
@@ -1097,13 +1098,13 @@ fn delete_rules_folder(state: State<AppState>, folder_path: &str) -> Result<(), 
 
 /// Ingests a new rulebook/SRD from raw markdown content.
 #[tauri::command]
-fn ingest_srd_text(
-    state: State<AppState>,
+async fn ingest_srd_text(
+    state: State<'_, AppState>,
     category: &str,
     source: &str,
     content: &str,
 ) -> Result<(), String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     ingest::ingest_markdown_text(&conn, content, category, source)
 }
@@ -1136,7 +1137,7 @@ async fn orchestrate_agent(
     let allow_local;
     let system_context;
     {
-        let conn_arc = state.conn.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        let conn_arc = state.conn.lock().await;
         let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
         allow_local = db::get_setting(&conn, "allow_local_providers")
             .ok()
@@ -1661,8 +1662,8 @@ async fn generate_speech(
 }
 
 #[tauri::command]
-fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     let allow_local_providers = db::get_setting(&conn, "allow_local_providers")
@@ -1769,8 +1770,8 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     db::set_setting(
@@ -2021,8 +2022,8 @@ async fn test_provider_connection(
 }
 
 #[tauri::command]
-fn list_vaults(state: State<AppState>) -> Result<Vec<HashMap<String, String>>, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn list_vaults(state: State<'_, AppState>) -> Result<Vec<HashMap<String, String>>, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let current_vault = std::path::Path::new(&*vault_path_str);
 
     // Resolve the campaigns directory as the canonicalized parent of the vault.
@@ -2089,7 +2090,7 @@ Eldoria is a sprawling kingdom known for its towering white-stone structures and
 }
 
 #[tauri::command]
-fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Result<(), String> {
+async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &str) -> Result<(), String> {
     let canonical_target = validate_campaigns_path(&state.campaigns_root, path)?;
 
     if !canonical_target.is_dir() {
@@ -2097,7 +2098,7 @@ fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Re
     }
 
     {
-        let mut watcher_guard = state.watcher.lock().unwrap_or_else(|e| e.into_inner());
+        let mut watcher_guard = state.watcher.lock().await;
         *watcher_guard = None;
     }
 
@@ -2112,20 +2113,20 @@ fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Re
     let new_conn = Arc::new(Mutex::new(new_conn));
 
     {
-        let mut vault_path_guard = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+        let mut vault_path_guard = state.vault_path.lock().await;
         *vault_path_guard = new_vault_path_str.clone();
 
-        let mut db_path_guard = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
+        let mut db_path_guard = state.db_path.lock().await;
         *db_path_guard = new_db_path_str.clone();
 
-        let mut conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+        let mut conn_guard = state.conn.lock().await;
         *conn_guard = Arc::clone(&new_conn);
     }
 
     let new_watcher =
         watcher::start_directory_watcher(new_vault_path_str.clone(), Arc::clone(&new_conn), app)?;
     {
-        let mut watcher_guard = state.watcher.lock().unwrap_or_else(|e| e.into_inner());
+        let mut watcher_guard = state.watcher.lock().await;
         *watcher_guard = Some(new_watcher);
     }
 
@@ -2160,12 +2161,8 @@ fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Re
 }
 
 #[tauri::command]
-fn delete_vault(state: State<AppState>, vault_path: &str) -> Result<(), String> {
-    let current_vault_path = state
-        .vault_path
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
+async fn delete_vault(state: State<'_, AppState>, vault_path: &str) -> Result<(), String> {
+    let current_vault_path = state.vault_path.lock().await.clone();
 
     if current_vault_path == vault_path {
         return Err(
@@ -2206,8 +2203,8 @@ pub struct VaultSettings {
 }
 
 #[tauri::command]
-fn load_vault_settings(state: State<AppState>) -> Result<VaultSettings, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_vault_settings(state: State<'_, AppState>) -> Result<VaultSettings, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let config_file = std::path::Path::new(&*vault_path_str).join("vault_config.json");
     if !config_file.exists() {
         return Ok(VaultSettings::default());
@@ -2218,8 +2215,8 @@ fn load_vault_settings(state: State<AppState>) -> Result<VaultSettings, String> 
 }
 
 #[tauri::command]
-fn save_vault_settings(state: State<AppState>, settings: VaultSettings) -> Result<(), String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn save_vault_settings(state: State<'_, AppState>, settings: VaultSettings) -> Result<(), String> {
+    let vault_path_str = state.vault_path.lock().await;
     let config_file = std::path::Path::new(&*vault_path_str).join("vault_config.json");
     let json_str = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&config_file, json_str).map_err(|e| e.to_string())?;
@@ -2227,8 +2224,8 @@ fn save_vault_settings(state: State<AppState>, settings: VaultSettings) -> Resul
 }
 
 #[tauri::command]
-fn load_canvas_file(state: State<AppState>, rel_path: &str) -> Result<String, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_canvas_file(state: State<'_, AppState>, rel_path: &str) -> Result<String, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let full_path = validate_safe_path(&vault_path_str, rel_path)?;
     if !full_path.exists() {
         return Ok("{}".to_string());
@@ -2237,8 +2234,8 @@ fn load_canvas_file(state: State<AppState>, rel_path: &str) -> Result<String, St
 }
 
 #[tauri::command]
-fn save_canvas_file(state: State<AppState>, rel_path: &str, content: &str) -> Result<(), String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn save_canvas_file(state: State<'_, AppState>, rel_path: &str, content: &str) -> Result<(), String> {
+    let vault_path_str = state.vault_path.lock().await;
     let full_path = validate_safe_path(&vault_path_str, rel_path)?;
     if let Some(parent) = full_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -2247,8 +2244,8 @@ fn save_canvas_file(state: State<AppState>, rel_path: &str, content: &str) -> Re
 }
 
 #[tauri::command]
-fn list_templates(state: State<AppState>) -> Result<Vec<TemplateEntry>, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn list_templates(state: State<'_, AppState>) -> Result<Vec<TemplateEntry>, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let templates_dir = validate_safe_path(&vault_path_str, ".templates")?;
     if !templates_dir.exists() {
         return Ok(Vec::new());
@@ -2308,21 +2305,21 @@ fn list_templates(state: State<AppState>) -> Result<Vec<TemplateEntry>, String> 
 
 /// Loads all third-party plugins from the configured plugins folder.
 #[tauri::command]
-fn load_plugins(state: State<'_, AppState>) -> Result<Vec<plugins::PluginInfo>, String> {
-    let plugins_path = state.plugins_path.lock().unwrap_or_else(|e| e.into_inner());
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_plugins(state: State<'_, AppState>) -> Result<Vec<plugins::PluginInfo>, String> {
+    let plugins_path = state.plugins_path.lock().await;
+    let vault_path = state.vault_path.lock().await;
     plugins::load_all_plugins(&vault_path, &plugins_path)
 }
 
 /// Executes a callback hook in a specific loaded plugin sandbox.
 #[tauri::command]
-fn execute_plugin_hook(
+async fn execute_plugin_hook(
     state: State<'_, AppState>,
     plugin_id: &str,
     hook: &str,
     payload: &str,
 ) -> Result<String, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let vault_path = state.vault_path.lock().await;
     plugins::run_plugin_hook(&vault_path, plugin_id, hook, payload)
 }
 
@@ -2530,11 +2527,11 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             let campaigns_root = app_data_dir.join("campaigns");
 
             app.manage(AppState {
-                db_path: Mutex::new(db_path),
-                vault_path: Mutex::new(vault_path),
-                plugins_path: Mutex::new(plugins_path),
-                watcher: Mutex::new(Some(watcher)),
-                conn: Mutex::new(conn),
+                db_path: TokioMutex::new(db_path),
+                vault_path: TokioMutex::new(vault_path),
+                plugins_path: TokioMutex::new(plugins_path),
+                watcher: TokioMutex::new(Some(watcher)),
+                conn: TokioMutex::new(conn),
                 campaigns_root,
             });
 
@@ -2604,76 +2601,79 @@ mod tests {
         let db_path_str = db_path.to_string_lossy().to_string();
         let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let state = AppState {
-            db_path: Mutex::new(db_path_str),
-            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: Mutex::new(None),
-            conn: Mutex::new(Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
         };
 
-        let vault_path = state.vault_path.lock().unwrap();
+        tauri::async_runtime::block_on(async {
+            let vault_path = state.vault_path.lock().await;
 
-        // 1. Trash the note within a scope to release locks immediately
-        {
-            let binding = state.conn.lock().unwrap();
-            let conn_guard = binding.lock().unwrap();
-            let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
-            assert!(res.is_ok(), "trash_note failed: {:?}", res);
-        }
+            // 1. Trash the note within a scope to release locks immediately
+            {
+                let binding = state.conn.lock().await;
+                let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
+                let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
+                assert!(res.is_ok(), "trash_note failed: {:?}", res);
+            }
 
-        // Verify file was moved to .trash/
-        let trash_dir = temp_dir.join(".trash");
-        assert!(trash_dir.exists(), "Trash directory not created");
+            // Verify file was moved to .trash/
+            let trash_dir = temp_dir.join(".trash");
+            assert!(trash_dir.exists(), "Trash directory not created");
 
-        let entries: Vec<_> = std::fs::read_dir(trash_dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .collect();
-        assert_eq!(entries.len(), 1, "Expected 1 file in trash");
+            let entries: Vec<_> = std::fs::read_dir(trash_dir)
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .collect();
+            assert_eq!(entries.len(), 1, "Expected 1 file in trash");
 
-        let trashed_file_path = &entries[0];
-        let file_name = trashed_file_path.file_name().unwrap().to_string_lossy();
-        assert!(
-            file_name.contains("_TestNote.md"),
-            "Unexpected file in trash: {}",
-            file_name
-        );
-
-        // Verify original file is gone
-        assert!(!note_path.exists(), "Original file not deleted");
-
-        // Verify DB entry is gone
-        let count: i64 = conn
-            .lock()
-            .unwrap()
-            .query_row(
-                "SELECT count(*) FROM notes WHERE path = 'Worldbuilding/TestNote.md'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 0, "Note still exists in DB");
-
-        // Verify load_trash_notes
-        let trashed = load_trash_notes_impl(&vault_path).unwrap();
-        assert_eq!(trashed.len(), 1, "Expected 1 note in load_trash_notes");
-        assert_eq!(trashed[0].title, "Test");
-
-        // Test restore_note within a separate scope to avoid deadlocks
-        {
-            let binding = state.conn.lock().unwrap();
-            let conn_guard = binding.lock().unwrap();
-            let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
+            let trashed_file_path = &entries[0];
+            let file_name = trashed_file_path.file_name().unwrap().to_string_lossy();
             assert!(
-                restore_res.is_ok(),
-                "restore_note failed: {:?}",
-                restore_res
+                file_name.contains("_TestNote.md"),
+                "Unexpected file in trash: {}",
+                file_name
             );
-        }
 
-        // Verify original file is back
-        assert!(note_path.exists(), "Original file not restored");
+            // Verify original file is gone
+            assert!(!note_path.exists(), "Original file not deleted");
+
+            // Verify DB entry is gone
+            let count: i64 = conn
+                .lock()
+                .map_err(|e| e.to_string())
+                .unwrap()
+                .query_row(
+                    "SELECT count(*) FROM notes WHERE path = 'Worldbuilding/TestNote.md'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 0, "Note still exists in DB");
+
+            // Verify load_trash_notes
+            let trashed = load_trash_notes_impl(&vault_path).unwrap();
+            assert_eq!(trashed.len(), 1, "Expected 1 note in load_trash_notes");
+            assert_eq!(trashed[0].title, "Test");
+
+            // Test restore_note within a separate scope to avoid deadlocks
+            {
+                let binding = state.conn.lock().await;
+                let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
+                let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
+                assert!(
+                    restore_res.is_ok(),
+                    "restore_note failed: {:?}",
+                    restore_res
+                );
+            }
+
+            // Verify original file is back
+            assert!(note_path.exists(), "Original file not restored");
+        });
     }
 
     #[test]
@@ -2709,33 +2709,35 @@ mod tests {
         let db_path_str = db_path.to_string_lossy().to_string();
         let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let state = AppState {
-            db_path: Mutex::new(db_path_str),
-            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: Mutex::new(None),
-            conn: Mutex::new(Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
         };
 
-        let vault_path = state.vault_path.lock().unwrap();
-        let binding = state.conn.lock().unwrap();
-        let conn_guard = binding.lock().unwrap();
+        tauri::async_runtime::block_on(async {
+            let vault_path = state.vault_path.lock().await;
+            let binding = state.conn.lock().await;
+            let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
 
-        // 1. Verify parsing and trashing empty note directly
-        let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/EmptyNote.md");
-        assert!(res.is_ok(), "trash_note failed on empty note: {:?}", res);
+            // 1. Verify parsing and trashing empty note directly
+            let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/EmptyNote.md");
+            assert!(res.is_ok(), "trash_note failed on empty note: {:?}", res);
 
-        // 2. Re-create empty note and test folder trashing
-        std::fs::write(&empty_note_path, "").unwrap();
-        let trash_folder_res = trash_folder_impl(&vault_path, &conn_guard, "Worldbuilding");
-        assert!(
-            trash_folder_res.is_ok(),
-            "trash_folder failed: {:?}",
-            trash_folder_res
-        );
+            // 2. Re-create empty note and test folder trashing
+            std::fs::write(&empty_note_path, "").unwrap();
+            let trash_folder_res = trash_folder_impl(&vault_path, &conn_guard, "Worldbuilding");
+            assert!(
+                trash_folder_res.is_ok(),
+                "trash_folder failed: {:?}",
+                trash_folder_res
+            );
 
-        // Verify folder is gone
-        assert!(!note_dir.exists(), "Folder still exists");
+            // Verify folder is gone
+            assert!(!note_dir.exists(), "Folder still exists");
+        });
     }
 
     #[test]
@@ -2821,17 +2823,18 @@ mod tests {
         let db_path_str = db_path.to_string_lossy().to_string();
         let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let state = AppState {
-            db_path: Mutex::new(db_path_str),
-            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: Mutex::new(None),
-            conn: Mutex::new(Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
         };
 
+        tauri::async_runtime::block_on(async {
         // Create notes in DB from disk content
-        let binding = state.conn.lock().unwrap();
-        let conn_guard = binding.lock().unwrap();
+        let binding = state.conn.lock().await;
+        let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
         let _ = db::upsert_note(
             &conn_guard,
             "Worldbuilding/50% discount.md",
@@ -2854,7 +2857,7 @@ mod tests {
         // Resolve the literal '%' target. It should match the exact note, not every note.
         let note = unsafe {
             let s: tauri::State<AppState> = std::mem::transmute(&state);
-            resolve_wiki_link(s, "50% discount")
+            resolve_wiki_link(s, "50% discount").await
         };
         assert!(note.is_ok(), "resolve_wiki_link failed: {:?}", note);
         let note = note.unwrap();
@@ -2863,12 +2866,13 @@ mod tests {
         // A wildcard-only target should not match all notes; it should auto-create a new one.
         let wildcard = unsafe {
             let s: tauri::State<AppState> = std::mem::transmute(&state);
-            resolve_wiki_link(s, "%")
+            resolve_wiki_link(s, "%").await
         };
         assert!(wildcard.is_ok(), "resolve_wiki_link wildcard failed: {:?}", wildcard);
         let wildcard = wildcard.unwrap();
         assert_eq!(wildcard.title, "%");
         assert!(wildcard.path.contains("Worldbuilding/_.md"));
+        });
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -2895,21 +2899,23 @@ mod template_tests {
         // Mock app state
         let db_path = temp_dir.join("test.db");
         let db_path_str = db_path.to_string_lossy().to_string();
-        let conn = std::sync::Arc::new(std::sync::Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let app_state = AppState {
-            db_path: std::sync::Mutex::new(db_path_str),
-            vault_path: std::sync::Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: std::sync::Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: std::sync::Mutex::new(None),
-            conn: std::sync::Mutex::new(std::sync::Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
         };
 
+        tauri::async_runtime::block_on(async {
         let state: tauri::State<AppState> = unsafe { std::mem::transmute(&app_state) };
-        let entries = list_templates(state).unwrap();
+        let entries = list_templates(state).await.unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "Character");
         assert!(entries[0].properties.contains_key("hp"));
+        });
 
         let _ = fs::remove_dir_all(temp_dir);
     }
