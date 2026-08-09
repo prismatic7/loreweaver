@@ -228,65 +228,22 @@ fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
 fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::PathBuf, String> {
     let vault = std::path::Path::new(vault_path);
     let target = vault.join(note_path);
-
-    let mut components = std::collections::VecDeque::new();
-    for component in target.components() {
-        match component {
-            std::path::Component::Prefix(..) => {}
-            std::path::Component::RootDir => {
-                components.clear();
-            }
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                components.pop_back();
-            }
-            std::path::Component::Normal(c) => {
-                components.push_back(c);
-            }
-        }
+    let canonical_vault = std::fs::canonicalize(vault)
+        .map_err(|e| format!("Failed to canonicalize vault path: {}", e))?;
+    let canonical_target = std::fs::canonicalize(&target)
+        .or_else(|_| {
+            // Allow paths to not-yet-created files, but resolve any parent symlinks first.
+            let canonical_parent = target
+                .parent()
+                .and_then(|p| std::fs::canonicalize(p).ok())
+                .unwrap_or_else(|| canonical_vault.clone());
+            Ok::<_, std::io::Error>(canonical_parent.join(target.file_name().unwrap_or_default()))
+        })
+        .map_err(|e| format!("Failed to canonicalize target path: {}", e))?;
+    if !canonical_target.starts_with(&canonical_vault) {
+        return Err("Security Violation: Attempted directory traversal outside the vault boundary.".to_string());
     }
-
-    let mut normalized = std::path::PathBuf::new();
-    if target.is_absolute() {
-        normalized.push(std::path::Component::RootDir.as_os_str());
-    }
-
-    for c in components {
-        normalized.push(c);
-    }
-
-    let mut vault_components = std::collections::VecDeque::new();
-    for component in vault.components() {
-        match component {
-            std::path::Component::Prefix(..) => {}
-            std::path::Component::RootDir => {
-                vault_components.clear();
-            }
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                vault_components.pop_back();
-            }
-            std::path::Component::Normal(c) => {
-                vault_components.push_back(c);
-            }
-        }
-    }
-    let mut normalized_vault = std::path::PathBuf::new();
-    if vault.is_absolute() {
-        normalized_vault.push(std::path::Component::RootDir.as_os_str());
-    }
-    for c in vault_components {
-        normalized_vault.push(c);
-    }
-
-    if !normalized.starts_with(&normalized_vault) {
-        return Err(
-            "Security Violation: Attempted directory traversal outside the vault boundary."
-                .to_string(),
-        );
-    }
-
-    Ok(normalized)
+    Ok(canonical_target)
 }
 
 /// Validates that `target_path` is inside the current vault's parent (campaigns) directory.
@@ -2502,6 +2459,23 @@ mod tests {
 
         // Verify original file is back
         assert!(note_path.exists(), "Original file not restored");
+    }
+
+    #[test]
+    fn test_symlink_escapes_vault_is_rejected() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path().join("vault");
+        let outside = tmp.path().join("outside.txt");
+        let link = vault.join("escape.md");
+        fs::create_dir(&vault).unwrap();
+        fs::write(&outside, "secret").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&outside, &link).unwrap();
+        let result = validate_safe_path(vault.to_str().unwrap(), "escape.md");
+        assert!(result.is_err(), "symlink escape must be rejected");
     }
 
     #[test]
