@@ -48,6 +48,7 @@ pub mod agent;
 mod db;
 mod ingest;
 mod plugins;
+pub mod providers;
 mod search;
 mod watcher;
 
