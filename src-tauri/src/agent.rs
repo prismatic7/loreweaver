@@ -12,17 +12,24 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-/// Orchestrates local RAG, fetches matching context vectors, and calls the LLM provider.
-pub fn generate_response(
+/// Pre-computed RAG + active-note context used by the LLM orchestrator.
+///
+/// Holding this structure lets us release the SQLite connection lock before
+/// performing any blocking network I/O.
+pub struct SystemContext {
+    pub system_prompt: String,
+    pub active_note_context: String,
+}
+
+/// Builds the system prompt and active-note context while still holding the DB lock.
+///
+/// The returned `SystemContext` can be moved into a blocking task so the database
+/// mutex is not held across HTTP calls.
+pub fn build_system_context(
     conn: &rusqlite::Connection,
     prompt: &str,
-    provider: &str,
-    model: &str,
-    api_key: Option<&str>,
-    base_url: Option<&str>,
     active_note_id: Option<&str>,
-    allow_local: bool,
-) -> Result<String, String> {
+) -> Result<SystemContext, String> {
     // 1. Gather Context via Hybrid Search (RAG)
     let context_results = match search::hybrid_query(conn, prompt, "all") {
         Ok(results) => results,
@@ -68,6 +75,26 @@ pub fn generate_response(
         context_text, active_note_context
     );
 
+    Ok(SystemContext {
+        system_prompt,
+        active_note_context,
+    })
+}
+
+/// Orchestrates a call to the configured LLM backend using pre-computed context.
+///
+/// This function performs blocking HTTP I/O and must be invoked inside
+/// `tokio::task::spawn_blocking` (or `tauri::async_runtime::spawn_blocking`) so the
+/// async runtime is not blocked.
+pub fn generate_response(
+    system_context: &SystemContext,
+    prompt: &str,
+    provider: &str,
+    model: &str,
+    api_key: Option<&str>,
+    base_url: Option<&str>,
+    allow_local: bool,
+) -> Result<String, String> {
     // 4. Call LLM API Provider
     match provider {
         "ollama" => {
@@ -77,7 +104,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_ollama(model, &system_prompt, prompt, base)
+            call_ollama(model, &system_context.system_prompt, prompt, base)
         }
         "openai" | "openai-compatible" | "openrouter" | "copilot" | "z-ai" | "kilo"
         | "huggingface" => {
@@ -98,7 +125,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_openai_compatible(model, key, &system_prompt, prompt, base, provider)
+            call_openai_compatible(model, key, &system_context.system_prompt, prompt, base, provider)
         }
         "gemini" => {
             let key = api_key
@@ -110,7 +137,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_gemini(model, key, &system_prompt, prompt, base)
+            call_gemini(model, key, &system_context.system_prompt, prompt, base)
         }
         "anthropic" => {
             let key = api_key
@@ -122,7 +149,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_anthropic(model, key, &system_prompt, prompt, base)
+            call_anthropic(model, key, &system_context.system_prompt, prompt, base)
         }
         other => Err(format!("Unsupported LLM provider: {}", other)),
     }
@@ -278,13 +305,15 @@ mod tests {
 
     #[test]
     fn test_unsupported_provider() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let system_context = SystemContext {
+            system_prompt: "test".to_string(),
+            active_note_context: String::new(),
+        };
         let res = generate_response(
-            &conn,
+            &system_context,
             "Hello",
             "nonexistent-provider",
             "model-abc",
-            None,
             None,
             None,
             false,
@@ -298,19 +327,29 @@ mod tests {
 
     #[test]
     fn test_missing_api_keys() {
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let system_context = SystemContext {
+            system_prompt: "test".to_string(),
+            active_note_context: String::new(),
+        };
         // OpenAI missing key
-        let res_openai = generate_response(&conn, "Hello", "openai", "gpt-4o", None, None, None, false);
+        let res_openai = generate_response(
+            &system_context,
+            "Hello",
+            "openai",
+            "gpt-4o",
+            None,
+            None,
+            false,
+        );
         assert!(res_openai.is_err());
         assert!(res_openai.unwrap_err().contains("API key missing"));
 
         // Gemini missing key
         let res_gemini = generate_response(
-            &conn,
+            &system_context,
             "Hello",
             "gemini",
             "gemini-1.5-flash",
-            None,
             None,
             None,
             false,
@@ -320,11 +359,10 @@ mod tests {
 
         // Anthropic missing key
         let res_anthropic = generate_response(
-            &conn,
+            &system_context,
             "Hello",
             "anthropic",
             "claude-3-opus",
-            None,
             None,
             None,
             false,

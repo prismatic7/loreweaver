@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
+use tauri::{async_runtime, Manager, State};
 
 pub mod agent;
 mod db;
@@ -1108,6 +1108,20 @@ fn ingest_srd_text(
     ingest::ingest_markdown_text(&conn, content, category, source)
 }
 
+/// Runs a blocking synchronous computation on Tauri's blocking thread pool.
+///
+/// This keeps long-running HTTP or CPU-bound work out of the async runtime,
+/// preventing DB locks from being held across I/O and keeping the UI responsive.
+async fn run_blocking<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Blocking task panicked: {}", e))?
+}
+
 /// Orchestrates an AI response using the configured LLM backend.
 #[tauri::command]
 async fn orchestrate_agent(
@@ -1119,26 +1133,41 @@ async fn orchestrate_agent(
     base_url: Option<&str>,
     active_note_id: Option<&str>,
 ) -> Result<String, String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
-    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
-    let allow_local = db::get_setting(&conn, "allow_local_providers")
-        .ok()
-        .flatten()
-        .map(|v| v == "true")
-        .unwrap_or(false);
+    let allow_local;
+    let system_context;
+    {
+        let conn_arc = state.conn.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        allow_local = db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        system_context = agent::build_system_context(&conn, prompt, active_note_id)?;
+    }
+
     if let Some(base) = base_url {
         validate_provider_url(base, allow_local)?;
     }
-    agent::generate_response(
-        &conn,
-        prompt,
-        provider,
-        model,
-        api_key,
-        base_url,
-        active_note_id,
-        allow_local,
-    )
+
+    let prompt_owned = prompt.to_string();
+    let provider_owned = provider.to_string();
+    let model_owned = model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    run_blocking(move || {
+        agent::generate_response(
+            &system_context,
+            &prompt_owned,
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            allow_local,
+        )
+    })
+    .await
 }
 
 fn image_data_url_from_bytes(bytes: &[u8]) -> String {
@@ -1461,7 +1490,7 @@ fn generate_stability_image(
 }
 
 #[tauri::command]
-fn generate_image(
+async fn generate_image(
     prompt: &str,
     style: &str,
     provider: &str,
@@ -1481,10 +1510,18 @@ fn generate_image(
         model.trim()
     };
 
-    match provider {
-        "local" => generate_comfyui_image(prompt, style, image_model, base_url),
+    let provider_owned = provider.to_string();
+    let prompt_owned = prompt.to_string();
+    let style_owned = style.to_string();
+    let image_model_owned = image_model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    run_blocking(move || match provider_owned.as_str() {
+        "local" => generate_comfyui_image(&prompt_owned, &style_owned, &image_model_owned, base_url_owned.as_deref()),
         "openai" | "openai-compatible" => {
-            let base = base_url
+            let base = base_url_owned
+                .as_deref()
                 .unwrap_or("https://api.openai.com")
                 .trim()
                 .trim_end_matches('/');
@@ -1496,14 +1533,14 @@ fn generate_image(
 
             let url = format!("{}/v1/images/generations", base);
             let body = serde_json::json!({
-                "model": image_model,
+                "model": image_model_owned,
                 "prompt": clean_prompt,
                 "size": "1024x1024",
                 "response_format": "b64_json"
             });
 
             let mut request = ureq::post(&url).set("Content-Type", "application/json");
-            if let Some(key) = api_key {
+            if let Some(key) = &api_key_owned {
                 if !key.trim().is_empty() {
                     request = request.set("Authorization", &format!("Bearer {}", key.trim()));
                 }
@@ -1519,15 +1556,15 @@ fn generate_image(
             let image_bytes = image_bytes_from_response(response_json)?;
             Ok(image_data_url_from_bytes(&image_bytes))
         }
-        "stability" => generate_stability_image(prompt, style, image_model, api_key, base_url),
+        "stability" => generate_stability_image(&prompt_owned, &style_owned, &image_model_owned, api_key_owned.as_deref(), base_url_owned.as_deref()),
         other => Err(format!("Unsupported image provider: {}", other)),
-    }
+    }).await
 }
 
 /// Generates speech audio from text using the configured TTS provider.
 /// Returns a base64-encoded audio data URL suitable for <audio> playback.
 #[tauri::command]
-fn generate_speech(
+async fn generate_speech(
     text: &str,
     provider: &str,
     api_key: Option<&str>,
@@ -1542,23 +1579,34 @@ fn generate_speech(
         validate_provider_url(base, false)?;
     }
 
-    match provider {
+    let provider_owned = provider.to_string();
+    let text_owned = text.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let voice_owned = voice.map(|v| v.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    run_blocking(move || match provider_owned.as_str() {
         "openai" => {
-            let key = api_key
+            let key = api_key_owned
+                .as_deref()
                 .filter(|k| !k.trim().is_empty())
                 .ok_or("OpenAI TTS API key is required")?;
-            let base = base_url
+            let base = base_url_owned
+                .as_deref()
                 .filter(|b| !b.trim().is_empty())
                 .unwrap_or("https://api.openai.com")
                 .trim()
                 .trim_end_matches('/');
-            let voice_name = voice.filter(|v| !v.trim().is_empty()).unwrap_or("alloy");
+            let voice_name = voice_owned
+                .as_deref()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or("alloy");
 
             let url = format!("{}/v1/audio/speech", base);
             let body = serde_json::json!({
                 "model": "tts-1",
                 "voice": voice_name,
-                "input": text,
+                "input": text_owned,
                 "response_format": "mp3",
             });
 
@@ -1577,14 +1625,18 @@ fn generate_speech(
             Ok(format!("data:audio/mp3;base64,{}", encoded))
         }
         "elevenlabs" => {
-            let key = api_key
+            let key = api_key_owned
+                .as_deref()
                 .filter(|k| !k.trim().is_empty())
                 .ok_or("ElevenLabs API key is required")?;
-            let voice_id = voice.filter(|v| !v.trim().is_empty()).unwrap_or("21m00Tcm4TlvDq8ikWAM");
+            let voice_id = voice_owned
+                .as_deref()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or("21m00Tcm4TlvDq8ikWAM");
 
             let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}", voice_id);
             let body = serde_json::json!({
-                "text": text,
+                "text": text_owned,
                 "model_id": "eleven_monolingual_v1",
                 "voice_settings": { "stability": 0.5, "similarity_boost": 0.5 },
             });
@@ -1605,7 +1657,7 @@ fn generate_speech(
         }
         "local" => Err("Local TTS is not yet implemented. Configure an API-based provider (OpenAI or ElevenLabs) in Settings.".to_string()),
         other => Err(format!("Unsupported TTS provider: {}", other)),
-    }
+    }).await
 }
 
 #[tauri::command]
@@ -1786,15 +1838,19 @@ async fn test_provider_connection(
         validate_provider_url(clean_base, false)?;
     }
 
-    match provider {
+    let provider_owned = provider.to_string();
+    let clean_base_owned = clean_base.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+
+    run_blocking(move || match provider_owned.as_str() {
         "local" => {
-            let url = if clean_base.is_empty() {
-                "http://127.0.0.1:8188/object_info"
+            let url = if clean_base_owned.is_empty() {
+                "http://127.0.0.1:8188/object_info".to_string()
             } else {
-                &format!("{}/object_info", clean_base)
+                format!("{}/object_info", clean_base_owned)
             };
 
-            let response = ureq::get(url)
+            let response = ureq::get(&url)
                 .call()
                 .map_err(|e| format!("Failed to connect to ComfyUI: {:?}", e))?;
 
@@ -1805,14 +1861,14 @@ async fn test_provider_connection(
             Ok(Vec::new())
         }
         "stability" => {
-            let url = if clean_base.is_empty() {
-                "https://api.stability.ai/v1/engines/list"
+            let url = if clean_base_owned.is_empty() {
+                "https://api.stability.ai/v1/engines/list".to_string()
             } else {
-                &format!("{}/v1/engines/list", clean_base)
+                format!("{}/v1/engines/list", clean_base_owned)
             };
 
-            let key = api_key.ok_or("Stability API key is missing")?;
-            let response = ureq::get(url)
+            let key = api_key_owned.ok_or("Stability API key is missing")?;
+            let response = ureq::get(&url)
                 .set("Authorization", &format!("Bearer {}", key))
                 .call()
                 .map_err(|e| format!("Failed to connect to Stability AI: {:?}", e))?;
@@ -1833,13 +1889,13 @@ async fn test_provider_connection(
             Ok(models)
         }
         "ollama" | "ollama-cloud" => {
-            let url = if clean_base.is_empty() {
-                "http://localhost:11434/api/tags"
+            let url = if clean_base_owned.is_empty() {
+                "http://localhost:11434/api/tags".to_string()
             } else {
-                &format!("{}/api/tags", clean_base)
+                format!("{}/api/tags", clean_base_owned)
             };
 
-            let response = ureq::get(url)
+            let response = ureq::get(&url)
                 .call()
                 .map_err(|e| format!("Failed to connect to Ollama: {:?}", e))?;
 
@@ -1859,7 +1915,7 @@ async fn test_provider_connection(
         }
         "openai" | "copilot" | "z-ai" | "kilo" | "huggingface" | "openai-compatible"
         | "openrouter" => {
-            let default_url = match provider {
+            let default_url = match provider_owned.as_str() {
                 "openrouter" => "https://openrouter.ai/api",
                 "copilot" => "https://api.githubcopilot.com",
                 "z-ai" => "https://api.z.ai/api",
@@ -1867,14 +1923,14 @@ async fn test_provider_connection(
                 "huggingface" => "https://api-inference.huggingface.co",
                 _ => "https://api.openai.com",
             };
-            let url = if clean_base.is_empty() {
-                &format!("{}/v1/models", default_url)
+            let url = if clean_base_owned.is_empty() {
+                format!("{}/v1/models", default_url)
             } else {
-                &format!("{}/v1/models", clean_base)
+                format!("{}/v1/models", clean_base_owned)
             };
 
-            let mut request = ureq::get(url);
-            if let Some(key) = api_key {
+            let mut request = ureq::get(&url);
+            if let Some(key) = &api_key_owned {
                 if !key.is_empty() {
                     request = request.set("Authorization", &format!("Bearer {}", key));
                 }
@@ -1899,16 +1955,16 @@ async fn test_provider_connection(
             Ok(models)
         }
         "gemini" => {
-            let key = api_key.ok_or("Gemini API key missing")?;
-            let base = if clean_base.is_empty() {
+            let key = api_key_owned.ok_or("Gemini API key missing")?;
+            let base = if clean_base_owned.is_empty() {
                 "https://generativelanguage.googleapis.com"
             } else {
-                clean_base
+                clean_base_owned.as_str()
             };
             let url = format!("{}/v1beta/models", base);
 
             let response = ureq::get(&url)
-                .set("x-goog-api-key", key)
+                .set("x-goog-api-key", &key)
                 .call()
                 .map_err(|e| format!("Failed to connect to Gemini API: {:?}", e))?;
 
@@ -1928,16 +1984,16 @@ async fn test_provider_connection(
             Ok(models)
         }
         "anthropic" => {
-            let key = api_key.ok_or("Anthropic API key missing")?;
-            let base = if clean_base.is_empty() {
+            let key = api_key_owned.ok_or("Anthropic API key missing")?;
+            let base = if clean_base_owned.is_empty() {
                 "https://api.anthropic.com"
             } else {
-                clean_base
+                clean_base_owned.as_str()
             };
             let url = format!("{}/v1/models", base);
 
             let response = ureq::get(&url)
-                .set("x-api-key", key)
+                .set("x-api-key", &key)
                 .set("anthropic-version", "2023-06-01")
                 .call()
                 .map_err(|e| format!("Failed to connect to Anthropic API: {:?}", e))?;
@@ -1958,9 +2014,10 @@ async fn test_provider_connection(
         }
         _ => Err(format!(
             "Connection test not supported for provider: {}",
-            provider
+            provider_owned
         )),
-    }
+    })
+    .await
 }
 
 #[tauri::command]
