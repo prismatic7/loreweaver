@@ -2153,6 +2153,7 @@ async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &
     let conn_clone = Arc::clone(&new_conn);
     let vault_path_clone = new_vault_path_str.clone();
     let new_db_path_clone = new_db_path_str.clone();
+    let shutdown_clone = Arc::clone(&new_shutdown);
 
     let search_engine_dir = canonical_target
         .parent()
@@ -2161,15 +2162,30 @@ async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &
         .unwrap_or_else(|| "./data".to_string());
 
     std::thread::spawn(move || {
+        if shutdown_clone.load(Ordering::Relaxed) {
+            return;
+        }
         search::set_db_path(&new_db_path_clone);
         match search::init_search_engine(&search_engine_dir) {
             Ok(_) => {
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let conn_guard = conn_clone.lock().unwrap_or_else(|e| e.into_inner());
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let _ = search::index_all_rules_vectors(&conn_guard);
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let _ = watcher::sync_entire_directory(
                     std::path::Path::new(&vault_path_clone),
                     &conn_guard,
                 );
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let _ = cleanup_expired_trash(&vault_path_clone, &conn_guard);
                 println!("New campaign vault notes vector-indexed successfully!");
             }
@@ -2525,17 +2541,33 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             let conn_clone = Arc::clone(&conn);
             let vault_path_clone = vault_path.clone();
             let db_path_clone = db_path.clone();
+            let shutdown_clone = Arc::clone(&shutdown);
             std::thread::spawn(move || {
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 search::set_db_path(&db_path_clone);
                 match search::init_search_engine(&app_data_dir_str) {
                     Ok(_) => {
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         println!("Search engine loaded. Vector-indexing existing notes and rules...");
                         let conn_guard = conn_clone.lock().unwrap_or_else(|e| e.into_inner());
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let _ = search::index_all_rules_vectors(&conn_guard);
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let _ = watcher::sync_entire_directory(
                             std::path::Path::new(&vault_path_clone),
                             &conn_guard,
                         );
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let _ = cleanup_expired_trash(
                             &vault_path_clone,
                             &conn_guard,
