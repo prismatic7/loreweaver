@@ -164,6 +164,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="btn btn-primary"
             type="submit"
             disabled={!isDirty || !isValid}
+            data-od-id="settings-save-config-btn"
           >
             Save Configuration
           </button>
@@ -380,6 +381,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     setTestConnectionResult(null);
                     setTestConnectionError(null);
                   }}
+                  data-od-id={`settings-category-${tab.id}`}
                 >
                   <span>{tab.icon}</span> {tab.name}
                 </button>
@@ -502,6 +504,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       setTestConnectionResult(null);
                       setTestConnectionError(null);
                     }}
+                    data-od-id={`settings-provider-${activeConfigTab}-${item.id}`}
                   >
                     <span
                       style={{
@@ -711,6 +714,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }}
                 onClick={handleTestConnection}
                 disabled={isTestingConnection}
+                data-od-id="settings-test-connection-btn"
               >
                 {isTestingConnection
                   ? "🔄 Testing Connection..."

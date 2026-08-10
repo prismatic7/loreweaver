@@ -39,13 +39,16 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
+use tauri::{async_runtime, Manager, State};
+use tokio::sync::Mutex as TokioMutex;
 
 pub mod agent;
 mod db;
 mod ingest;
 mod plugins;
+pub mod providers;
 mod search;
 mod watcher;
 
@@ -66,95 +69,31 @@ mod watcher;
 ///     and vector-indexing threads.
 pub struct AppState {
     /// Absolute filesystem path to the current campaign's SQLite database.
-    pub db_path: Mutex<String>,
+    pub db_path: TokioMutex<String>,
     /// Absolute filesystem path to the active campaign vault root directory.
-    pub vault_path: Mutex<String>,
+    pub vault_path: TokioMutex<String>,
     /// Absolute filesystem path to the plugins directory.
-    pub plugins_path: Mutex<String>,
+    pub plugins_path: TokioMutex<String>,
     /// Active directory file watcher handle monitoring vault markdown changes.
-    pub watcher: Mutex<Option<RecommendedWatcher>>,
+    pub watcher: TokioMutex<Option<RecommendedWatcher>>,
     /// Thread-safe shared connection handle to the active SQLite database.
-    pub conn: Mutex<Arc<Mutex<rusqlite::Connection>>>,
+    ///
+    /// Outer `tokio::sync::Mutex` permits async command handlers to await the lock without
+    /// blocking the runtime; inner `std::sync::Mutex<Arc<...>>` lets background threads clone
+    /// and share the SQLite connection, which is not `Send`.
+    pub conn: TokioMutex<Arc<Mutex<rusqlite::Connection>>>,
     /// Root directory containing all campaign vault folders.
     pub campaigns_root: std::path::PathBuf,
+    /// Cooperative shutdown signal for background watcher/indexer threads.
+    ///
+    /// Held inside a `tokio::sync::Mutex` so `switch_vault` can atomically replace the flag
+    /// shared with the active watcher flusher thread.
+    pub shutdown: TokioMutex<Arc<AtomicBool>>,
 }
 
-// --- Data Structures ---
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct CampaignNote {
-    pub id: String,
-    pub title: String,
-    pub path: String,
-    #[specta(type = HashMap<String, specta_typescript::Unknown>)]
-    pub frontmatter: HashMap<String, Value>,
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct RuleEntry {
-    pub id: String,
-    pub path: String,
-    pub title: String,
-    pub category: String,
-    pub source: String,
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct SearchResult {
-    pub r#type: String, // "note" | "rule"
-    pub title: String,
-    pub snippet: String,
-    pub score: f32,
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct AppSettings {
-    pub llm_provider: String,
-    pub llm_model: String,
-    pub llm_api_key: String,
-    pub llm_base_url: String,
-
-    pub embed_provider: String,
-    pub embed_model: String,
-    pub embed_api_key: String,
-    pub embed_base_url: String,
-
-    pub image_provider: String,
-    pub image_model: String,
-    pub image_api_key: String,
-    pub image_base_url: String,
-
-    pub tts_provider: String,
-    pub tts_api_key: String,
-    pub tts_voice: String,
-
-    pub stt_provider: String,
-    pub stt_api_key: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct TemplateProperty {
-    pub r#type: String,
-    #[specta(type = specta_typescript::Unknown)]
-    pub default: Value,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct TemplateAction {
-    pub label: String,
-    pub hook: String,
-    pub plugin: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct TemplateEntry {
-    pub name: String,
-    pub properties: std::collections::HashMap<String, TemplateProperty>,
-    pub actions: Vec<TemplateAction>,
-}
+// Shared command input/output data shapes. Included here and by build.rs for Specta export.
+mod export_types;
+pub use export_types::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, specta::Type)]
 pub struct VaultSettings {
@@ -166,10 +105,42 @@ pub struct VaultSettings {
 
 // --- Tauri Commands ---
 
-/// Simple reversible obfuscation for API keys at rest.
-/// Not cryptographic security — prevents casual plaintext observation in the DB file.
-/// Uses a machine-specific key derived from the user's home directory.
-fn obfuscate_key(plaintext: &str) -> String {
+/// Derive a machine-specific key from the user's home directory path.
+/// Kept private for the legacy repeating-XOR fallback only; will be removed
+/// once existing keys have migrated to the OS keyring.
+fn machine_key() -> Vec<u8> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "loreweaver".to_string());
+    let seed = format!("loreweaver::{}", home);
+    seed.bytes().collect()
+}
+
+/// Legacy repeating-XOR decrypt kept for one release so existing stored keys
+/// keep working after the switch to keyring-backed storage.
+fn legacy_decrypt_api_key(ciphertext: &str, _provider_id: &str) -> Result<String, String> {
+    if ciphertext.is_empty() {
+        return Ok(String::new());
+    }
+    let key = machine_key();
+    match general_purpose::STANDARD.decode(ciphertext) {
+        Ok(bytes) => {
+            let decoded: Vec<u8> = bytes
+                .iter()
+                .enumerate()
+                .map(|(i, &b)| b ^ key[i % key.len()])
+                .collect();
+            String::from_utf8(decoded)
+                .map_err(|_| "Legacy key contained invalid UTF-8".to_string())
+        }
+        Err(_) => {
+            // If decode fails, it might be a legacy plaintext value — return as-is
+            Ok(ciphertext.to_string())
+        }
+    }
+}
+
+/// Legacy repeating-XOR encrypt. Kept non-test-only because `encrypt_api_key`
+/// falls back to legacy obfuscation when the OS keyring is unavailable.
+fn legacy_encrypt_api_key(plaintext: &str, _provider_id: &str) -> String {
     if plaintext.is_empty() {
         return String::new();
     }
@@ -182,32 +153,52 @@ fn obfuscate_key(plaintext: &str) -> String {
     general_purpose::STANDARD.encode(&bytes)
 }
 
-fn deobfuscate_key(ciphertext: &str) -> String {
-    if ciphertext.is_empty() {
-        return String::new();
-    }
-    let key = machine_key();
-    match general_purpose::STANDARD.decode(ciphertext) {
-        Ok(bytes) => {
-            let decoded: Vec<u8> = bytes
-                .iter()
-                .enumerate()
-                .map(|(i, &b)| b ^ key[i % key.len()])
-                .collect();
-            String::from_utf8(decoded).unwrap_or_default()
-        }
-        Err(_) => {
-            // If decode fails, it might be a legacy plaintext value — return as-is
-            ciphertext.to_string()
-        }
-    }
+fn keyring_entry(provider_id: &str) -> keyring::Entry {
+    keyring::Entry::new("loreweaver", &format!("api-key-{}", provider_id))
+        .unwrap_or_else(|_| panic!("Failed to create keyring entry"))
 }
 
-/// Derive a machine-specific key from the user's home directory path.
-fn machine_key() -> Vec<u8> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "loreweaver".to_string());
-    let seed = format!("loreweaver::{}", home);
-    seed.bytes().collect()
+fn keyring_is_available() -> bool {
+    keyring_entry("__loreweaver_probe__")
+        .set_password("")
+        .is_ok()
+}
+
+fn encrypt_api_key(key: &str, provider_id: &str) -> String {
+    if key.is_empty() {
+        return String::new();
+    }
+    if keyring_is_available() {
+        let entry = keyring_entry(provider_id);
+        match entry.set_password(key) {
+            Ok(()) => {
+                // Return an opaque handle so the existing settings schema still stores a string.
+                return format!("keyring:{}", provider_id);
+            }
+            Err(e) => {
+                eprintln!(
+                    "Keyring unavailable for provider {}, falling back to legacy obfuscation: {}",
+                    provider_id, e
+                );
+            }
+        }
+    }
+    // Fallback: keep storing with legacy repeating-XOR obfuscation for one release
+    // so the key is not lost when the OS keyring cannot be accessed.
+    legacy_encrypt_api_key(key, provider_id)
+}
+
+fn decrypt_api_key(ciphertext: &str, provider_id: &str) -> Result<String, String> {
+    if let Some(stored_provider) = ciphertext.strip_prefix("keyring:") {
+        if stored_provider != provider_id {
+            return Err("Provider mismatch for keyring key".to_string());
+        }
+        let entry = keyring_entry(provider_id);
+        entry.get_password().map_err(|e| format!("Keyring error: {}", e))
+    } else {
+        // Legacy repeating-XOR fallback for migration and headless environments.
+        legacy_decrypt_api_key(ciphertext, provider_id)
+    }
 }
 
 #[tauri::command]
@@ -221,8 +212,8 @@ fn greet(name: &str) -> String {
 /// Returns `Result<Vec<CampaignNote>, String>`. If locking the SQLite connection fails,
 /// the error is converted to a readable `String` which rejects the frontend Promise.
 #[tauri::command]
-fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn load_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     db::load_all_notes(&conn).map_err(|e| e.to_string())
 }
@@ -238,65 +229,66 @@ fn load_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
 fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::PathBuf, String> {
     let vault = std::path::Path::new(vault_path);
     let target = vault.join(note_path);
+    let canonical_vault = std::fs::canonicalize(vault)
+        .map_err(|e| format!("Failed to canonicalize vault path: {}", e))?;
+    let canonical_target = std::fs::canonicalize(&target)
+        .or_else(|_| {
+            // Allow paths to not-yet-created files, but resolve any parent symlinks first.
+            let canonical_parent = target
+                .parent()
+                .and_then(|p| std::fs::canonicalize(p).ok())
+                .unwrap_or_else(|| canonical_vault.clone());
+            Ok::<_, std::io::Error>(canonical_parent.join(target.file_name().unwrap_or_default()))
+        })
+        .map_err(|e| format!("Failed to canonicalize target path: {}", e))?;
+    if !canonical_target.starts_with(&canonical_vault) {
+        return Err("Security Violation: Attempted directory traversal outside the vault boundary.".to_string());
+    }
+    Ok(canonical_target)
+}
 
-    let mut components = std::collections::VecDeque::new();
-    for component in target.components() {
-        match component {
-            std::path::Component::Prefix(..) => {}
-            std::path::Component::RootDir => {
-                components.clear();
-            }
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                components.pop_back();
-            }
-            std::path::Component::Normal(c) => {
-                components.push_back(c);
+/// Validates an AI provider URL to prevent SSRF through private ranges or credential leaks.
+///
+/// - Only `http` and `https` schemes are permitted.
+/// - URLs with userinfo (username/password) are rejected.
+/// - Loopback, private, link-local, and multicast IPs are blocked unless
+///   `allow_local` is `true`.
+/// - `localhost`, `.local`, and `127.0.0.1` domain names are also blocked unless
+///   `allow_local` is `true`.
+pub fn validate_provider_url(raw: &str, allow_local: bool) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(raw).map_err(|e| format!("Invalid provider URL: {}", e))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("Provider URL must use http or https".to_string());
+    }
+    if parsed.username() != "" || parsed.password().is_some() {
+        return Err("Provider URL must not contain credentials".to_string());
+    }
+    if !allow_local {
+        if let Some(host) = parsed.host() {
+            match host {
+                url::Host::Domain(d) => {
+                    if d == "localhost" || d.ends_with(".local") || d == "127.0.0.1" {
+                        return Err("Private/localhost provider URLs are not allowed".to_string());
+                    }
+                }
+                url::Host::Ipv4(ip) => {
+                    if ip.is_loopback()
+                        || ip.is_private()
+                        || ip.is_link_local()
+                        || ip.is_multicast()
+                    {
+                        return Err("Private IP provider URLs are not allowed".to_string());
+                    }
+                }
+                url::Host::Ipv6(ip) => {
+                    if ip.is_loopback() {
+                        return Err("Loopback IPv6 provider URLs are not allowed".to_string());
+                    }
+                }
             }
         }
     }
-
-    let mut normalized = std::path::PathBuf::new();
-    if target.is_absolute() {
-        normalized.push(std::path::Component::RootDir.as_os_str());
-    }
-
-    for c in components {
-        normalized.push(c);
-    }
-
-    let mut vault_components = std::collections::VecDeque::new();
-    for component in vault.components() {
-        match component {
-            std::path::Component::Prefix(..) => {}
-            std::path::Component::RootDir => {
-                vault_components.clear();
-            }
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                vault_components.pop_back();
-            }
-            std::path::Component::Normal(c) => {
-                vault_components.push_back(c);
-            }
-        }
-    }
-    let mut normalized_vault = std::path::PathBuf::new();
-    if vault.is_absolute() {
-        normalized_vault.push(std::path::Component::RootDir.as_os_str());
-    }
-    for c in vault_components {
-        normalized_vault.push(c);
-    }
-
-    if !normalized.starts_with(&normalized_vault) {
-        return Err(
-            "Security Violation: Attempted directory traversal outside the vault boundary."
-                .to_string(),
-        );
-    }
-
-    Ok(normalized)
+    Ok(parsed)
 }
 
 /// Validates that `target_path` is inside the current vault's parent (campaigns) directory.
@@ -353,13 +345,13 @@ fn write_note_to_disk(
 /// Dual-writes to both filesystem and SQLite database so that subsequent queries
 /// (like `load_notes`) immediately reflect modifications without waiting for the watcher flusher.
 #[tauri::command]
-fn save_note(state: State<AppState>, note: CampaignNote) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn save_note(state: State<'_, AppState>, note: CampaignNote) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
     let file_path = validate_safe_path(&vault_path, &note.path)?;
     write_note_to_disk(&file_path, &note.content, &note.frontmatter)?;
 
     // Also upsert directly into the DB so load_notes immediately reflects changes
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let _ = db::upsert_note(
         &conn,
@@ -372,17 +364,33 @@ fn save_note(state: State<AppState>, note: CampaignNote) -> Result<(), String> {
     Ok(())
 }
 
+/// Sanitizes an asset filename so it is a single, non-hidden, non-empty file name.
+/// Rejects paths containing directory separators or parent-directory references.
+fn sanitize_asset_name(name: &str) -> Result<String, String> {
+    let path = std::path::Path::new(name);
+    if path.components().count() != 1 {
+        return Err("Asset filename must not contain directories".to_string());
+    }
+    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+        return Err("Invalid asset filename".to_string());
+    };
+    if file_name.is_empty() || file_name.starts_with('.') {
+        return Err("Asset filename cannot be empty or hidden".to_string());
+    }
+    Ok(file_name.to_string())
+}
+
 /// Saves a base64 encoded asset into the note's co-located `_assets` subdirectory.
 #[tauri::command]
-fn save_note_asset(
-    state: State<AppState>,
+async fn save_note_asset(
+    state: State<'_, AppState>,
     note_path: &str,
     filename: &str,
     base64_data: &str,
 ) -> Result<String, String> {
     use base64::Engine;
 
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let vault_path = state.vault_path.lock().await;
 
     let note_file_path = validate_safe_path(&vault_path, note_path)?;
     let parent_dir = note_file_path
@@ -393,12 +401,9 @@ fn save_note_asset(
     std::fs::create_dir_all(&assets_dir)
         .map_err(|e| format!("Failed to create _assets directory: {}", e))?;
 
-    let clean_filename = std::path::Path::new(filename)
-        .file_name()
-        .ok_or_else(|| "Invalid asset filename".to_string())?
-        .to_string_lossy();
+    let clean_filename = sanitize_asset_name(filename)?;
 
-    let asset_file_path = assets_dir.join(&*clean_filename);
+    let asset_file_path = assets_dir.join(&clean_filename);
 
     let bytes = base64::prelude::BASE64_STANDARD
         .decode(base64_data)
@@ -412,10 +417,10 @@ fn save_note_asset(
 
 /// Resolves or auto-creates a note from a [[Wiki-link]] target.
 #[tauri::command]
-fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<CampaignNote, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn resolve_wiki_link(state: State<'_, AppState>, target_name: &str) -> Result<CampaignNote, String> {
+    let vault_path = state.vault_path.lock().await;
 
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
 
     // 1. Check if note already exists by title or path
@@ -424,9 +429,10 @@ fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<Campai
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_");
+    let like_pattern = format!("%/{escaped_name}.md");
     let existing_note = conn.query_row(
         "SELECT id, path, title, content FROM notes WHERE LOWER(title) = LOWER(?1) OR LOWER(path) LIKE LOWER(?2) ESCAPE '\\'",
-        params![target_name, format!("%/{}.md", escaped_name)],
+        params![target_name, like_pattern],
         |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -516,9 +522,9 @@ fn resolve_wiki_link(state: State<AppState>, target_name: &str) -> Result<Campai
 }
 
 #[tauri::command]
-fn trash_note(state: State<AppState>, note_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn trash_note(state: State<'_, AppState>, note_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     trash_note_impl(&vault_path, &conn, note_path)
 }
@@ -588,9 +594,9 @@ fn trash_note_impl(
 }
 
 #[tauri::command]
-fn trash_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn trash_folder(state: State<'_, AppState>, folder_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     trash_folder_impl(&vault_path, &conn, folder_path)
 }
@@ -667,9 +673,9 @@ fn trash_folder_impl(
 }
 
 #[tauri::command]
-fn restore_note(state: State<AppState>, trash_note_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn restore_note(state: State<'_, AppState>, trash_note_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     restore_note_impl(&vault_path, &conn, trash_note_path)
 }
@@ -735,8 +741,8 @@ fn restore_note_impl(
 }
 
 #[tauri::command]
-fn load_trash_notes(state: State<AppState>) -> Result<Vec<CampaignNote>, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_trash_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
+    let vault_path = state.vault_path.lock().await;
     load_trash_notes_impl(&vault_path)
 }
 
@@ -777,9 +783,9 @@ fn load_trash_notes_impl(vault_path: &str) -> Result<Vec<CampaignNote>, String> 
 }
 
 #[tauri::command]
-fn empty_trash(state: State<AppState>) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn empty_trash(state: State<'_, AppState>) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let trash_dir = std::path::Path::new(&*vault_path).join(".trash");
     if trash_dir.exists() {
@@ -813,9 +819,9 @@ fn empty_trash(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_trashed_note(state: State<AppState>, trash_note_path: &str) -> Result<(), String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn delete_trashed_note(state: State<'_, AppState>, trash_note_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let file_path = validate_safe_path(&vault_path, trash_note_path)?;
     if file_path.exists() {
@@ -892,18 +898,14 @@ fn cleanup_expired_trash(vault_path_str: &str, conn: &rusqlite::Connection) -> R
 
 /// Retrieve the active campaign vault path.
 #[tauri::command]
-fn get_vault_path(state: State<AppState>) -> String {
-    state
-        .vault_path
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+async fn get_vault_path(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.vault_path.lock().await.clone())
 }
 
 /// Load rulebooks from the SQLite database.
 #[tauri::command]
-fn load_rules(state: State<AppState>) -> Result<Vec<RuleEntry>, String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn load_rules(state: State<'_, AppState>) -> Result<Vec<RuleEntry>, String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare("SELECT id, path, title, category, source, content FROM rules")
@@ -931,20 +933,20 @@ fn load_rules(state: State<AppState>) -> Result<Vec<RuleEntry>, String> {
 
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).
 #[tauri::command]
-fn search_vault(
-    state: State<AppState>,
+async fn search_vault(
+    state: State<'_, AppState>,
     query: &str,
     category: &str,
 ) -> Result<Vec<SearchResult>, String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     search::hybrid_query(&conn, query, category)
 }
 
 /// Saves (creates or updates) a rule entry to the database.
 #[tauri::command]
-fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+async fn save_rule(state: State<'_, AppState>, rule: RuleEntry) -> Result<String, String> {
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::upsert_rule(
         &conn,
@@ -966,8 +968,8 @@ fn save_rule(state: State<AppState>, rule: RuleEntry) -> Result<String, String> 
 
 /// Deletes a rule entry from the database by id.
 #[tauri::command]
-fn delete_rule(state: State<AppState>, rule_id: &str) -> Result<(), String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+async fn delete_rule(state: State<'_, AppState>, rule_id: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::delete_rule(&conn, rule_id).map_err(|e| e.to_string())?;
     search::invalidate_cache();
@@ -977,8 +979,8 @@ fn delete_rule(state: State<AppState>, rule_id: &str) -> Result<(), String> {
 /// Recursively lists all directories inside the vault, relative to the vault root.
 /// Excludes `.trash` and hidden directories starting with `.`.
 #[tauri::command]
-fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let vault_path = state.vault_path.lock().await;
     let vault = std::path::Path::new(&*vault_path);
     if !vault.exists() {
         return Ok(Vec::new());
@@ -1028,8 +1030,8 @@ fn list_folders(state: State<AppState>) -> Result<Vec<String>, String> {
 
 /// Deletes all rules whose path lives inside `folder_path` (e.g. a rulebook folder).
 #[tauri::command]
-fn delete_rules_folder(state: State<AppState>, folder_path: &str) -> Result<(), String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+async fn delete_rules_folder(state: State<'_, AppState>, folder_path: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::delete_rules_in_folder(&conn, folder_path).map_err(|e| e.to_string())?;
     search::invalidate_cache();
@@ -1038,15 +1040,29 @@ fn delete_rules_folder(state: State<AppState>, folder_path: &str) -> Result<(), 
 
 /// Ingests a new rulebook/SRD from raw markdown content.
 #[tauri::command]
-fn ingest_srd_text(
-    state: State<AppState>,
+async fn ingest_srd_text(
+    state: State<'_, AppState>,
     category: &str,
     source: &str,
     content: &str,
 ) -> Result<(), String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     ingest::ingest_markdown_text(&conn, content, category, source)
+}
+
+/// Runs a blocking synchronous computation on Tauri's blocking thread pool.
+///
+/// This keeps long-running HTTP or CPU-bound work out of the async runtime,
+/// preventing DB locks from being held across I/O and keeping the UI responsive.
+async fn run_blocking<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Blocking task panicked: {}", e))?
 }
 
 /// Orchestrates an AI response using the configured LLM backend.
@@ -1060,340 +1076,45 @@ async fn orchestrate_agent(
     base_url: Option<&str>,
     active_note_id: Option<&str>,
 ) -> Result<String, String> {
-    let conn_arc = state.conn.lock().map_err(|e| e.to_string())?;
-    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
-    agent::generate_response(
-        &conn,
-        prompt,
-        provider,
-        model,
-        api_key,
-        base_url,
-        active_note_id,
-    )
-}
-
-fn image_data_url_from_bytes(bytes: &[u8]) -> String {
-    let encoded = general_purpose::STANDARD.encode(bytes);
-    format!("data:image/png;base64,{}", encoded)
-}
-
-fn image_bytes_from_response(response: serde_json::Value) -> Result<Vec<u8>, String> {
-    if let Some(b64_json) = response["data"][0]["b64_json"].as_str() {
-        return general_purpose::STANDARD
-            .decode(b64_json)
-            .map_err(|e| format!("Failed to decode image payload: {}", e));
+    let allow_local;
+    let system_context;
+    {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        allow_local = db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        system_context = agent::build_system_context(&conn, prompt, active_note_id)?;
     }
 
-    if let Some(url) = response["data"][0]["url"].as_str() {
-        let image_response = ureq::get(url)
-            .call()
-            .map_err(|e| format!("Failed to download generated image: {:?}", e))?;
-        let mut reader = image_response.into_reader();
-        let mut bytes = Vec::new();
-        std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-        return Ok(bytes);
+    if let Some(base) = base_url {
+        validate_provider_url(base, allow_local)?;
     }
 
-    if let Some(images) = response["images"].as_array() {
-        if let Some(image) = images.first().and_then(|value| value.as_str()) {
-            return general_purpose::STANDARD
-                .decode(image)
-                .map_err(|e| format!("Failed to decode Stable Diffusion image payload: {}", e));
-        }
-    }
+    let prompt_owned = prompt.to_string();
+    let provider_owned = provider.to_string();
+    let model_owned = model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
 
-    if let Some(artifacts) = response["artifacts"].as_array() {
-        if let Some(image) = artifacts
-            .first()
-            .and_then(|value| value["base64"].as_str().or(value["base64_data"].as_str()))
-        {
-            return general_purpose::STANDARD
-                .decode(image)
-                .map_err(|e| format!("Failed to decode Stability image payload: {}", e));
-        }
-    }
-
-    Err("Image service returned no usable image payload".to_string())
-}
-
-fn generate_comfyui_image(
-    prompt: &str,
-    style: &str,
-    model: &str,
-    base_url: Option<&str>,
-) -> Result<String, String> {
-    let base = base_url
-        .unwrap_or("http://127.0.0.1:8188")
-        .trim()
-        .trim_end_matches('/');
-
-    if base.is_empty() {
-        return Err("ComfyUI base URL is required".to_string());
-    }
-
-    let client_id = uuid::Uuid::new_v4().to_string();
-    let positive_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{}, style: {}", prompt.trim(), style.trim())
-    };
-
-    let negative_prompt = "blurry, low quality, distorted, watermark, text, extra limbs";
-    let checkpoint = if model.trim().is_empty() {
-        "stable-diffusion-v1-5.safetensors"
-    } else {
-        model.trim()
-    };
-
-    let workflow = serde_json::json!({
-        "3": {
-            "inputs": {
-                "seed": uuid::Uuid::new_v4().as_u128() as u64,
-                "steps": 28,
-                "cfg": 7,
-                "sampler_name": "dpmpp_2m",
-                "scheduler": "karras",
-                "denoise": 1,
-                "model": [4, 0],
-                "positive": [6, 0],
-                "negative": [7, 0],
-                "latent_image": [5, 0]
-            },
-            "class_type": "KSampler",
-            "_meta": { "title": "KSampler" }
-        },
-        "4": {
-            "inputs": {
-                "ckpt_name": checkpoint
-            },
-            "class_type": "CheckpointLoaderSimple",
-            "_meta": { "title": "CheckpointLoaderSimple" }
-        },
-        "5": {
-            "inputs": {
-                "width": 768,
-                "height": 768,
-                "batch_size": 1
-            },
-            "class_type": "EmptyLatentImage",
-            "_meta": { "title": "EmptyLatentImage" }
-        },
-        "6": {
-            "inputs": {
-                "text": positive_prompt,
-                "clip": [4, 1]
-            },
-            "class_type": "CLIPTextEncode",
-            "_meta": { "title": "CLIPTextEncode" }
-        },
-        "7": {
-            "inputs": {
-                "text": negative_prompt,
-                "clip": [4, 1]
-            },
-            "class_type": "CLIPTextEncode",
-            "_meta": { "title": "CLIPTextEncode" }
-        },
-        "8": {
-            "inputs": {
-                "samples": [3, 0],
-                "vae": [4, 2]
-            },
-            "class_type": "VAEDecode",
-            "_meta": { "title": "VAEDecode" }
-        },
-        "9": {
-            "inputs": {
-                "images": [8, 0]
-            },
-            "class_type": "SaveImage",
-            "_meta": { "title": "SaveImage" }
-        }
-    });
-
-    let prompt_body = serde_json::json!({
-        "prompt": workflow,
-        "client_id": client_id
-    });
-
-    let prompt_response = ureq::post(&format!("{}/prompt", base))
-        .set("Content-Type", "application/json")
-        .send_json(prompt_body)
-        .map_err(|e| format!("ComfyUI prompt submission failed: {:?}", e))?;
-
-    let prompt_json: serde_json::Value = prompt_response
-        .into_json()
-        .map_err(|e| format!("Failed to parse ComfyUI prompt response: {:?}", e))?;
-    let prompt_id = prompt_json["prompt_id"]
-        .as_str()
-        .ok_or("ComfyUI did not return a prompt_id")?;
-
-    let history_url = format!("{}/history/{}", base, prompt_id);
-    let mut history_json: Option<serde_json::Value> = None;
-
-    for _ in 0..60 {
-        let response = ureq::get(&history_url)
-            .call()
-            .map_err(|e| format!("ComfyUI history request failed: {:?}", e))?;
-        let parsed: serde_json::Value = response
-            .into_json()
-            .map_err(|e| format!("Failed to parse ComfyUI history response: {:?}", e))?;
-
-        if parsed.get(prompt_id).is_some() {
-            history_json = Some(parsed);
-            break;
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-
-    let history_json = history_json.ok_or("Timed out waiting for ComfyUI image generation")?;
-    let images = history_json[prompt_id]["outputs"]["9"]["images"]
-        .as_array()
-        .ok_or("ComfyUI history response did not include output images")?;
-    let image_info = images
-        .first()
-        .ok_or("ComfyUI returned no generated images")?;
-
-    let filename = image_info["filename"]
-        .as_str()
-        .ok_or("ComfyUI image filename missing")?;
-    let subfolder = image_info["subfolder"].as_str().unwrap_or("");
-    let image_type = image_info["type"].as_str().unwrap_or("output");
-
-    let image_url = format!(
-        "{}/view?filename={}&subfolder={}&type={}",
-        base,
-        urlencoding::encode(filename),
-        urlencoding::encode(subfolder),
-        urlencoding::encode(image_type)
-    );
-
-    let image_response = ureq::get(&image_url)
-        .call()
-        .map_err(|e| format!("Failed to download ComfyUI image: {:?}", e))?;
-    let mut reader = image_response.into_reader();
-    let mut bytes = Vec::new();
-    std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-    Ok(image_data_url_from_bytes(&bytes))
-}
-
-#[allow(dead_code)]
-fn generate_local_stable_diffusion(
-    prompt: &str,
-    style: &str,
-    model: &str,
-    base_url: Option<&str>,
-) -> Result<String, String> {
-    let base = base_url
-        .unwrap_or("http://127.0.0.1:7860")
-        .trim()
-        .trim_end_matches('/');
-
-    if base.is_empty() {
-        return Err("Local Stable Diffusion base URL is required".to_string());
-    }
-
-    let clean_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{}, style: {}", prompt.trim(), style.trim())
-    };
-
-    let mut body = serde_json::json!({
-        "prompt": clean_prompt,
-        "negative_prompt": "blurry, low quality, distorted, watermark, text, extra limbs",
-        "steps": 28,
-        "cfg_scale": 7,
-        "width": 768,
-        "height": 768,
-        "sampler_name": "DPM++ 2M Karras",
-        "batch_size": 1,
-        "n_iter": 1,
-        "send_images": true,
-        "save_images": false,
-        "override_settings_restore_afterwards": true
-    });
-
-    if !model.trim().is_empty() {
-        body["override_settings"] = serde_json::json!({
-            "sd_model_checkpoint": model.trim()
-        });
-    }
-
-    let url = format!("{}/sdapi/v1/txt2img", base);
-    let response = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .send_json(body)
-        .map_err(|e| format!("Local Stable Diffusion request failed: {:?}", e))?;
-
-    let response_json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse Stable Diffusion response: {:?}", e))?;
-    let image_bytes = image_bytes_from_response(response_json)?;
-    Ok(image_data_url_from_bytes(&image_bytes))
-}
-
-fn generate_stability_image(
-    prompt: &str,
-    style: &str,
-    model: &str,
-    api_key: Option<&str>,
-    base_url: Option<&str>,
-) -> Result<String, String> {
-    let key = api_key
-        .filter(|value| !value.trim().is_empty())
-        .ok_or("Stability API key is required")?;
-
-    let base = base_url
-        .unwrap_or("https://api.stability.ai")
-        .trim()
-        .trim_end_matches('/');
-
-    if base.is_empty() {
-        return Err("Stability API base URL is required".to_string());
-    }
-
-    let clean_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{}, style: {}", prompt.trim(), style.trim())
-    };
-
-    let engine_id = if model.trim().is_empty() {
-        "stable-diffusion-xl-1024-v1-0"
-    } else {
-        model.trim()
-    };
-
-    let url = format!("{}/v1/generation/{}/text-to-image", base, engine_id);
-    let body = serde_json::json!({
-        "text_prompts": [{ "text": clean_prompt }],
-        "cfg_scale": 7,
-        "clip_guidance_preset": "FAST_BLUE",
-        "height": 768,
-        "width": 768,
-        "samples": 1,
-        "steps": 30
-    });
-
-    let response = ureq::post(&url)
-        .set("Content-Type", "application/json")
-        .set("Accept", "application/json")
-        .set("Authorization", &format!("Bearer {}", key.trim()))
-        .send_json(body)
-        .map_err(|e| format!("Stability image generation request failed: {:?}", e))?;
-
-    let response_json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse Stability response: {:?}", e))?;
-    let image_bytes = image_bytes_from_response(response_json)?;
-    Ok(image_data_url_from_bytes(&image_bytes))
+    run_blocking(move || {
+        agent::generate_response(
+            &system_context,
+            &prompt_owned,
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            allow_local,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn generate_image(
+async fn generate_image(
     prompt: &str,
     style: &str,
     provider: &str,
@@ -1401,63 +1122,38 @@ fn generate_image(
     api_key: Option<&str>,
     base_url: Option<&str>,
 ) -> Result<String, String> {
-    let clean_prompt = if style.trim().is_empty() {
-        prompt.trim().to_string()
-    } else {
-        format!("{} Style: {}.", prompt.trim(), style.trim())
-    };
-
-    let image_model = if model.trim().is_empty() {
-        "dall-e-3"
-    } else {
-        model.trim()
-    };
-
-    match provider {
-        "local" => generate_comfyui_image(prompt, style, image_model, base_url),
-        "openai" | "openai-compatible" => {
-            let base = base_url
-                .unwrap_or("https://api.openai.com")
-                .trim()
-                .trim_end_matches('/');
-            if base.is_empty() {
-                return Err("Image provider base URL is required".to_string());
-            }
-
-            let url = format!("{}/v1/images/generations", base);
-            let body = serde_json::json!({
-                "model": image_model,
-                "prompt": clean_prompt,
-                "size": "1024x1024",
-                "response_format": "b64_json"
-            });
-
-            let mut request = ureq::post(&url).set("Content-Type", "application/json");
-            if let Some(key) = api_key {
-                if !key.trim().is_empty() {
-                    request = request.set("Authorization", &format!("Bearer {}", key.trim()));
-                }
-            }
-
-            let response = request
-                .send_json(body)
-                .map_err(|e| format!("Image generation request failed: {:?}", e))?;
-
-            let response_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse image generation response: {:?}", e))?;
-            let image_bytes = image_bytes_from_response(response_json)?;
-            Ok(image_data_url_from_bytes(&image_bytes))
+    if let Some(base) = base_url {
+        if !base.trim().is_empty() {
+            validate_provider_url(base.trim().trim_end_matches('/'), false)?;
         }
-        "stability" => generate_stability_image(prompt, style, image_model, api_key, base_url),
-        other => Err(format!("Unsupported image provider: {}", other)),
     }
+
+    let provider_owned = provider.to_string();
+    let prompt_owned = prompt.to_string();
+    let style_owned = style.to_string();
+    let model_owned = model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::image::generate_image(
+            &prompt_owned,
+            &style_owned,
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            &agent,
+        )
+    })
+    .await
 }
 
 /// Generates speech audio from text using the configured TTS provider.
 /// Returns a base64-encoded audio data URL suitable for <audio> playback.
 #[tauri::command]
-fn generate_speech(
+async fn generate_speech(
     text: &str,
     provider: &str,
     api_key: Option<&str>,
@@ -1468,76 +1164,41 @@ fn generate_speech(
         return Err("Text is required for speech generation".to_string());
     }
 
-    match provider {
-        "openai" => {
-            let key = api_key
-                .filter(|k| !k.trim().is_empty())
-                .ok_or("OpenAI TTS API key is required")?;
-            let base = base_url
-                .filter(|b| !b.trim().is_empty())
-                .unwrap_or("https://api.openai.com")
-                .trim()
-                .trim_end_matches('/');
-            let voice_name = voice.filter(|v| !v.trim().is_empty()).unwrap_or("alloy");
-
-            let url = format!("{}/v1/audio/speech", base);
-            let body = serde_json::json!({
-                "model": "tts-1",
-                "voice": voice_name,
-                "input": text,
-                "response_format": "mp3",
-            });
-
-            let response = ureq::post(&url)
-                .timeout(std::time::Duration::from_secs(30))
-                .set("Authorization", &format!("Bearer {}", key.trim()))
-                .set("Content-Type", "application/json")
-                .send_json(body)
-                .map_err(|e| format!("OpenAI TTS request failed: {:?}", e))?;
-
-            let mut reader = response.into_reader();
-            let mut bytes = Vec::new();
-            std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-
-            let encoded = general_purpose::STANDARD.encode(&bytes);
-            Ok(format!("data:audio/mp3;base64,{}", encoded))
+    if let Some(base) = base_url {
+        if !base.trim().is_empty() {
+            validate_provider_url(base.trim().trim_end_matches('/'), false)?;
         }
-        "elevenlabs" => {
-            let key = api_key
-                .filter(|k| !k.trim().is_empty())
-                .ok_or("ElevenLabs API key is required")?;
-            let voice_id = voice.filter(|v| !v.trim().is_empty()).unwrap_or("21m00Tcm4TlvDq8ikWAM");
-
-            let url = format!("https://api.elevenlabs.io/v1/text-to-speech/{}", voice_id);
-            let body = serde_json::json!({
-                "text": text,
-                "model_id": "eleven_monolingual_v1",
-                "voice_settings": { "stability": 0.5, "similarity_boost": 0.5 },
-            });
-
-            let response = ureq::post(&url)
-                .timeout(std::time::Duration::from_secs(30))
-                .set("xi-api-key", key.trim())
-                .set("Content-Type", "application/json")
-                .send_json(body)
-                .map_err(|e| format!("ElevenLabs TTS request failed: {:?}", e))?;
-
-            let mut reader = response.into_reader();
-            let mut bytes = Vec::new();
-            std::io::copy(&mut reader, &mut bytes).map_err(|e| e.to_string())?;
-
-            let encoded = general_purpose::STANDARD.encode(&bytes);
-            Ok(format!("data:audio/mp3;base64,{}", encoded))
-        }
-        "local" => Err("Local TTS is not yet implemented. Configure an API-based provider (OpenAI or ElevenLabs) in Settings.".to_string()),
-        other => Err(format!("Unsupported TTS provider: {}", other)),
     }
+
+    let provider_owned = provider.to_string();
+    let text_owned = text.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let voice_owned = voice.map(|v| v.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::speech::generate_speech(
+            &text_owned,
+            &provider_owned,
+            api_key_owned.as_deref(),
+            voice_owned.as_deref(),
+            base_url_owned.as_deref(),
+            &agent,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+
+    let allow_local_providers = db::get_setting(&conn, "allow_local_providers")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "false".to_string())
+        == "true";
 
     let llm_provider = db::get_setting(&conn, "llm_provider")
         .unwrap_or(None)
@@ -1545,11 +1206,13 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     let llm_model = db::get_setting(&conn, "llm_model")
         .unwrap_or(None)
         .unwrap_or_else(|| "llama3:8b".to_string());
-    let llm_api_key = deobfuscate_key(
+    let llm_api_key = decrypt_api_key(
         &db::get_setting(&conn, "llm_api_key")
             .unwrap_or(None)
             .unwrap_or_default(),
-    );
+        &llm_provider,
+    )
+    .unwrap_or_default();
     let llm_base_url = db::get_setting(&conn, "llm_base_url")
         .unwrap_or(None)
         .unwrap_or_else(|| "http://localhost:11434".to_string());
@@ -1560,11 +1223,13 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     let embed_model = db::get_setting(&conn, "embed_model")
         .unwrap_or(None)
         .unwrap_or_else(|| "all-MiniLM-L6-v2".to_string());
-    let embed_api_key = deobfuscate_key(
+    let embed_api_key = decrypt_api_key(
         &db::get_setting(&conn, "embed_api_key")
             .unwrap_or(None)
             .unwrap_or_default(),
-    );
+        &embed_provider,
+    )
+    .unwrap_or_default();
     let embed_base_url = db::get_setting(&conn, "embed_base_url")
         .unwrap_or(None)
         .unwrap_or_default();
@@ -1575,11 +1240,13 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     let image_model = db::get_setting(&conn, "image_model")
         .unwrap_or(None)
         .unwrap_or_default();
-    let image_api_key = deobfuscate_key(
+    let image_api_key = decrypt_api_key(
         &db::get_setting(&conn, "image_api_key")
             .unwrap_or(None)
             .unwrap_or_default(),
-    );
+        &image_provider,
+    )
+    .unwrap_or_default();
     let image_base_url = db::get_setting(&conn, "image_base_url")
         .unwrap_or(None)
         .unwrap_or_default();
@@ -1587,11 +1254,13 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     let tts_provider = db::get_setting(&conn, "tts_provider")
         .unwrap_or(None)
         .unwrap_or_else(|| "local".to_string());
-    let tts_api_key = deobfuscate_key(
+    let tts_api_key = decrypt_api_key(
         &db::get_setting(&conn, "tts_api_key")
             .unwrap_or(None)
             .unwrap_or_default(),
-    );
+        &tts_provider,
+    )
+    .unwrap_or_default();
     let tts_voice = db::get_setting(&conn, "tts_voice")
         .unwrap_or(None)
         .unwrap_or_default();
@@ -1599,13 +1268,16 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
     let stt_provider = db::get_setting(&conn, "stt_provider")
         .unwrap_or(None)
         .unwrap_or_else(|| "local".to_string());
-    let stt_api_key = deobfuscate_key(
+    let stt_api_key = decrypt_api_key(
         &db::get_setting(&conn, "stt_api_key")
             .unwrap_or(None)
             .unwrap_or_default(),
-    );
+        &stt_provider,
+    )
+    .unwrap_or_default();
 
     Ok(AppSettings {
+        allow_local_providers,
         llm_provider,
         llm_model,
         llm_api_key,
@@ -1627,13 +1299,24 @@ fn load_settings(state: State<AppState>) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
-    let conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+    let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+
+    db::set_setting(
+        &conn,
+        "allow_local_providers",
+        if settings.allow_local_providers {
+            "true"
+        } else {
+            "false"
+        },
+    )
+    .map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "llm_provider", &settings.llm_provider).map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_model", &settings.llm_model).map_err(|e| e.to_string())?;
-    db::set_setting(&conn, "llm_api_key", &obfuscate_key(&settings.llm_api_key))
+    db::set_setting(&conn, "llm_api_key", &encrypt_api_key(&settings.llm_api_key, &settings.llm_provider))
         .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_base_url", &settings.llm_base_url).map_err(|e| e.to_string())?;
 
@@ -1643,7 +1326,7 @@ fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), St
     db::set_setting(
         &conn,
         "embed_api_key",
-        &obfuscate_key(&settings.embed_api_key),
+        &encrypt_api_key(&settings.embed_api_key, &settings.embed_provider),
     )
     .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "embed_base_url", &settings.embed_base_url)
@@ -1655,19 +1338,19 @@ fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), St
     db::set_setting(
         &conn,
         "image_api_key",
-        &obfuscate_key(&settings.image_api_key),
+        &encrypt_api_key(&settings.image_api_key, &settings.image_provider),
     )
     .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "image_base_url", &settings.image_base_url)
         .map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "tts_provider", &settings.tts_provider).map_err(|e| e.to_string())?;
-    db::set_setting(&conn, "tts_api_key", &obfuscate_key(&settings.tts_api_key))
+    db::set_setting(&conn, "tts_api_key", &encrypt_api_key(&settings.tts_api_key, &settings.tts_provider))
         .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "tts_voice", &settings.tts_voice).map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "stt_provider", &settings.stt_provider).map_err(|e| e.to_string())?;
-    db::set_setting(&conn, "stt_api_key", &obfuscate_key(&settings.stt_api_key))
+    db::set_setting(&conn, "stt_api_key", &encrypt_api_key(&settings.stt_api_key, &settings.stt_provider))
         .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -1681,186 +1364,29 @@ async fn test_provider_connection(
 ) -> Result<Vec<String>, String> {
     let clean_base = base_url.trim().trim_end_matches('/');
 
-    match provider {
-        "local" => {
-            let url = if clean_base.is_empty() {
-                "http://127.0.0.1:8188/object_info"
-            } else {
-                &format!("{}/object_info", clean_base)
-            };
-
-            let response = ureq::get(url)
-                .call()
-                .map_err(|e| format!("Failed to connect to ComfyUI: {:?}", e))?;
-
-            let _: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse ComfyUI object info: {:?}", e))?;
-
-            Ok(Vec::new())
-        }
-        "stability" => {
-            let url = if clean_base.is_empty() {
-                "https://api.stability.ai/v1/engines/list"
-            } else {
-                &format!("{}/v1/engines/list", clean_base)
-            };
-
-            let key = api_key.ok_or("Stability API key is missing")?;
-            let response = ureq::get(url)
-                .set("Authorization", &format!("Bearer {}", key))
-                .call()
-                .map_err(|e| format!("Failed to connect to Stability AI: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse Stability engine list: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(list) = res_json["engines"].as_array() {
-                for item in list {
-                    if let Some(id) = item["id"].as_str() {
-                        models.push(id.to_string());
-                    }
-                }
-            }
-
-            Ok(models)
-        }
-        "ollama" | "ollama-cloud" => {
-            let url = if clean_base.is_empty() {
-                "http://localhost:11434/api/tags"
-            } else {
-                &format!("{}/api/tags", clean_base)
-            };
-
-            let response = ureq::get(url)
-                .call()
-                .map_err(|e| format!("Failed to connect to Ollama: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse response JSON: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(list) = res_json["models"].as_array() {
-                for item in list {
-                    if let Some(name) = item["name"].as_str() {
-                        models.push(name.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        "openai" | "copilot" | "z-ai" | "kilo" | "huggingface" | "openai-compatible"
-        | "openrouter" => {
-            let default_url = match provider {
-                "openrouter" => "https://openrouter.ai/api",
-                "copilot" => "https://api.githubcopilot.com",
-                "z-ai" => "https://api.z.ai/api",
-                "kilo" => "https://api.kilo.ai/api",
-                "huggingface" => "https://api-inference.huggingface.co",
-                _ => "https://api.openai.com",
-            };
-            let url = if clean_base.is_empty() {
-                &format!("{}/v1/models", default_url)
-            } else {
-                &format!("{}/v1/models", clean_base)
-            };
-
-            let mut request = ureq::get(url);
-            if let Some(key) = api_key {
-                if !key.is_empty() {
-                    request = request.set("Authorization", &format!("Bearer {}", key));
-                }
-            }
-
-            let response = request
-                .call()
-                .map_err(|e| format!("Request failed: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse JSON: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(data) = res_json["data"].as_array() {
-                for item in data {
-                    if let Some(id) = item["id"].as_str() {
-                        models.push(id.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        "gemini" => {
-            let key = api_key.ok_or("Gemini API key missing")?;
-            let base = if clean_base.is_empty() {
-                "https://generativelanguage.googleapis.com"
-            } else {
-                clean_base
-            };
-            let url = format!("{}/v1beta/models", base);
-
-            let response = ureq::get(&url)
-                .set("x-goog-api-key", key)
-                .call()
-                .map_err(|e| format!("Failed to connect to Gemini API: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse Gemini response: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(list) = res_json["models"].as_array() {
-                for item in list {
-                    if let Some(name) = item["name"].as_str() {
-                        let clean_name = name.strip_prefix("models/").unwrap_or(name);
-                        models.push(clean_name.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        "anthropic" => {
-            let key = api_key.ok_or("Anthropic API key missing")?;
-            let base = if clean_base.is_empty() {
-                "https://api.anthropic.com"
-            } else {
-                clean_base
-            };
-            let url = format!("{}/v1/models", base);
-
-            let response = ureq::get(&url)
-                .set("x-api-key", key)
-                .set("anthropic-version", "2023-06-01")
-                .call()
-                .map_err(|e| format!("Failed to connect to Anthropic API: {:?}", e))?;
-
-            let res_json: serde_json::Value = response
-                .into_json()
-                .map_err(|e| format!("Failed to parse Anthropic response: {:?}", e))?;
-
-            let mut models = Vec::new();
-            if let Some(data) = res_json["data"].as_array() {
-                for item in data {
-                    if let Some(id) = item["id"].as_str() {
-                        models.push(id.to_string());
-                    }
-                }
-            }
-            Ok(models)
-        }
-        _ => Err(format!(
-            "Connection test not supported for provider: {}",
-            provider
-        )),
+    if !clean_base.is_empty() {
+        validate_provider_url(clean_base, false)?;
     }
+
+    let provider_owned = provider.to_string();
+    let clean_base_owned = clean_base.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::models::list_models(
+            &provider_owned,
+            &clean_base_owned,
+            api_key_owned.as_deref(),
+            &agent,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn list_vaults(state: State<AppState>) -> Result<Vec<HashMap<String, String>>, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn list_vaults(state: State<'_, AppState>) -> Result<Vec<HashMap<String, String>>, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let current_vault = std::path::Path::new(&*vault_path_str);
 
     // Resolve the campaigns directory as the canonicalized parent of the vault.
@@ -1927,15 +1453,18 @@ Eldoria is a sprawling kingdom known for its towering white-stone structures and
 }
 
 #[tauri::command]
-fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Result<(), String> {
+async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &str) -> Result<(), String> {
     let canonical_target = validate_campaigns_path(&state.campaigns_root, path)?;
 
     if !canonical_target.is_dir() {
         return Err("Target vault path does not exist or is not a directory".to_string());
     }
 
+    // Signal old watcher/indexer threads to shut down and drop the old watcher.
     {
-        let mut watcher_guard = state.watcher.lock().unwrap_or_else(|e| e.into_inner());
+        let old_shutdown = state.shutdown.lock().await;
+        old_shutdown.store(true, Ordering::Relaxed);
+        let mut watcher_guard = state.watcher.lock().await;
         *watcher_guard = None;
     }
 
@@ -1950,26 +1479,38 @@ fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Re
     let new_conn = Arc::new(Mutex::new(new_conn));
 
     {
-        let mut vault_path_guard = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+        let mut vault_path_guard = state.vault_path.lock().await;
         *vault_path_guard = new_vault_path_str.clone();
 
-        let mut db_path_guard = state.db_path.lock().unwrap_or_else(|e| e.into_inner());
+        let mut db_path_guard = state.db_path.lock().await;
         *db_path_guard = new_db_path_str.clone();
 
-        let mut conn_guard = state.conn.lock().map_err(|e| e.to_string())?;
+        let mut conn_guard = state.conn.lock().await;
         *conn_guard = Arc::clone(&new_conn);
     }
 
-    let new_watcher =
-        watcher::start_directory_watcher(new_vault_path_str.clone(), Arc::clone(&new_conn), app)?;
+    // Reset shutdown flag for the new vault's background threads.
+    let new_shutdown = Arc::new(AtomicBool::new(false));
     {
-        let mut watcher_guard = state.watcher.lock().unwrap_or_else(|e| e.into_inner());
+        let mut shutdown_guard = state.shutdown.lock().await;
+        *shutdown_guard = Arc::clone(&new_shutdown);
+    }
+
+    let new_watcher = watcher::start_directory_watcher(
+        new_vault_path_str.clone(),
+        Arc::clone(&new_conn),
+        app,
+        Arc::clone(&new_shutdown),
+    )?;
+    {
+        let mut watcher_guard = state.watcher.lock().await;
         *watcher_guard = Some(new_watcher);
     }
 
     let conn_clone = Arc::clone(&new_conn);
     let vault_path_clone = new_vault_path_str.clone();
     let new_db_path_clone = new_db_path_str.clone();
+    let shutdown_clone = Arc::clone(&new_shutdown);
 
     let search_engine_dir = canonical_target
         .parent()
@@ -1978,15 +1519,30 @@ fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Re
         .unwrap_or_else(|| "./data".to_string());
 
     std::thread::spawn(move || {
+        if shutdown_clone.load(Ordering::Relaxed) {
+            return;
+        }
         search::set_db_path(&new_db_path_clone);
         match search::init_search_engine(&search_engine_dir) {
             Ok(_) => {
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let conn_guard = conn_clone.lock().unwrap_or_else(|e| e.into_inner());
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let _ = search::index_all_rules_vectors(&conn_guard);
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let _ = watcher::sync_entire_directory(
                     std::path::Path::new(&vault_path_clone),
                     &conn_guard,
                 );
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 let _ = cleanup_expired_trash(&vault_path_clone, &conn_guard);
                 println!("New campaign vault notes vector-indexed successfully!");
             }
@@ -1998,12 +1554,8 @@ fn switch_vault(app: tauri::AppHandle, state: State<AppState>, path: &str) -> Re
 }
 
 #[tauri::command]
-fn delete_vault(state: State<AppState>, vault_path: &str) -> Result<(), String> {
-    let current_vault_path = state
-        .vault_path
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
+async fn delete_vault(state: State<'_, AppState>, vault_path: &str) -> Result<(), String> {
+    let current_vault_path = state.vault_path.lock().await.clone();
 
     if current_vault_path == vault_path {
         return Err(
@@ -2038,8 +1590,8 @@ fn open_vault_dialog() -> Result<Option<String>, String> {
 
 
 #[tauri::command]
-fn load_vault_settings(state: State<AppState>) -> Result<VaultSettings, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_vault_settings(state: State<'_, AppState>) -> Result<VaultSettings, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let config_file = std::path::Path::new(&*vault_path_str).join("vault_config.json");
     if !config_file.exists() {
         return Ok(VaultSettings::default());
@@ -2050,8 +1602,8 @@ fn load_vault_settings(state: State<AppState>) -> Result<VaultSettings, String> 
 }
 
 #[tauri::command]
-fn save_vault_settings(state: State<AppState>, settings: VaultSettings) -> Result<(), String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn save_vault_settings(state: State<'_, AppState>, settings: VaultSettings) -> Result<(), String> {
+    let vault_path_str = state.vault_path.lock().await;
     let config_file = std::path::Path::new(&*vault_path_str).join("vault_config.json");
     let json_str = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&config_file, json_str).map_err(|e| e.to_string())?;
@@ -2059,8 +1611,8 @@ fn save_vault_settings(state: State<AppState>, settings: VaultSettings) -> Resul
 }
 
 #[tauri::command]
-fn load_canvas_file(state: State<AppState>, rel_path: &str) -> Result<String, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_canvas_file(state: State<'_, AppState>, rel_path: &str) -> Result<String, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let full_path = validate_safe_path(&vault_path_str, rel_path)?;
     if !full_path.exists() {
         return Ok("{}".to_string());
@@ -2069,8 +1621,8 @@ fn load_canvas_file(state: State<AppState>, rel_path: &str) -> Result<String, St
 }
 
 #[tauri::command]
-fn save_canvas_file(state: State<AppState>, rel_path: &str, content: &str) -> Result<(), String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn save_canvas_file(state: State<'_, AppState>, rel_path: &str, content: &str) -> Result<(), String> {
+    let vault_path_str = state.vault_path.lock().await;
     let full_path = validate_safe_path(&vault_path_str, rel_path)?;
     if let Some(parent) = full_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -2079,8 +1631,8 @@ fn save_canvas_file(state: State<AppState>, rel_path: &str, content: &str) -> Re
 }
 
 #[tauri::command]
-fn list_templates(state: State<AppState>) -> Result<Vec<TemplateEntry>, String> {
-    let vault_path_str = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn list_templates(state: State<'_, AppState>) -> Result<Vec<TemplateEntry>, String> {
+    let vault_path_str = state.vault_path.lock().await;
     let templates_dir = validate_safe_path(&vault_path_str, ".templates")?;
     if !templates_dir.exists() {
         return Ok(Vec::new());
@@ -2140,21 +1692,21 @@ fn list_templates(state: State<AppState>) -> Result<Vec<TemplateEntry>, String> 
 
 /// Loads all third-party plugins from the configured plugins folder.
 #[tauri::command]
-fn load_plugins(state: State<'_, AppState>) -> Result<Vec<plugins::PluginInfo>, String> {
-    let plugins_path = state.plugins_path.lock().unwrap_or_else(|e| e.into_inner());
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+async fn load_plugins(state: State<'_, AppState>) -> Result<Vec<PluginInfo>, String> {
+    let plugins_path = state.plugins_path.lock().await;
+    let vault_path = state.vault_path.lock().await;
     plugins::load_all_plugins(&vault_path, &plugins_path)
 }
 
 /// Executes a callback hook in a specific loaded plugin sandbox.
 #[tauri::command]
-fn execute_plugin_hook(
+async fn execute_plugin_hook(
     state: State<'_, AppState>,
     plugin_id: &str,
     hook: &str,
     payload: &str,
 ) -> Result<String, String> {
-    let vault_path = state.vault_path.lock().unwrap_or_else(|e| e.into_inner());
+    let vault_path = state.vault_path.lock().await;
     plugins::run_plugin_hook(&vault_path, plugin_id, hook, payload)
 }
 
@@ -2323,11 +1875,15 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 .map_err(|e| err(format!("Failed to seed default rules: {}", e)))?;
             let conn = Arc::new(Mutex::new(conn));
 
+            // Cooperative shutdown flag shared by watcher flusher and background indexer threads.
+            let shutdown = Arc::new(AtomicBool::new(false));
+
             // Spawn Fs Watcher (triggers initial index scan automatically)
             let watcher = watcher::start_directory_watcher(
                 vault_path.clone(),
                 Arc::clone(&conn),
                 app_handle.clone(),
+                Arc::clone(&shutdown),
             )
             .map_err(|e| err(format!("Failed to start directory watcher: {}", e)))?;
 
@@ -2336,17 +1892,33 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             let conn_clone = Arc::clone(&conn);
             let vault_path_clone = vault_path.clone();
             let db_path_clone = db_path.clone();
+            let shutdown_clone = Arc::clone(&shutdown);
             std::thread::spawn(move || {
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    return;
+                }
                 search::set_db_path(&db_path_clone);
                 match search::init_search_engine(&app_data_dir_str) {
                     Ok(_) => {
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         println!("Search engine loaded. Vector-indexing existing notes and rules...");
                         let conn_guard = conn_clone.lock().unwrap_or_else(|e| e.into_inner());
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let _ = search::index_all_rules_vectors(&conn_guard);
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let _ = watcher::sync_entire_directory(
                             std::path::Path::new(&vault_path_clone),
                             &conn_guard,
                         );
+                        if shutdown_clone.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let _ = cleanup_expired_trash(
                             &vault_path_clone,
                             &conn_guard,
@@ -2362,12 +1934,13 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             let campaigns_root = app_data_dir.join("campaigns");
 
             app.manage(AppState {
-                db_path: Mutex::new(db_path),
-                vault_path: Mutex::new(vault_path),
-                plugins_path: Mutex::new(plugins_path),
-                watcher: Mutex::new(Some(watcher)),
-                conn: Mutex::new(conn),
+                db_path: TokioMutex::new(db_path),
+                vault_path: TokioMutex::new(vault_path),
+                plugins_path: TokioMutex::new(plugins_path),
+                watcher: TokioMutex::new(Some(watcher)),
+                conn: TokioMutex::new(conn),
                 campaigns_root,
+                shutdown: TokioMutex::new(shutdown),
             });
 
             Ok(())
@@ -2417,15 +1990,9 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
 
 /// Export TypeScript bindings for all Tauri command input/output types.
 ///
-/// Runs once at application startup via `main.rs` so the React frontend can import strongly-typed
-/// interfaces from `src/bindings.ts`. The output path is anchored to `CARGO_MANIFEST_DIR`
-/// so it is correct regardless of the working directory at runtime.
-#[cfg(not(test))]
-pub fn export_bindings() {
-    let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("src")
-        .join("bindings.ts");
+/// Called from `build.rs` at compile time so the React frontend can import strongly-typed
+/// interfaces from `src/bindings.ts`.
+pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
     tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<CampaignNote>()
         .typ::<RuleEntry>()
@@ -2435,9 +2002,9 @@ pub fn export_bindings() {
         .typ::<TemplateEntry>()
         .typ::<TemplateProperty>()
         .typ::<TemplateAction>()
-        .typ::<plugins::PluginInfo>()
+        .typ::<PluginInfo>()
         .dangerously_cast_bigints_to_number()
-        .export(specta_typescript::Typescript::default(), bindings_path)
+        .export(specta_typescript::Typescript::default(), path)
         .expect("Failed to export bindings");
 }
 
@@ -2462,76 +2029,97 @@ mod tests {
         let db_path_str = db_path.to_string_lossy().to_string();
         let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let state = AppState {
-            db_path: Mutex::new(db_path_str),
-            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: Mutex::new(None),
-            conn: Mutex::new(Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
-        let vault_path = state.vault_path.lock().unwrap();
+        tauri::async_runtime::block_on(async {
+            let vault_path = state.vault_path.lock().await;
 
-        // 1. Trash the note within a scope to release locks immediately
-        {
-            let binding = state.conn.lock().unwrap();
-            let conn_guard = binding.lock().unwrap();
-            let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
-            assert!(res.is_ok(), "trash_note failed: {:?}", res);
-        }
+            // 1. Trash the note within a scope to release locks immediately
+            {
+                let binding = state.conn.lock().await;
+                let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
+                let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/TestNote.md");
+                assert!(res.is_ok(), "trash_note failed: {:?}", res);
+            }
 
-        // Verify file was moved to .trash/
-        let trash_dir = temp_dir.join(".trash");
-        assert!(trash_dir.exists(), "Trash directory not created");
+            // Verify file was moved to .trash/
+            let trash_dir = temp_dir.join(".trash");
+            assert!(trash_dir.exists(), "Trash directory not created");
 
-        let entries: Vec<_> = std::fs::read_dir(trash_dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .collect();
-        assert_eq!(entries.len(), 1, "Expected 1 file in trash");
+            let entries: Vec<_> = std::fs::read_dir(trash_dir)
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .collect();
+            assert_eq!(entries.len(), 1, "Expected 1 file in trash");
 
-        let trashed_file_path = &entries[0];
-        let file_name = trashed_file_path.file_name().unwrap().to_string_lossy();
-        assert!(
-            file_name.contains("_TestNote.md"),
-            "Unexpected file in trash: {}",
-            file_name
-        );
-
-        // Verify original file is gone
-        assert!(!note_path.exists(), "Original file not deleted");
-
-        // Verify DB entry is gone
-        let count: i64 = conn
-            .lock()
-            .unwrap()
-            .query_row(
-                "SELECT count(*) FROM notes WHERE path = 'Worldbuilding/TestNote.md'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 0, "Note still exists in DB");
-
-        // Verify load_trash_notes
-        let trashed = load_trash_notes_impl(&vault_path).unwrap();
-        assert_eq!(trashed.len(), 1, "Expected 1 note in load_trash_notes");
-        assert_eq!(trashed[0].title, "Test");
-
-        // Test restore_note within a separate scope to avoid deadlocks
-        {
-            let binding = state.conn.lock().unwrap();
-            let conn_guard = binding.lock().unwrap();
-            let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
+            let trashed_file_path = &entries[0];
+            let file_name = trashed_file_path.file_name().unwrap().to_string_lossy();
             assert!(
-                restore_res.is_ok(),
-                "restore_note failed: {:?}",
-                restore_res
+                file_name.contains("_TestNote.md"),
+                "Unexpected file in trash: {}",
+                file_name
             );
-        }
 
-        // Verify original file is back
-        assert!(note_path.exists(), "Original file not restored");
+            // Verify original file is gone
+            assert!(!note_path.exists(), "Original file not deleted");
+
+            // Verify DB entry is gone
+            let count: i64 = conn
+                .lock()
+                .map_err(|e| e.to_string())
+                .unwrap()
+                .query_row(
+                    "SELECT count(*) FROM notes WHERE path = 'Worldbuilding/TestNote.md'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 0, "Note still exists in DB");
+
+            // Verify load_trash_notes
+            let trashed = load_trash_notes_impl(&vault_path).unwrap();
+            assert_eq!(trashed.len(), 1, "Expected 1 note in load_trash_notes");
+            assert_eq!(trashed[0].title, "Test");
+
+            // Test restore_note within a separate scope to avoid deadlocks
+            {
+                let binding = state.conn.lock().await;
+                let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
+                let restore_res = restore_note_impl(&vault_path, &conn_guard, &trashed[0].path);
+                assert!(
+                    restore_res.is_ok(),
+                    "restore_note failed: {:?}",
+                    restore_res
+                );
+            }
+
+            // Verify original file is back
+            assert!(note_path.exists(), "Original file not restored");
+        });
+    }
+
+    #[test]
+    fn test_symlink_escapes_vault_is_rejected() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path().join("vault");
+        let outside = tmp.path().join("outside.txt");
+        let link = vault.join("escape.md");
+        fs::create_dir(&vault).unwrap();
+        fs::write(&outside, "secret").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&outside, &link).unwrap();
+        let result = validate_safe_path(vault.to_str().unwrap(), "escape.md");
+        assert!(result.is_err(), "symlink escape must be rejected");
     }
 
     #[test]
@@ -2550,33 +2138,398 @@ mod tests {
         let db_path_str = db_path.to_string_lossy().to_string();
         let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let state = AppState {
-            db_path: Mutex::new(db_path_str),
-            vault_path: Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: Mutex::new(None),
-            conn: Mutex::new(Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
-        let vault_path = state.vault_path.lock().unwrap();
-        let binding = state.conn.lock().unwrap();
-        let conn_guard = binding.lock().unwrap();
+        tauri::async_runtime::block_on(async {
+            let vault_path = state.vault_path.lock().await;
+            let binding = state.conn.lock().await;
+            let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
 
-        // 1. Verify parsing and trashing empty note directly
-        let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/EmptyNote.md");
-        assert!(res.is_ok(), "trash_note failed on empty note: {:?}", res);
+            // 1. Verify parsing and trashing empty note directly
+            let res = trash_note_impl(&vault_path, &conn_guard, "Worldbuilding/EmptyNote.md");
+            assert!(res.is_ok(), "trash_note failed on empty note: {:?}", res);
 
-        // 2. Re-create empty note and test folder trashing
-        std::fs::write(&empty_note_path, "").unwrap();
-        let trash_folder_res = trash_folder_impl(&vault_path, &conn_guard, "Worldbuilding");
-        assert!(
-            trash_folder_res.is_ok(),
-            "trash_folder failed: {:?}",
-            trash_folder_res
-        );
+            // 2. Re-create empty note and test folder trashing
+            std::fs::write(&empty_note_path, "").unwrap();
+            let trash_folder_res = trash_folder_impl(&vault_path, &conn_guard, "Worldbuilding");
+            assert!(
+                trash_folder_res.is_ok(),
+                "trash_folder failed: {:?}",
+                trash_folder_res
+            );
 
-        // Verify folder is gone
-        assert!(!note_dir.exists(), "Folder still exists");
+            // Verify folder is gone
+            assert!(!note_dir.exists(), "Folder still exists");
+        });
+    }
+
+    #[test]
+    fn test_api_key_round_trip() {
+        let key = "sk-test-12345";
+        let provider = "test-provider";
+
+        if !keyring_is_available() {
+            // OS keyring is unavailable in headless/CI environments; skip rather
+            // than silently testing the legacy fallback. The legacy path is
+            // covered separately by `test_legacy_api_key_round_trip`.
+            println!(
+                "Skipping keyring round-trip: OS keyring unavailable in this environment"
+            );
+            return;
+        }
+
+        let encrypted = encrypt_api_key(key, provider);
+        assert!(!encrypted.contains(key));
+        assert!(encrypted.starts_with("keyring:"));
+        let decrypted = decrypt_api_key(&encrypted, provider).unwrap();
+        assert_eq!(decrypted, key);
+    }
+
+    #[test]
+    fn test_legacy_api_key_round_trip() {
+        let key = "sk-test-12345";
+        let provider = "test-provider";
+        let legacy_ciphertext = legacy_encrypt_api_key(key, provider);
+        assert!(!legacy_ciphertext.contains(key));
+        let decrypted = decrypt_api_key(&legacy_ciphertext, provider).unwrap();
+        assert_eq!(decrypted, key);
+    }
+
+    #[test]
+    fn test_save_note_asset_rejects_traversal_filename() {
+        assert!(sanitize_asset_name("../../../etc/passwd").is_err());
+        assert_eq!(sanitize_asset_name("evil.png").unwrap(), "evil.png");
+        assert!(sanitize_asset_name(".hidden").is_err());
+        assert!(sanitize_asset_name("dir/file.png").is_err());
+    }
+
+    #[test]
+    fn test_provider_url_blocks_private_ranges() {
+        for bad in &[
+            "http://localhost:11434",
+            "http://127.0.0.1",
+            "http://192.168.1.1",
+            "http://10.0.0.1",
+            "http://[::1]",
+        ] {
+            assert!(
+                validate_provider_url(bad, false).is_err(),
+                "{} should be blocked",
+                bad
+            );
+        }
+        assert!(validate_provider_url("https://api.openai.com", false).is_ok());
+        assert!(validate_provider_url("http://localhost:11434", true).is_ok());
+    }
+
+    #[test]
+    fn test_resolve_wiki_link_escaped_wildcards() {
+        let temp_dir = std::env::temp_dir().join("loreweaver_wiki_test");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let world_dir = temp_dir.join("Worldbuilding");
+        std::fs::create_dir_all(&world_dir).unwrap();
+
+        // Seed two notes: one whose title contains a literal '%' and another that would match a wildcard.
+        std::fs::write(
+            world_dir.join("50% discount.md"),
+            "# 50% discount\n\ncontent",
+        )
+        .unwrap();
+        std::fs::write(
+            world_dir.join("Goblin.md"),
+            "# Goblin\n\ncontent",
+        )
+        .unwrap();
+
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let state = AppState {
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+        };
+
+        tauri::async_runtime::block_on(async {
+        // Create notes in DB from disk content
+        let binding = state.conn.lock().await;
+        let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
+        let _ = db::upsert_note(
+            &conn_guard,
+            "Worldbuilding/50% discount.md",
+            "50% discount",
+            "content",
+            &HashMap::new(),
+        )
+        .unwrap();
+        let _ = db::upsert_note(
+            &conn_guard,
+            "Worldbuilding/Goblin.md",
+            "Goblin",
+            "content",
+            &HashMap::new(),
+        )
+        .unwrap();
+        drop(conn_guard);
+        drop(binding);
+
+        // Resolve the literal '%' target. It should match the exact note, not every note.
+        let note = unsafe {
+            let s: tauri::State<AppState> = std::mem::transmute(&state);
+            resolve_wiki_link(s, "50% discount").await
+        };
+        assert!(note.is_ok(), "resolve_wiki_link failed: {:?}", note);
+        let note = note.unwrap();
+        assert_eq!(note.title, "50% discount");
+
+        // A wildcard-only target should not match all notes; it should auto-create a new one.
+        let wildcard = unsafe {
+            let s: tauri::State<AppState> = std::mem::transmute(&state);
+            resolve_wiki_link(s, "%").await
+        };
+        assert!(wildcard.is_ok(), "resolve_wiki_link wildcard failed: {:?}", wildcard);
+        let wildcard = wildcard.unwrap();
+        assert_eq!(wildcard.title, "%");
+        assert!(wildcard.path.contains("Worldbuilding/_.md"));
+        });
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    fn test_state(temp_dir: &std::path::Path) -> AppState {
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
+        AppState {
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(conn),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_notes() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("Worldbuilding")).unwrap();
+        let state = test_state(tmp.path());
+        let note = CampaignNote {
+            id: "note-1".to_string(),
+            title: "Ancient City".to_string(),
+            path: "Worldbuilding/AncientCity.md".to_string(),
+            frontmatter: HashMap::new(),
+            content: "# Ancient City\nA city built on stone arches.".to_string(),
+        };
+
+        tauri::async_runtime::block_on(async {
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                save_note(s, note.clone()).await.unwrap();
+            }
+
+            // Verify file written to disk
+            let on_disk = tmp.path().join("Worldbuilding/AncientCity.md");
+            assert!(on_disk.exists(), "note file not written to disk");
+            let disk_content = std::fs::read_to_string(&on_disk).unwrap();
+            assert!(disk_content.contains("Ancient City"));
+
+            // Verify load_notes returns the note
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let notes = load_notes(s).await.unwrap();
+                assert_eq!(notes.len(), 1);
+                assert_eq!(notes[0].title, "Ancient City");
+                assert_eq!(notes[0].path, "Worldbuilding/AncientCity.md");
+                assert!(notes[0].content.contains("Ancient City"));
+            }
+        });
+    }
+
+    #[test]
+    fn test_list_folders_excludes_trash_hidden_assets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        std::fs::create_dir_all(vault.join("Worldbuilding").join("Cities")).unwrap();
+        std::fs::create_dir_all(vault.join("Characters")).unwrap();
+        std::fs::create_dir_all(vault.join(".trash")).unwrap();
+        std::fs::create_dir_all(vault.join("Worldbuilding/.hidden")).unwrap();
+        std::fs::create_dir_all(vault.join("Worldbuilding/Cities/_assets")).unwrap();
+
+        let state = test_state(vault);
+
+        tauri::async_runtime::block_on(async {
+            let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+            let folders = list_folders(s).await.unwrap();
+
+            assert!(folders.contains(&"Worldbuilding".to_string()));
+            assert!(folders.contains(&"Characters".to_string()));
+            assert!(folders.contains(&"Worldbuilding/Cities".to_string()));
+            // Excluded paths
+            assert!(!folders.contains(&".trash".to_string()));
+            assert!(!folders.contains(&"Worldbuilding/.hidden".to_string()));
+            assert!(!folders.contains(&"Worldbuilding/Cities/_assets".to_string()));
+            // Hidden and assets dirs must not appear anywhere
+            assert!(folders.iter().all(|f| !f.starts_with('.') && !f.contains("/.") && !f.ends_with("_assets")));
+        });
+    }
+
+    #[test]
+    fn test_save_load_delete_rule() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let rule = RuleEntry {
+            id: "rule-abc".to_string(),
+            path: "Combat/Charge.md".to_string(),
+            title: "Charge".to_string(),
+            category: "Combat".to_string(),
+            source: "Homebrew".to_string(),
+            content: "Move at least 20 feet in a straight line, then gain advantage.".to_string(),
+        };
+
+        tauri::async_runtime::block_on(async {
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let saved_id = save_rule(s, rule.clone()).await.unwrap();
+                assert_eq!(saved_id, "rule-abc");
+            }
+
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let rules = load_rules(s).await.unwrap();
+                assert_eq!(rules.len(), 1);
+                assert_eq!(rules[0].id, "rule-abc");
+                assert_eq!(rules[0].title, "Charge");
+                assert_eq!(rules[0].category, "Combat");
+            }
+
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                delete_rule(s, "rule-abc").await.unwrap();
+            }
+
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let rules = load_rules(s).await.unwrap();
+                assert!(rules.is_empty(), "rule should be deleted");
+            }
+        });
+    }
+
+    #[test]
+    fn test_search_vault_returns_matching_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        // Seed a note directly into the DB with a distinctive lexical token.
+        tauri::async_runtime::block_on(async {
+            {
+                let conn_guard = state.conn.lock().await;
+                let conn = conn_guard.lock().unwrap();
+                db::upsert_note(
+                    &conn,
+                    "Worldbuilding/GoblinHoard.md",
+                    "Goblin Hoard",
+                    "The goblins buried their glittering hoard beneath the hill.",
+                    &HashMap::new(),
+                )
+                .unwrap();
+            }
+            search::invalidate_cache();
+
+            let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+            let results = search_vault(s, "goblin", "notes").await.unwrap();
+            assert!(
+                results.iter().any(|r| r.title == "Goblin Hoard"),
+                "expected a note titled 'Goblin Hoard' in results, got {:?}",
+                results.iter().map(|r| &r.title).collect::<Vec<_>>()
+            );
+
+            search::invalidate_cache();
+        });
+    }
+
+    #[test]
+    fn test_build_system_context_includes_active_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        tauri::async_runtime::block_on(async {
+            let note_id = {
+                let conn_guard = state.conn.lock().await;
+                let conn = conn_guard.lock().unwrap();
+                db::upsert_note(
+                    &conn,
+                    "Worldbuilding/SwordOfDawn.md",
+                    "Sword of Dawn",
+                    "A radiant blade forged at dawn.",
+                    &HashMap::new(),
+                )
+                .unwrap()
+            };
+            search::invalidate_cache();
+
+            {
+                let conn_guard = state.conn.lock().await;
+                let conn = conn_guard.lock().unwrap();
+                let context =
+                    agent::build_system_context(&conn, "what about the blade", Some(&note_id))
+                        .unwrap();
+                assert!(
+                    context.system_prompt.contains("Sword of Dawn"),
+                    "system prompt should reference the active note title"
+                );
+                assert!(
+                    context.active_note_context.contains("Sword of Dawn"),
+                    "active note context should include the note"
+                );
+            }
+            search::invalidate_cache();
+        });
+    }
+
+    #[test]
+    fn test_orchestrate_agent_rejects_unsupported_provider() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        tauri::async_runtime::block_on(async {
+            let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+            let res = orchestrate_agent(
+                s,
+                "hello",
+                "nonexistent",
+                "some-model",
+                None,
+                None,
+                None,
+            )
+            .await;
+            assert!(
+                res.is_err(),
+                "unsupported provider should fail before any HTTP call"
+            );
+            let err = res.unwrap_err();
+            assert!(
+                err.contains("Unsupported LLM provider"),
+                "unexpected error: {}",
+                err
+            );
+        });
     }
 }
 
@@ -2601,21 +2554,24 @@ mod template_tests {
         // Mock app state
         let db_path = temp_dir.join("test.db");
         let db_path_str = db_path.to_string_lossy().to_string();
-        let conn = std::sync::Arc::new(std::sync::Mutex::new(db::init_db(&db_path_str).unwrap()));
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
         let app_state = AppState {
-            db_path: std::sync::Mutex::new(db_path_str),
-            vault_path: std::sync::Mutex::new(temp_dir.to_string_lossy().to_string()),
-            plugins_path: std::sync::Mutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
-            watcher: std::sync::Mutex::new(None),
-            conn: std::sync::Mutex::new(std::sync::Arc::clone(&conn)),
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
         };
 
+        tauri::async_runtime::block_on(async {
         let state: tauri::State<AppState> = unsafe { std::mem::transmute(&app_state) };
-        let entries = list_templates(state).unwrap();
+        let entries = list_templates(state).await.unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "Character");
         assert!(entries[0].properties.contains_key("hp"));
+        });
 
         let _ = fs::remove_dir_all(temp_dir);
     }

@@ -83,6 +83,7 @@ export const TrashView: React.FC<TrashViewProps> = ({
                 alignItems: "center",
                 gap: "6px",
               }}
+              data-od-id="trash-empty-btn"
             >
               <Trash2 size={14} /> Empty Trash
             </button>
@@ -179,7 +180,7 @@ export const TrashView: React.FC<TrashViewProps> = ({
                         >
                           Path:{" "}
                           <code>
-                            {(note.frontmatter?.original_path as string) ||
+                            {String(note.frontmatter?.original_path || "") ||
                               note.path}
                           </code>
                         </div>
@@ -201,6 +202,7 @@ export const TrashView: React.FC<TrashViewProps> = ({
                             alignItems: "center",
                             gap: "4px",
                           }}
+                          data-od-id={`trash-restore-${note.id}`}
                         >
                           <RotateCcw size={12} /> Restore
                         </button>
@@ -222,6 +224,7 @@ export const TrashView: React.FC<TrashViewProps> = ({
                             alignItems: "center",
                             gap: "4px",
                           }}
+                          data-od-id={`trash-delete-${note.id}`}
                         >
                           Delete Permanently
                         </button>

@@ -128,6 +128,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                 fontSize: "11px",
               }}
               title="Create a new rule entry"
+              data-od-id="rules-new-rule-btn"
             >
               <Plus size={12} /> New Rule
             </button>
@@ -148,6 +149,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                 color: "var(--fg)",
               }}
               title="Create a new rulebook folder or subfolder"
+              data-od-id="rules-new-folder-btn"
             >
               <FolderPlus size={12} /> Folder
             </button>
@@ -191,14 +193,28 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       borderRadius: "4px",
                     }}
                     className="folder-item-header"
+                    data-od-id={`rule-folder-header-${folderName}`}
                   >
-                    <div
+                    <button
                       onClick={() =>
                         setCollapsedFolders((prev) => ({
                           ...prev,
                           [`rule-folder-${folderName}`]: !isCollapsed,
                         }))
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setCollapsedFolders((prev) => ({
+                            ...prev,
+                            [`rule-folder-${folderName}`]: !isCollapsed,
+                          }));
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!isCollapsed}
+                      aria-label={`Toggle ${folderName} folder`}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -211,6 +227,10 @@ export const RulesView: React.FC<RulesViewProps> = ({
                         userSelect: "none",
                         flex: 1,
                         overflow: "hidden",
+                        background: "transparent",
+                        border: "none",
+                        textAlign: "left",
+                        fontFamily: "var(--font-body)",
                       }}
                     >
                       <ChevronRight
@@ -233,7 +253,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       >
                         {folderName}
                       </span>
-                    </div>
+                    </button>
 
                     {/* Plus button for folder actions */}
                     <div style={{ position: "relative" }}>
@@ -257,6 +277,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           fontWeight: "bold",
                         }}
                         title="Add Asset to folder..."
+                        data-od-id={`rule-folder-actions-${folderName}`}
                       >
                         +
                       </button>
@@ -325,10 +346,20 @@ export const RulesView: React.FC<RulesViewProps> = ({
           )}
 
 
-          <div
-            onClick={() =>
-              document.getElementById("srd-file-input")?.click()
-            }
+                <button
+                  onClick={() =>
+                    document.getElementById("srd-file-input")?.click()
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      document.getElementById("srd-file-input")?.click();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Import Markdown or PDF rulebook file"
+                  data-od-id="rules-import-srd-btn"
             style={{
               marginTop: "20px",
               padding: "16px",
@@ -337,6 +368,9 @@ export const RulesView: React.FC<RulesViewProps> = ({
               textAlign: "center",
               cursor: "pointer",
               background: "var(--bg)",
+              width: "100%",
+              fontFamily: "var(--font-body)",
+              color: "var(--fg)",
             }}
           >
             <FileText
@@ -358,7 +392,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
             >
               Click to select .md, .txt, or .pdf rulebook file
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Right Document Sheet View & Editor Area */}
@@ -419,6 +453,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     alignItems: "center",
                     gap: "4px",
                   }}
+                  data-od-id="rule-preview-btn"
                 >
                   <Eye size={12} /> Preview
                 </button>
@@ -442,6 +477,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     alignItems: "center",
                     gap: "4px",
                   }}
+                  data-od-id="rule-edit-btn"
                 >
                   <PenLine size={12} /> Edit
                 </button>
@@ -462,6 +498,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     alignItems: "center",
                     gap: 4,
                   }}
+                  data-od-id="rule-insert-image-btn"
                 >
                   <ImageIcon size={12} /> Insert Chart / Image
                   <input
@@ -481,6 +518,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       alignItems: "center",
                       gap: 4,
                     }}
+                    data-od-id="rule-trash-btn"
                   >
                     <Trash2 size={12} /> Trash Rule
                   </button>

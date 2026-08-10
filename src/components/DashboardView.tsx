@@ -50,7 +50,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        <div
+        <button
           className="dash-card"
           onClick={() => setActiveView("vault")}
           data-od-id="dash-notes"
@@ -60,9 +60,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="dash-card-desc">
             Worldbuilding, NPCs, locations, and lore
           </div>
-        </div>
+        </button>
 
-        <div
+        <button
           className="dash-card"
           onClick={() => setActiveView("rules")}
           data-od-id="dash-rules"
@@ -72,9 +72,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="dash-card-desc">
             Core rules, magic, and reference material
           </div>
-        </div>
+        </button>
 
-        <div
+        <button
           className="dash-card"
           onClick={() => setActiveView("ai")}
           data-od-id="dash-ai"
@@ -84,7 +84,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="dash-card-desc">
             Chat, generate, and orchestrate
           </div>
-        </div>
+        </button>
 
         <div className="dash-recent" data-od-id="dash-recent">
           <div className="dash-recent-header">
@@ -99,7 +99,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
           {notes.map((note) => (
-            <div
+            <button
               key={note.id}
               className="dash-recent-item"
               onClick={() => {
@@ -114,7 +114,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
               <ChevronRight size={14} />
-            </div>
+            </button>
           ))}
         </div>
       </div>

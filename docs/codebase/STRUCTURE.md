@@ -12,7 +12,10 @@
 
 - `index.html` loads `/src/main.tsx`.
 - `src/main.tsx` mounts the React app.
-- `src/App.tsx` contains the full current UI and most of the client-side behavior.
+- `src/App.tsx` is the top-level orchestrator that composes domain hooks and renders shell components.
+- `src/hooks/` contains domain hooks (`useVault`, `useNotes`, `useRules`, `useSearch`, `useAgent`, `usePlugins`, `useSettings`, `useDialogs`, `useIngest`, `useMarkdownRender`, `useFolderActions`) that encapsulate Tauri IPC calls and local state.
+- `src/components/` contains shell and feature components (`AppShell.tsx`, `RightDrawer.tsx`, `Modals.tsx`, `SettingsRightPanel.tsx`, plus existing views like `CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`).
+- `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`).
 - `src/App.css` and `src/index.css` provide the visual system.
 
 ## Backend Entry Points

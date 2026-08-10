@@ -183,6 +183,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 borderRadius: "4px",
               }}
               title="Create a new note"
+              data-od-id="vault-new-note-btn"
             >
               <FilePlus size={12} /> New Note
             </button>
@@ -204,6 +205,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 color: "var(--fg)",
               }}
               title="Create a new folder"
+              data-od-id="vault-new-folder-btn"
             >
               <FolderPlus size={12} /> Folder
             </button>
@@ -245,14 +247,28 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       borderRadius: "4px",
                     }}
                     className="folder-item-header"
+                    data-od-id={`folder-header-${folderName}`}
                   >
-                    <div
+                    <button
                       onClick={() =>
                         setCollapsedFolders((prev) => ({
                           ...prev,
                           [folderName]: !isCollapsed,
                         }))
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setCollapsedFolders((prev) => ({
+                            ...prev,
+                            [folderName]: !isCollapsed,
+                          }));
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!isCollapsed}
+                      aria-label={`Toggle ${folderName} folder`}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -265,6 +281,10 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                         userSelect: "none",
                         flex: 1,
                         overflow: "hidden",
+                        background: "transparent",
+                        border: "none",
+                        textAlign: "left",
+                        fontFamily: "var(--font-body)",
                       }}
                     >
                       <ChevronRight
@@ -289,7 +309,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       >
                         {folderName}
                       </span>
-                    </div>
+                    </button>
 
                     {/* Plus dropdown button */}
                     <div style={{ position: "relative" }}>
@@ -314,6 +334,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           fontWeight: "bold",
                         }}
                         title="Add Asset to folder..."
+                        data-od-id={`folder-actions-${folderName}`}
                       >
                         +
                       </button>
@@ -507,6 +528,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       cursor: "pointer",
                     }}
                     title="Rewrite notes with canonical wiki links"
+                    data-od-id="normalize-vault-btn"
                   >
                     <Copy size={12} /> Normalize Vault
                   </button>
@@ -524,6 +546,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                         triggerImmediateSave();
                         setIsEditingNote(false);
                       }}
+                      data-od-id="preview-note-btn"
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -565,6 +588,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                         fontFamily: "var(--font-body)",
                         cursor: "pointer",
                       }}
+                      data-od-id="edit-note-btn"
                     >
                       <PenLine size={12} /> Edit
                     </button>
@@ -583,6 +607,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       fontSize: "11px",
                     }}
                     title="Trash this note"
+                    data-od-id="trash-note-btn"
                   >
                     <Trash2 size={12} /> Trash Note
                   </button>
@@ -1000,6 +1025,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 <button
                   className="btn btn-sm btn-primary"
                   onClick={handleNewNote}
+                  data-od-id="vault-create-first-note-btn"
                 >
                   Create your first Note
                 </button>

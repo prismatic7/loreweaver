@@ -14,34 +14,24 @@
 //!    - Maximum script size: 1 MiB (`MAX_SCRIPT_SIZE`).
 //!    - Maximum hook payload: 32 KiB.
 //!    - Loop iteration limit: 50,000 iterations per execution context to prevent infinite loops.
-//! 5. **Safe Injection**: Plugin state is parsed using `JSON.parse()` rather than string interpolation,
-//!    eliminating code injection vulnerabilities.
+//! 5. **Safe Injection**: Plugin state is converted from `serde_json::Value` into native Boa values
+//!    and set on `globalThis` directly, eliminating code injection through string interpolation.
 
-use boa_engine::{value::JsValue, Context, Source};
+use boa_engine::{
+    js_string,
+    object::{builtins::JsArray, JsObject},
+    property::PropertyKey,
+    value::JsValue,
+    Context, Source,
+};
+use crate::PluginInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-/// Represents metadata and script content for a loaded plugin.
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct PluginInfo {
-    /// Unique identifier for the plugin (e.g. `"dice-roller"`).
-    pub id: String,
-    /// Human-readable display name.
-    pub name: String,
-    /// Semantic version string.
-    pub version: String,
-    /// Short description of plugin features.
-    pub description: String,
-    /// Explicit permission requests declared in `manifest.json`.
-    pub permissions: Vec<String>,
-    /// Raw JavaScript code loaded from the entry file (e.g. `index.js`).
-    pub script_content: String,
-    /// Flag indicating whether the plugin is enabled for execution.
-    pub active: bool,
-}
+
 
 /// Validates requested permissions against the host's strict allow-list.
 ///
@@ -207,15 +197,63 @@ fn load_single_plugin(plugin_dir: &Path, manifest_path: &Path) -> Result<PluginI
     })
 }
 
+/// Recursively converts a `serde_json::Value` into a native Boa `JsValue`.
+///
+/// This avoids serializing state into a JavaScript source string (which would allow
+/// injection of arbitrary code) and instead constructs arrays, objects, strings,
+/// numbers, booleans, and null values through Boa's native Rust API.
+fn json_to_js_value(value: &serde_json::Value, context: &mut Context) -> JsValue {
+    match value {
+        serde_json::Value::Null => JsValue::null(),
+        serde_json::Value::Bool(b) => JsValue::from(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                JsValue::from(i)
+            } else if let Some(u) = n.as_u64() {
+                JsValue::from(u)
+            } else {
+                JsValue::from(n.as_f64().unwrap_or(f64::NAN))
+            }
+        }
+        serde_json::Value::String(s) => JsValue::from(js_string!(s.clone())),
+        serde_json::Value::Array(arr) => {
+            // Build the list of converted elements first so we do not borrow `context`
+            // mutably inside the iterator passed to `JsArray::from_iter`.
+            let elements: Vec<JsValue> = arr
+                .iter()
+                .map(|v| json_to_js_value(v, context))
+                .collect();
+            let js_array = JsArray::from_iter(elements, context);
+            JsValue::from(js_array)
+        }
+        serde_json::Value::Object(map) => {
+            let js_object = JsObject::with_object_proto(context.intrinsics());
+            for (key, val) in map.iter() {
+                // JSON object keys are always strings; treat them as such. Numeric-looking
+                // keys from `serde_json` preserve their string identity, matching JSON semantics.
+                let property_key: PropertyKey = js_string!(key.clone()).into();
+                let value_js = json_to_js_value(val, context);
+                js_object
+                    .create_data_property_or_throw(property_key, value_js, context)
+                    .expect("creating a data property on a fresh object must succeed");
+            }
+            JsValue::from(js_object)
+        }
+    }
+}
+
 /// Executes a plugin hook callback function inside an isolated Boa JavaScript runtime environment.
 ///
 /// ### Execution Security & Lifecycle
 /// 1. **Permission Guard**: Verifies the plugin is registered and holds the `"hooks"` permission.
 /// 2. **Payload Safety Guard**: Enforces a 32 KiB cap on incoming `payload` text.
 /// 3. **Hook Name Sanitization**: Rejects non-alphanumeric/underscore hook names to prevent injection.
-/// 4. **State Hydration**: Retrieves JSON state for `(vault_path, plugin_id)` and sets `globalThis.__state` safely via `JSON.parse`.
+/// 4. **State Hydration**: Retrieves JSON state for `(vault_path, plugin_id)` and sets `globalThis.__state`
+///    via native Boa value construction (no string interpolation / `eval`).
 /// 5. **Context Setup**: Configures a fresh Boa `Context` with a 50,000 loop iteration limit.
-/// 6. **Function Calling**: Evaluates the script, extracts the target hook function, and calls it with `payload`.
+   /// 6. **Function Calling**: Evaluates the script, extracts the target hook function, and calls it with `payload`.
+   ///    The call runs synchronously on the current thread; Boa's `Context` is not `Send`, so a scoped
+   ///    thread timeout cannot borrow it, and Boa 0.19 exposes only loop-iteration and recursion limits.
 /// 7. **State Persistence**: Serializes `globalThis.__state` back to string via `JSON.stringify` and saves it in `PLUGIN_STATES`.
 /// 8. **Output Return**: Returns the string result returned by the JavaScript hook call.
 pub fn run_plugin_hook(
@@ -265,25 +303,19 @@ pub fn run_plugin_hook(
         .eval(source)
         .map_err(|e| format!("JS Eval Error: {:?}", e))?;
 
-    // Inject state safely — parse as JSON value and set on globalThis instead of
-    // string-interpolating raw JSON into eval (which allows code injection).
-    let state_js_value = context
-        .eval(Source::from_bytes(
-            format!("JSON.parse({:?})", state_json).as_bytes(),
-        ))
-        .map_err(|e| format!("Failed to parse plugin state JSON: {:?}", e))?;
-
+    // Inject state safely — parse as JSON value and set on globalThis using native Boa
+    // values instead of string-interpolating raw JSON into eval (which allows code injection).
+    let state_value: serde_json::Value = serde_json::from_str(&state_json)
+        .unwrap_or_else(|_| serde_json::json!({}));
+    let state_js = json_to_js_value(&state_value, &mut context);
     let global_obj = context.global_object();
-    let _ = global_obj.set(
-        boa_engine::js_string!("__state"),
-        state_js_value,
-        false,
-        &mut context,
-    );
+    global_obj
+        .set(js_string!("__state"), state_js, false, &mut context)
+        .map_err(|e| format!("Failed to set plugin state: {:?}", e))?;
 
     // Retrieve hook function
     let hook_val = global_obj
-        .get(boa_engine::js_string!(hook), &mut context)
+        .get(js_string!(hook), &mut context)
         .map_err(|e| format!("Failed to find function '{}': {:?}", hook, e))?;
 
     if !hook_val.is_callable() {
@@ -294,6 +326,15 @@ pub fn run_plugin_hook(
 
     // Send payload argument
     let js_payload = JsValue::from(boa_engine::js_string!(payload));
+
+    // Boa's Context is not `Send` (it contains `Rc`-based internals), so a scoped or owned
+    // thread cannot borrow it safely. Boa 0.19 also does not expose a wall-clock timeout or
+    // instruction/fuel counter — only loop-iteration and recursion limits. We keep the existing
+    // 50,000 iteration cap as the strongest available execution limit and run the call
+    // synchronously on the current thread.
+    //
+    // TODO: If Boa later gains a `Send` context, an async timeout, or an instruction budget,
+    // replace this with a real wall-clock timeout (e.g. scoped thread + recv_timeout).
     let result = callable
         .call(&JsValue::undefined(), &[js_payload], &mut context)
         .map_err(|e| format!("JS Call Error: {:?}", e))?;
@@ -327,6 +368,21 @@ pub fn run_plugin_hook(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn register_test_plugin(plugin_id: &str, script_content: &str, permissions: Vec<String>) {
+        let plugin = PluginInfo {
+            id: plugin_id.to_string(),
+            name: "Test Plugin".to_string(),
+            version: "1.0.0".to_string(),
+            description: "A testing plugin".to_string(),
+            permissions,
+            script_content: script_content.to_string(),
+            active: true,
+        };
+
+        let mut active = active_plugins().lock().unwrap_or_else(|e| e.into_inner());
+        active.insert(plugin_id.to_string(), plugin);
+    }
 
     #[test]
     fn test_plugin_hook_execution() {
@@ -380,5 +436,36 @@ mod tests {
             assert_eq!(state_str, r#"{"counter":2}"#);
         }
     }
-}
 
+    #[test]
+    fn test_plugin_state_injection_cannot_break_out() {
+        let script = r#"
+            function on_test(payload) {
+                __state.injected = payload;
+                return "ok";
+            }
+        "#;
+        register_test_plugin("breakout-test", script, vec!["hooks".to_string()]);
+        let payload = r#"""); console.log('x'); //"#;
+        let result = run_plugin_hook("/tmp/vault", "breakout-test", "on_test", payload);
+        assert!(result.is_ok(), "payload should be treated as opaque string");
+        assert_eq!(result.unwrap(), "ok");
+    }
+
+    #[test]
+    fn test_plugin_timeout_kills_infinite_loop() {
+        let script = r#"
+            function on_loop(payload) {
+                while (true) {}
+            }
+        "#;
+        register_test_plugin("loop-test", script, vec!["hooks".to_string()]);
+        let start = std::time::Instant::now();
+        let result = run_plugin_hook("/tmp/vault", "loop-test", "on_loop", "{}");
+        assert!(result.is_err());
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "must timeout quickly"
+        );
+    }
+}

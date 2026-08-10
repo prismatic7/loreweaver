@@ -20,8 +20,15 @@
 
 ## AI Providers
 
-- `agent.rs` supports Ollama, OpenAI, and Gemini for chat/orchestration.
-- `test_provider_connection` also knows about several provider IDs in settings UI, but the implemented request branches are limited to Ollama, OpenAI-compatible endpoints, and Gemini.
+- Provider-specific HTTP logic lives in `src-tauri/src/providers/` (`llm.rs`, `image.rs`, `speech.rs`, `models.rs`).
+- `agent.rs` is a thin orchestrator that builds RAG context and delegates chat generation to `providers::llm`.
+- Tauri command handlers in `lib.rs` validate URLs and delegate image generation, speech generation, and model-list testing to `providers::{image, speech, models}`.
+- All supported provider categories are Ollama, OpenAI-compatible endpoints, Gemini, Anthropic, Stability, ComfyUI, and ElevenLabs.
+- `test_provider_connection` fetches available models from the configured provider's API.
+- API keys are stored in the OS keyring under `api-key-{provider_id}` (service `loreweaver`).
+  The SQLite settings table only holds an opaque `keyring:{provider_id}` handle.
+  For one release, legacy repeating-XOR obfuscated keys are still decrypted as a fallback if the keyring is unavailable or the stored value predates the keyring migration.
+- Provider `base_url` values are validated against SSRF rules; private/loopback URLs are blocked unless `allow_local_providers` is enabled in settings.
 
 ## Plugins
 

@@ -16,6 +16,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# TODO: switch to specta = "2" once the stable 2.0.0 release is available on crates.io.
+specta = { version = "2.0.0-rc.25", features = ["derive", "serde_json"] }
+tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"] }
+specta-typescript = "0.0.12"
+# tauri is required by tauri-specta::Builder at build time.
+tauri = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -40,6 +48,15 @@ base64 = "0.22"
 urlencoding = "2"
 rfd = "0.15"
 walkdir = "2"
+# TODO: specta 2.0.0-rc.25 is the latest 2.x release on crates.io; migrate to stable "2" once it ships.
 specta = { version = "2.0.0-rc.25", features = ["derive", "serde_json"] }
 tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"] }
+# specta-typescript is required explicitly by build.rs; tauri-specta pulls it transitively at runtime.
 specta-typescript = "0.0.12"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native", "sync-secret-service"] }
+url = "2.5.8"
+ipnetwork = "0.21.1"
+reqwest = "0.13.4"
+
+[dev-dependencies]
+tempfile = "3.27.0"

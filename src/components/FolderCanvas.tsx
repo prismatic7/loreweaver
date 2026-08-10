@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye } from "lucide-react";
 
@@ -218,11 +218,16 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
     };
   }, [contextMenu]);
 
-  // Filter notes belonging to current folder or subfolders
-  const folderNotes = notes.filter((n) => {
-    if (!currentFolder) return true;
-    return n.path.startsWith(currentFolder);
-  });
+  // Filter notes belonging to current folder or subfolders.
+  // Memoized so the derived-edges/containers effects below don't re-run on every
+  // render (which previously caused an infinite render loop when setDynamicContainers
+  // produced a fresh array each time).
+  const folderNotes = useMemo(() => {
+    return notes.filter((n) => {
+      if (!currentFolder) return true;
+      return n.path.startsWith(currentFolder);
+    });
+  }, [notes, currentFolder]);
 
   const findTargetNote = (target: string) => {
     const cleanTarget = target.replace(/[\[\]]/g, "").trim().toLowerCase();
@@ -491,17 +496,17 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom In">
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom In" data-od-id="canvas-zoom-in-btn">
             <ZoomIn size={13} />
           </button>
           <span style={{ fontSize: "11px", color: "var(--muted)" }}>{Math.round(zoom * 100)}%</span>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom Out">
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom Out" data-od-id="canvas-zoom-out-btn">
             <ZoomOut size={13} />
           </button>
-          <button className="btn btn-sm" onClick={addContainerBox} title="Add Container / Boundary Box">
+          <button className="btn btn-sm" onClick={addContainerBox} title="Add Container / Boundary Box" data-od-id="canvas-add-container-btn">
             <Plus size={13} /> Add Container
           </button>
-          <button className="btn btn-sm btn-primary" onClick={saveCanvas} title="Save Canvas Layout">
+          <button className="btn btn-sm btn-primary" onClick={saveCanvas} title="Save Canvas Layout" data-od-id="canvas-save-btn">
             <Save size={13} /> Save Canvas
           </button>
         </div>
@@ -669,6 +674,16 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     onSelectCanvas(note.path);
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (isCanvas && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSelectCanvas(note.path);
+                  }
+                }}
+                role={isCanvas ? "button" : undefined}
+                tabIndex={isCanvas ? 0 : undefined}
+                aria-label={isCanvas ? `Open canvas ${note.title}` : undefined}
                 style={{
                   position: "absolute",
                   left: nodePos.x,

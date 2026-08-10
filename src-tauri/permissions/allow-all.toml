@@ -26,10 +26,6 @@ commands = { allow = [
   "list_vaults",
   "create_vault",
   "switch_vault",
-  "delete_vault",
-  "open_vault_dialog",
-  "load_vault_settings",
-  "save_vault_settings",
   "trash_note",
   "restore_note",
   "delete_trashed_note",
@@ -39,4 +35,193 @@ commands = { allow = [
   "list_folders",
   "list_templates",
   "delete_rules_folder",
+  "delete_vault",
+  "open_vault_dialog",
+  "load_vault_settings",
+  "save_vault_settings",
 ] }
+
+[[permission]]
+identifier = "allow-greet"
+description = "Allows the greet command to be invoked by the frontend"
+commands = { allow = ["greet"] }
+
+[[permission]]
+identifier = "allow-load-notes"
+description = "Allows the load_notes command to be invoked by the frontend"
+commands = { allow = ["load_notes"] }
+
+[[permission]]
+identifier = "allow-load-trash-notes"
+description = "Allows the load_trash_notes command to be invoked by the frontend"
+commands = { allow = ["load_trash_notes"] }
+
+[[permission]]
+identifier = "allow-empty-trash"
+description = "Allows the empty_trash command to be invoked by the frontend"
+commands = { allow = ["empty_trash"] }
+
+[[permission]]
+identifier = "allow-save-note"
+description = "Allows the save_note command to be invoked by the frontend"
+commands = { allow = ["save_note"] }
+
+[[permission]]
+identifier = "allow-save-note-asset"
+description = "Allows the save_note_asset command to be invoked by the frontend"
+commands = { allow = ["save_note_asset"] }
+
+[[permission]]
+identifier = "allow-resolve-wiki-link"
+description = "Allows the resolve_wiki_link command to be invoked by the frontend"
+commands = { allow = ["resolve_wiki_link"] }
+
+[[permission]]
+identifier = "allow-load-rules"
+description = "Allows the load_rules command to be invoked by the frontend"
+commands = { allow = ["load_rules"] }
+
+[[permission]]
+identifier = "allow-save-rule"
+description = "Allows the save_rule command to be invoked by the frontend"
+commands = { allow = ["save_rule"] }
+
+[[permission]]
+identifier = "allow-delete-rule"
+description = "Allows the delete_rule command to be invoked by the frontend"
+commands = { allow = ["delete_rule"] }
+
+[[permission]]
+identifier = "allow-get-vault-path"
+description = "Allows the get_vault_path command to be invoked by the frontend"
+commands = { allow = ["get_vault_path"] }
+
+[[permission]]
+identifier = "allow-search-vault"
+description = "Allows the search_vault command to be invoked by the frontend"
+commands = { allow = ["search_vault"] }
+
+[[permission]]
+identifier = "allow-ingest-srd-text"
+description = "Allows the ingest_srd_text command to be invoked by the frontend"
+commands = { allow = ["ingest_srd_text"] }
+
+[[permission]]
+identifier = "allow-orchestrate-agent"
+description = "Allows the orchestrate_agent command to be invoked by the frontend"
+commands = { allow = ["orchestrate_agent"] }
+
+[[permission]]
+identifier = "allow-generate-image"
+description = "Allows the generate_image command to be invoked by the frontend"
+commands = { allow = ["generate_image"] }
+
+[[permission]]
+identifier = "allow-generate-speech"
+description = "Allows the generate_speech command to be invoked by the frontend"
+commands = { allow = ["generate_speech"] }
+
+[[permission]]
+identifier = "allow-load-plugins"
+description = "Allows the load_plugins command to be invoked by the frontend"
+commands = { allow = ["load_plugins"] }
+
+[[permission]]
+identifier = "allow-execute-plugin-hook"
+description = "Allows the execute_plugin_hook command to be invoked by the frontend"
+commands = { allow = ["execute_plugin_hook"] }
+
+[[permission]]
+identifier = "allow-load-settings"
+description = "Allows the load_settings command to be invoked by the frontend"
+commands = { allow = ["load_settings"] }
+
+[[permission]]
+identifier = "allow-save-settings"
+description = "Allows the save_settings command to be invoked by the frontend"
+commands = { allow = ["save_settings"] }
+
+[[permission]]
+identifier = "allow-test-provider-connection"
+description = "Allows the test_provider_connection command to be invoked by the frontend"
+commands = { allow = ["test_provider_connection"] }
+
+[[permission]]
+identifier = "allow-list-vaults"
+description = "Allows the list_vaults command to be invoked by the frontend"
+commands = { allow = ["list_vaults"] }
+
+[[permission]]
+identifier = "allow-create-vault"
+description = "Allows the create_vault command to be invoked by the frontend"
+commands = { allow = ["create_vault"] }
+
+[[permission]]
+identifier = "allow-switch-vault"
+description = "Allows the switch_vault command to be invoked by the frontend"
+commands = { allow = ["switch_vault"] }
+
+[[permission]]
+identifier = "allow-trash-note"
+description = "Allows the trash_note command to be invoked by the frontend"
+commands = { allow = ["trash_note"] }
+
+[[permission]]
+identifier = "allow-restore-note"
+description = "Allows the restore_note command to be invoked by the frontend"
+commands = { allow = ["restore_note"] }
+
+[[permission]]
+identifier = "allow-delete-trashed-note"
+description = "Allows the delete_trashed_note command to be invoked by the frontend"
+commands = { allow = ["delete_trashed_note"] }
+
+[[permission]]
+identifier = "allow-trash-folder"
+description = "Allows the trash_folder command to be invoked by the frontend"
+commands = { allow = ["trash_folder"] }
+
+[[permission]]
+identifier = "allow-save-canvas-file"
+description = "Allows the save_canvas_file command to be invoked by the frontend"
+commands = { allow = ["save_canvas_file"] }
+
+[[permission]]
+identifier = "allow-load-canvas-file"
+description = "Allows the load_canvas_file command to be invoked by the frontend"
+commands = { allow = ["load_canvas_file"] }
+
+[[permission]]
+identifier = "allow-list-folders"
+description = "Allows the list_folders command to be invoked by the frontend"
+commands = { allow = ["list_folders"] }
+
+[[permission]]
+identifier = "allow-list-templates"
+description = "Allows the list_templates command to be invoked by the frontend"
+commands = { allow = ["list_templates"] }
+
+[[permission]]
+identifier = "allow-delete-rules-folder"
+description = "Allows the delete_rules_folder command to be invoked by the frontend"
+commands = { allow = ["delete_rules_folder"] }
+
+[[permission]]
+identifier = "allow-delete-vault"
+description = "Allows the delete_vault command to be invoked by the frontend"
+commands = { allow = ["delete_vault"] }
+
+[[permission]]
+identifier = "allow-open-vault-dialog"
+description = "Allows the open_vault_dialog command to be invoked by the frontend"
+commands = { allow = ["open_vault_dialog"] }
+
+[[permission]]
+identifier = "allow-load-vault-settings"
+description = "Allows the load_vault_settings command to be invoked by the frontend"
+commands = { allow = ["load_vault_settings"] }
+
+[[permission]]
+identifier = "allow-save-vault-settings"
+description = "Allows the save_vault_settings command to be invoked by the frontend"
+commands = { allow = ["save_vault_settings"] }

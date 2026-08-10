@@ -8,6 +8,24 @@
 - Tauri calls are made through `invoke(...)` and are named after backend commands.
 - The UI uses `data-od-id` attributes on key controls, which suggests automation-friendly selectors.
 
+### `data-od-id` Selector Convention
+
+`data-od-id` attributes are stable, test/automation-friendly hooks. They must not be used for styling or business logic — only for selection in tests, audits, and辅助 tooling.
+
+Rules for adding selectors:
+
+- **Kebab-case, lowercase values.** Use only letters, numbers, and hyphens (`-`). No spaces or camelCase.
+- **Prefix by scope.** Use short, predictable prefixes so selectors group naturally in audits:
+  - Global chrome: `nav-<view>`, `btn-theme-toggle`, `toolbar`
+  - View roots: `dashboard-view`, `vault-view`, `rules-view`, `ai-view`, `settings-view`, `trash-view`
+  - Primary actions: `vault-new-note-btn`, `rules-new-rule-btn`, `settings-save-config-btn`
+  - Per-item actions: `note-<id>`, `rule-<id>`, `trash-restore-<id>`, `trash-delete-<id>`
+  - Canvas toolbar: `canvas-zoom-in-btn`, `canvas-zoom-out-btn`, `canvas-add-container-btn`, `canvas-save-btn`
+  - Right drawer: `tab-<name>`, `collapsed-tab-<name>`, `generate-image-btn`, `generate-speech-btn`, `btn-ai-send`
+- **One selector per actionable element.** Do not add redundant selectors to every wrapper.
+- **Do not change existing `data-od-id` values** unless the control’s identity has changed, because external audits and tests rely on them.
+- **Dynamic IDs must be safe.** When interpolating note/rule IDs, make sure the resulting value is still a valid HTML `data-*` attribute value (no spaces, quotes, or angle brackets). IDs from user content should already be normalized by the backend.
+
 ## Backend
 
 - Tauri commands are declared in `src-tauri/src/lib.rs` with `#[tauri::command]` and exposed through `generate_handler!`.
