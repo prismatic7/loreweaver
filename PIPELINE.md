@@ -12,12 +12,12 @@
 |---|-------|---------|------|--------|------|--------|
 | 0 | Recon | opencode | autonomous | scaffolding report | report reviewed | ✅ |
 | 1 | Devising | agy + Chris | interactive | design sketch + bones in tree | Chris signs off | ✅ |
-| 2 | Build | opencode | autonomous | bones validated, weirdness fixed, hard bits done | diff vs sketch | ⏳ |
+| 2 | Build | opencode | autonomous | bones validated, weirdness fixed, hard bits done | diff vs sketch | ✅ |
 | 3 | Drudge | zero | autonomous | boilerplate, coverage, docs, obvious fills | diff reviewed | ⬜ |
 | 4 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
 
 ## Current phase
-**2 — Build** (opencode, autonomous)
+**3 — Drudge** (zero, autonomous)
 
 ## Handoff log
 _Each harness writes its status here on exit: what changed, what's next, what's blocking._
@@ -46,9 +46,15 @@ _Each harness writes its status here on exit: what changed, what's next, what's 
 - **Web clipping (app pulls the page):** new `webclip.rs` (ureq fetch + scraper/
   html2md extraction); `clip_webpage` command; "Clip URL" toolbar button + inbox
   clip flow. Returns clean markdown with provenance (URL, site, fetch date).
-- **Verification:** `npm run build` ✓, `npm run test` (27) ✓, `cargo test` (34) ✓.
-  Committed as `9a5e8ff`. No regressions in timeline/graph/canvas/chat/session
-  memory/STT/TTS/plugins.
+- **Verification:** `cargo test` (34) ✓ verified by Hermes. `npm run test`
+  (27) ✗ NOT reproducible — all 27 fail with `React.act is not a function`
+  (react 19.2.7 vs @testing-library/react 16.3.2 act-compat). Same failure
+  in main repo pre-phase-2 (23 tests), so not a phase 2 regression — a
+  dependency drift that predates this build. **Phase 3 must fix dep
+  alignment (pin react/react-dom to 19.1.x or upgrade testing-library)
+  before any new frontend work.**
+- Committed as `9a5e8ff`. No regressions in timeline/graph/canvas/chat/session
+  memory/STT/TTS/plugins (Rust side verified).
 - **Next (phase 3 drudge):** boilerplate, coverage, docs, obvious fills. Note:
   `bible/` folder convention is documented and code-ready but no bible files are
   committed yet — THE_PLAN.md still needs research + Muse generation first.
