@@ -5,6 +5,7 @@ import { useOnClickOutside } from "usehooks-ts";
 import "./App.css";
 
 import { DashboardView } from "./components/DashboardView";
+import { LiminalView } from "./components/LiminalView";
 import { SettingsView } from "./components/SettingsView";
 import { TrashView } from "./components/TrashView";
 import { RulesView } from "./components/RulesView";
@@ -456,9 +457,15 @@ function App() {
     [loadWorlds, handleSwitchWorld, alert],
   );
 
+  const [liminalOpen, setLiminalOpen] = useState(false);
+
   const handleOpenLiminal = useCallback(() => {
-    alert("The Liminal is not yet wired to a dedicated view in this build.");
-  }, [alert]);
+    setLiminalOpen(true);
+  }, []);
+
+  const handleCloseLiminal = useCallback(() => {
+    setLiminalOpen(false);
+  }, []);
 
   const handleMakeWorldFromLiminal = useCallback(
     async (name: string) => {
@@ -503,7 +510,7 @@ function App() {
       onLoadTrash={loadTrashNotes}
       onClipUrl={handleToolbarClipUrl}
       rightPanel={
-        activeView !== "settings" ? (
+        !liminalOpen && activeView !== "settings" ? (
           <RightDrawer
             activeView={activeView}
             isOpen={isRightDrawerOpen}
@@ -588,7 +595,15 @@ function App() {
         )
       }
     >
-      {activeView === "dashboard" && (
+      {liminalOpen && (
+        <LiminalView
+          worlds={worlds}
+          onMakeWorldFromLiminal={handleMakeWorldFromLiminal}
+          onClose={handleCloseLiminal}
+        />
+      )}
+
+      {!liminalOpen && activeView === "dashboard" && (
         <DashboardView
           notes={notes}
           rules={rules}
@@ -597,7 +612,7 @@ function App() {
         />
       )}
 
-      {(activeView === "vault" || activeView === "canvas") && (
+      {!liminalOpen && (activeView === "vault" || activeView === "canvas") && (
         <CampaignVaultView
           activeView={activeView}
           notesByFolder={notesByFolder}
@@ -634,7 +649,7 @@ function App() {
         />
       )}
 
-      {activeView === "rules" && (
+      {!liminalOpen && activeView === "rules" && (
         <RulesView
           rulesByFolder={rulesByFolder}
           collapsedFolders={collapsedFolders}
@@ -666,7 +681,7 @@ function App() {
         />
       )}
 
-      {activeView === "ai" && (
+      {!liminalOpen && activeView === "ai" && (
         <AiView
           currentChatMessages={agent.currentChatMessages}
           chatInput={agent.chatInput}
@@ -675,7 +690,7 @@ function App() {
         />
       )}
 
-      {activeView === "trash" && (
+      {!liminalOpen && activeView === "trash" && (
         <TrashView
           trashedNotes={trashedNotes}
           handleEmptyTrash={vaultActions.handleEmptyTrash}
@@ -684,7 +699,7 @@ function App() {
         />
       )}
 
-      {activeView === "character-sheets" && (
+      {!liminalOpen && activeView === "character-sheets" && (
         <CharacterSheetView
           vaultPath={vaultPath}
           alert={alert}
@@ -695,7 +710,7 @@ function App() {
         />
       )}
 
-      {activeView === "map" && (
+      {!liminalOpen && activeView === "map" && (
         <MapBuilderView
           vaultPath={vaultPath}
           mapRelPath="Maps/Active_Map.canvas"
@@ -703,7 +718,7 @@ function App() {
         />
       )}
 
-      {activeView === "graph" && (
+      {!liminalOpen && activeView === "graph" && (
         <EntityGraphView
           notes={notes}
           noteTypes={noteTypes}
@@ -715,7 +730,7 @@ function App() {
         />
       )}
 
-      {activeView === "timeline" && (
+      {!liminalOpen && activeView === "timeline" && (
         <TimelineView
           notes={notes}
           onOpenNote={(noteId) => {
@@ -725,7 +740,7 @@ function App() {
         />
       )}
 
-      {activeView === "settings" && (
+      {!liminalOpen && activeView === "settings" && (
         <SettingsView
           register={register}
           handleSubmit={handleSubmit}

@@ -1368,6 +1368,46 @@ async fn import_world(state: State<'_, AppState>, zip_path: &str) -> Result<Stri
     bundles::import_world_impl(&state.campaigns_root, zip_path)
 }
 
+/// Lists the markdown notes currently held in the `_liminal/Captures/` holding
+/// pen. Read-only: returns lightweight `CampaignNote` entries (id = relative
+/// path, title from frontmatter/H1/filename, content preview) so the Liminal
+/// view can render claim / make-world actions without touching the DB.
+#[tauri::command]
+async fn list_liminal_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
+    let captures_dir = state.campaigns_root.join("_liminal").join("Captures");
+    if !captures_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut notes = Vec::new();
+    for entry in std::fs::read_dir(&captures_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() || path.extension().map_or(true, |ext| ext != "md") {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(&state.campaigns_root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_string();
+        let (title, content, frontmatter) = match watcher::parse_markdown_file(&path) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        notes.push(CampaignNote {
+            id: rel.clone(),
+            title,
+            path: rel,
+            frontmatter,
+            content,
+        });
+    }
+
+    notes.sort_by(|a, b| a.title.cmp(&b.title));
+    Ok(notes)
+}
+
 /// Moves a note from `campaigns_root/_liminal/` into a target world's
 /// `Worldbuilding/` folder. Both paths must stay within the campaigns root.
 #[tauri::command]
@@ -2521,8 +2561,9 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             create_world,
             export_world,
             import_world,
+            list_liminal_notes,
             claim_liminal_note,
-            make_world_from_liminal
+            make_world_from_liminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
