@@ -294,18 +294,81 @@ pub fn run_plugin_hook(
             .unwrap_or_else(|| "{}".to_string())
     };
 
+    // Boa's `Context` is not `Send` (it contains `Rc`-based internals), so it cannot be
+    // moved across a thread boundary. To enforce a wall-clock timeout we spawn a thread
+    // that OWNS the Context and performs the full eval + call + state extraction, then
+    // returns only the `String` result (which is `Send`) over a channel. The caller waits
+    // on the channel with `recv_timeout`; if the plugin exceeds the budget, the thread is
+    // abandoned (it will be torn down when the process exits) and we return a timeout error.
+    //
+    // This complements the existing 50,000 loop-iteration cap, which guards against
+    // infinite loops but not against long-running-but-finite work.
+    const HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    let script_content = plugin.script_content.clone();
+    let hook_owned = hook.to_string();
+    let payload_owned = payload.to_string();
+    let state_json_owned = state_json.clone();
+    let vault_path_owned = vault_path.to_string();
+    let plugin_id_owned = plugin_id.to_string();
+
+    let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+
+    std::thread::spawn(move || {
+        let result = execute_hook_in_context(
+            &script_content,
+            &hook_owned,
+            &payload_owned,
+            &state_json_owned,
+        );
+        // Persist updated state regardless of hook success/failure.
+        if let Ok((response, new_state)) = &result {
+            let mut states = plugin_states().lock().unwrap_or_else(|e| e.into_inner());
+            states
+                .entry(vault_path_owned)
+                .or_default()
+                .insert(plugin_id_owned, new_state.clone());
+            let _ = tx.send(Ok(response.clone()));
+        } else if let Err(e) = &result {
+            let _ = tx.send(Err(e.clone()));
+        }
+    });
+
+    match rx.recv_timeout(HOOK_TIMEOUT) {
+        Ok(res) => res,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err(format!("Plugin hook '{}' timed out after {:?}", hook, HOOK_TIMEOUT))
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(format!("Plugin hook '{}' thread terminated unexpectedly", hook))
+        }
+    }
+}
+
+/// Executes a plugin hook inside a fresh Boa context owned by the calling thread.
+///
+/// Returns `(response, updated_state)` where `response` is the hook's raw string
+/// result (preserving the original contract) and `updated_state` is the serialized
+/// `globalThis.__state` after the call. This function is called from a dedicated
+/// thread so a wall-clock timeout can be enforced by the caller.
+fn execute_hook_in_context(
+    script_content: &str,
+    hook: &str,
+    payload: &str,
+    state_json: &str,
+) -> Result<(String, String), String> {
     let mut context = Context::default();
     context.runtime_limits_mut().set_loop_iteration_limit(50000);
 
     // Evaluate plugin script
-    let source = Source::from_bytes(plugin.script_content.as_bytes());
+    let source = Source::from_bytes(script_content.as_bytes());
     context
         .eval(source)
         .map_err(|e| format!("JS Eval Error: {:?}", e))?;
 
     // Inject state safely — parse as JSON value and set on globalThis using native Boa
     // values instead of string-interpolating raw JSON into eval (which allows code injection).
-    let state_value: serde_json::Value = serde_json::from_str(&state_json)
+    let state_value: serde_json::Value = serde_json::from_str(state_json)
         .unwrap_or_else(|_| serde_json::json!({}));
     let state_js = json_to_js_value(&state_value, &mut context);
     let global_obj = context.global_object();
@@ -327,34 +390,23 @@ pub fn run_plugin_hook(
     // Send payload argument
     let js_payload = JsValue::from(boa_engine::js_string!(payload));
 
-    // Boa's Context is not `Send` (it contains `Rc`-based internals), so a scoped or owned
-    // thread cannot borrow it safely. Boa 0.19 also does not expose a wall-clock timeout or
-    // instruction/fuel counter — only loop-iteration and recursion limits. We keep the existing
-    // 50,000 iteration cap as the strongest available execution limit and run the call
-    // synchronously on the current thread.
-    //
-    // TODO: If Boa later gains a `Send` context, an async timeout, or an instruction budget,
-    // replace this with a real wall-clock timeout (e.g. scoped thread + recv_timeout).
     let result = callable
         .call(&JsValue::undefined(), &[js_payload], &mut context)
         .map_err(|e| format!("JS Call Error: {:?}", e))?;
 
     // Extract updated state
+    let mut new_state_str = "{}".to_string();
     if let Ok(new_state_val) =
         context.eval(Source::from_bytes(b"JSON.stringify(globalThis.__state)"))
     {
-        if let Some(new_state_str) = new_state_val.as_string() {
-            if let Ok(new_state_std) = new_state_str.to_std_string() {
-                let mut states = plugin_states().lock().unwrap_or_else(|e| e.into_inner());
-                states
-                    .entry(vault_path.to_string())
-                    .or_default()
-                    .insert(plugin_id.to_string(), new_state_std);
+        if let Some(js_str) = new_state_val.as_string() {
+            if let Ok(std_str) = js_str.to_std_string() {
+                new_state_str = std_str;
             }
         }
     }
 
-    // Return response
+    // Return response (raw string, preserving the original contract)
     let response = match result.as_string() {
         Some(js_str) => js_str
             .to_std_string()
@@ -362,7 +414,7 @@ pub fn run_plugin_hook(
         None => "null".to_string(),
     };
 
-    Ok(response)
+    Ok((response, new_state_str))
 }
 
 #[cfg(test)]
