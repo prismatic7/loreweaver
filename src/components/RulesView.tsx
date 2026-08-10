@@ -128,6 +128,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                 fontSize: "11px",
               }}
               title="Create a new rule entry"
+              data-od-id="rules-new-rule-btn"
             >
               <Plus size={12} /> New Rule
             </button>
@@ -148,6 +149,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                 color: "var(--fg)",
               }}
               title="Create a new rulebook folder or subfolder"
+              data-od-id="rules-new-folder-btn"
             >
               <FolderPlus size={12} /> Folder
             </button>
@@ -191,6 +193,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       borderRadius: "4px",
                     }}
                     className="folder-item-header"
+                    data-od-id={`rule-folder-header-${folderName}`}
                   >
                     <button
                       onClick={() =>
@@ -274,6 +277,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           fontWeight: "bold",
                         }}
                         title="Add Asset to folder..."
+                        data-od-id={`rule-folder-actions-${folderName}`}
                       >
                         +
                       </button>
@@ -342,19 +346,20 @@ export const RulesView: React.FC<RulesViewProps> = ({
           )}
 
 
-          <button
-            onClick={() =>
-              document.getElementById("srd-file-input")?.click()
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                document.getElementById("srd-file-input")?.click();
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            aria-label="Import Markdown or PDF rulebook file"
+                <button
+                  onClick={() =>
+                    document.getElementById("srd-file-input")?.click()
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      document.getElementById("srd-file-input")?.click();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Import Markdown or PDF rulebook file"
+                  data-od-id="rules-import-srd-btn"
             style={{
               marginTop: "20px",
               padding: "16px",
@@ -448,6 +453,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     alignItems: "center",
                     gap: "4px",
                   }}
+                  data-od-id="rule-preview-btn"
                 >
                   <Eye size={12} /> Preview
                 </button>
@@ -471,6 +477,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     alignItems: "center",
                     gap: "4px",
                   }}
+                  data-od-id="rule-edit-btn"
                 >
                   <PenLine size={12} /> Edit
                 </button>
@@ -491,6 +498,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     alignItems: "center",
                     gap: 4,
                   }}
+                  data-od-id="rule-insert-image-btn"
                 >
                   <ImageIcon size={12} /> Insert Chart / Image
                   <input
@@ -510,6 +518,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       alignItems: "center",
                       gap: 4,
                     }}
+                    data-od-id="rule-trash-btn"
                   >
                     <Trash2 size={12} /> Trash Rule
                   </button>

@@ -491,17 +491,17 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom In">
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom In" data-od-id="canvas-zoom-in-btn">
             <ZoomIn size={13} />
           </button>
           <span style={{ fontSize: "11px", color: "var(--muted)" }}>{Math.round(zoom * 100)}%</span>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom Out">
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom Out" data-od-id="canvas-zoom-out-btn">
             <ZoomOut size={13} />
           </button>
-          <button className="btn btn-sm" onClick={addContainerBox} title="Add Container / Boundary Box">
+          <button className="btn btn-sm" onClick={addContainerBox} title="Add Container / Boundary Box" data-od-id="canvas-add-container-btn">
             <Plus size={13} /> Add Container
           </button>
-          <button className="btn btn-sm btn-primary" onClick={saveCanvas} title="Save Canvas Layout">
+          <button className="btn btn-sm btn-primary" onClick={saveCanvas} title="Save Canvas Layout" data-od-id="canvas-save-btn">
             <Save size={13} /> Save Canvas
           </button>
         </div>

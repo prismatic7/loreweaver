@@ -149,6 +149,7 @@ const CollapsedButton: React.FC<
       cursor: "pointer",
     }}
     title={title}
+    data-od-id={`collapsed-tab-${targetTab}`}
   >
     {icon}
   </button>
@@ -172,6 +173,7 @@ const TabButton: React.FC<
       fontSize: "11px",
       fontWeight: 600,
     }}
+    data-od-id={`tab-${target}`}
   >
     {label}
   </button>
@@ -214,6 +216,7 @@ const TabBar: React.FC<RightDrawerProps> = ({
         padding: "2px 8px",
       }}
       title="Collapse Sidebar"
+      data-od-id="right-drawer-collapse"
     >
       »
     </button>
@@ -344,6 +347,7 @@ const DiceRoller: React.FC<
         }}
         onClick={() => rollDiceNotation(diceNotation)}
         type="button"
+        data-od-id="dice-roll-btn"
       >
         Roll
       </button>
@@ -423,6 +427,7 @@ const PluginButtons: React.FC<
                 }}
                 onClick={handleRollCharacterSheet}
                 type="button"
+                data-od-id="plugin-roll-ability-sheet"
               >
                 Roll Ability Sheet
               </button>
@@ -441,6 +446,7 @@ const PluginButtons: React.FC<
                 }}
                 onClick={handleEvaluateEncounterThreat}
                 type="button"
+                data-od-id="plugin-evaluate-threat"
               >
                 Evaluate Threat
               </button>
@@ -514,11 +520,13 @@ const AiTab: React.FC<RightDrawerProps> = ({
           onClick={resetCurrentVaultSession}
           disabled={!vaultPath}
           label="Reset Memory"
+          dataOdId="ai-reset-memory"
         />
         <AiActionButton
           onClick={exportCurrentVaultSession}
           disabled={!vaultPath}
           label="Export"
+          dataOdId="ai-export-session"
         />
       </div>
 
@@ -543,6 +551,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
             color: "var(--fg)",
             cursor: "pointer",
           }}
+          data-od-id="ai-clone-target-select"
         >
           <option value="">Clone to vault...</option>
           {vaults
@@ -557,6 +566,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
           onClick={cloneCurrentVaultSession}
           disabled={!vaultPath || !sessionCloneTargetVaultPath}
           label="Clone"
+          dataOdId="ai-clone-session"
         />
       </div>
     </div>
@@ -616,7 +626,8 @@ const AiActionButton: React.FC<{
   onClick: () => void;
   disabled: boolean;
   label: string;
-}> = ({ onClick, disabled, label }) => (
+  dataOdId: string;
+}> = ({ onClick, disabled, label, dataOdId }) => (
   <button
     className="btn btn-sm"
     style={{
@@ -630,6 +641,7 @@ const AiActionButton: React.FC<{
     onClick={onClick}
     disabled={disabled}
     type="button"
+    data-od-id={dataOdId}
   >
     {label}
   </button>
@@ -729,20 +741,21 @@ const AssetTab: React.FC<RightDrawerProps> = ({
       </select>
     </div>
 
-    <button
-      className="btn btn-sm btn-primary"
-      style={{
-        width: "100%",
-        marginTop: "4px",
-        padding: "8px",
-        cursor: "pointer",
-      }}
-      onClick={handleGenerateImage}
-      disabled={isGeneratingImage}
-      type="button"
-    >
-      {isGeneratingImage ? "Rendering SD..." : "Generate Image"}
-    </button>
+      <button
+        className="btn btn-sm btn-primary"
+        style={{
+          width: "100%",
+          marginTop: "4px",
+          padding: "8px",
+          cursor: "pointer",
+        }}
+        onClick={handleGenerateImage}
+        disabled={isGeneratingImage}
+        type="button"
+        data-od-id="generate-image-btn"
+      >
+        {isGeneratingImage ? "Rendering SD..." : "Generate Image"}
+      </button>
 
     <div
       style={{
@@ -836,19 +849,20 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
       {ttsProvider === "local" &&
         " (not implemented — configure OpenAI or ElevenLabs in Settings)"}
     </div>
-    <button
-      className="btn btn-sm btn-primary"
-      style={{
-        width: "100%",
-        padding: "8px",
-        cursor: "pointer",
-      }}
-      onClick={handleGenerateSpeech}
-      disabled={isGeneratingSpeech || !ttsText.trim()}
-      type="button"
-    >
-      {isGeneratingSpeech ? "Generating..." : "Generate Speech"}
-    </button>
+      <button
+        className="btn btn-sm btn-primary"
+        style={{
+          width: "100%",
+          padding: "8px",
+          cursor: "pointer",
+        }}
+        onClick={handleGenerateSpeech}
+        disabled={isGeneratingSpeech || !ttsText.trim()}
+        type="button"
+        data-od-id="generate-speech-btn"
+      >
+        {isGeneratingSpeech ? "Generating..." : "Generate Speech"}
+      </button>
     {generatedSpeechUrl && (
       <div
         style={{
