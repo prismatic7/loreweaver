@@ -1319,6 +1319,29 @@ async fn generate_speech(
     .await
 }
 
+/// Transcribes audio (base64) to text using the configured STT provider.
+#[tauri::command]
+async fn transcribe_speech(
+    audio_base64: &str,
+    provider: &str,
+    api_key: Option<&str>,
+) -> Result<String, String> {
+    let provider_owned = provider.to_string();
+    let audio_owned = audio_base64.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+
+    run_blocking(move || {
+        let agent = crate::providers::http_client();
+        crate::providers::speech::transcribe_speech(
+            &audio_owned,
+            &provider_owned,
+            api_key_owned.as_deref(),
+            &agent,
+        )
+    })
+    .await
+}
+
 #[tauri::command]
 async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     let conn_guard = state.conn.lock().await;
@@ -2091,6 +2114,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             orchestrate_agent,
             generate_image,
             generate_speech,
+            transcribe_speech,
             load_plugins,
             execute_plugin_hook,
             load_settings,
