@@ -1077,6 +1077,16 @@ async fn ingest_srd_text(
     ingest::ingest_markdown_text(&conn, content, category, source)
 }
 
+/// Converts a PDF (provided as base64 bytes) to Markdown using the local
+/// pdf-inspector engine. Returns an error for scanned/image-based PDFs.
+#[tauri::command]
+async fn convert_pdf_to_markdown(base64_pdf: &str) -> Result<String, String> {
+    let bytes = general_purpose::STANDARD
+        .decode(base64_pdf)
+        .map_err(|e| format!("Failed to decode PDF bytes: {e}"))?;
+    run_blocking(move || pdf::pdf_bytes_to_markdown(&bytes)).await
+}
+
 /// Runs a blocking synchronous computation on Tauri's blocking thread pool.
 ///
 /// This keeps long-running HTTP or CPU-bound work out of the async runtime,
@@ -2009,7 +2019,8 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             load_canvas_file,
             save_canvas_file,
             list_templates,
-            reindex_vault
+            reindex_vault,
+            convert_pdf_to_markdown
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon,
   Sun,
   Trash2,
+  Users,
 } from "lucide-react";
 import { CampaignNote, RuleEntry, SearchResult } from "../types";
 
@@ -20,7 +21,8 @@ export type AppView =
   | "ai"
   | "settings"
   | "canvas"
-  | "trash";
+  | "trash"
+  | "character-sheets";
 
 export interface AppShellProps {
   activeView: AppView;
@@ -105,6 +107,13 @@ export const AppShell: React.FC<AppShellProps> = ({
             icon={<Brain size={18} />}
             onClick={() => setActiveView("ai")}
           />
+          <RibbonButton
+            activeView={activeView}
+            target="character-sheets"
+            title="Character Sheets"
+            icon={<Users size={18} />}
+            onClick={() => setActiveView("character-sheets")}
+          />
         </div>
 
         <div className="ribbon-footer">
@@ -156,6 +165,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             {activeView === "ai" && "AI & Generations"}
             {activeView === "settings" && "Settings"}
             {activeView === "trash" && "Vault & Rulebook Trash"}
+            {activeView === "character-sheets" && "Character Sheets"}
 
             <div
               style={{

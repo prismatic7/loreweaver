@@ -9,6 +9,7 @@ import { TrashView } from "./components/TrashView";
 import { RulesView } from "./components/RulesView";
 import { AiView } from "./components/AiView";
 import { CampaignVaultView } from "./components/CampaignVaultView";
+import { CharacterSheetView } from "./components/CharacterSheetView";
 import { AppShell, type AppView } from "./components/AppShell";
 import { RightDrawer, type RightDrawerTab } from "./components/RightDrawer";
 import { SettingsRightPanel } from "./components/SettingsRightPanel";
@@ -498,6 +499,17 @@ function App() {
           handleEmptyTrash={vaultActions.handleEmptyTrash}
           handleRestoreNote={restoreNote}
           handleDeleteTrashedNote={vaultActions.handleDeleteTrashedNote}
+        />
+      )}
+
+      {activeView === "character-sheets" && (
+        <CharacterSheetView
+          vaultPath={vaultPath}
+          alert={alert}
+          onOpenNote={(noteId) => {
+            setSelectedNoteId(noteId);
+            setActiveView("vault");
+          }}
         />
       )}
 
