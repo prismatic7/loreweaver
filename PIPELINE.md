@@ -17,11 +17,44 @@
 | 4 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
 
 ## Current phase
-**3 — Drudge** (zero, autonomous) → **completed by Hermes** (zero's run was
-incomplete; Hermes picked up the handoff — see log below)
+**4 — Review** (Hermes + Chris, interactive) → **VERDICT: PASS, with 1 catch (fixed)** — see log below
 
 ## Handoff log
 _Each harness writes its status here on exit: what changed, what's next, what's blocking._
+
+### Phase 4 — review (2026-08-10)
+- **Verdict: PASS.** Final diff vs the whole arc (DESIGN_SKETCH → phase 2 →
+  phase 3) checked, commit by commit: 7 commits, 30 files, +3454/−61.
+- **Every phase 2 deliverable maps to a signed-off decision:**
+  - Provenance model (sketch decision 1, "depth depth depth") → `sources`
+    table + `SourceEntry`, frontmatter keys, source nodes in the entity
+    graph, provenance filter (All/Canon/History/Invention).
+  - Web clipping (decision 2, in-app fetch) → `webclip.rs`: ureq fetch,
+    30s timeout, 5 redirects, browser UA, article/main/body extraction,
+    html2md, `WebClip` provenance. URL validation is a pure helper.
+  - Bible conditioning (sketch §Generation Conditioning) → `load_bible_context`
+    in agent.rs: always-on injection from `<vault_path>/bible/`, all 8
+    files, missing files skipped gracefully. NOT retrieved-by-similarity.
+  - Capture inbox (sketch §Capture Design) → `capture_note` → `Captures/`,
+    accepts text/paste/URL/file-drop, wired through useCaptureInbox +
+    RightDrawer Scratchpad tab.
+  - Docs foundation → DESIGN/PRODUCT/FEATURE_PROPOSAL/DESIGN_SKETCH/
+    RECON/PIPELINE/TASK committed; AGENTS.md doc precedence
+    (DESIGN_SKETCH > DESIGN > PRODUCT > docs/codebase); ARCHITECTURE.md
+    phase 2 section added in phase 3.
+- **Phase 3 additions verified:** EntityGraphView.test.tsx (5 tests),
+  webclip.rs tests (9), `NODE_ENV=test` script fix, react 19.1.9 pin.
+- **1 catch found and fixed in review:** AGENTS.md still said "8 Vitest
+  suites + ~30 Rust tests" after phase 2 — stale. Now "10 Vitest suites /
+  32 tests + 43 Rust tests". (TESTING.md has no hard counts — clean.)
+- **Verification re-confirmed:** `npm run test` 32 ✓ (NODE_ENV=production
+  set), `cargo test` 43 ✓, `npm run build` ✓.
+- **Known gaps, deliberately out of scope (future phases):** live STT,
+  era-hopping timeline, interactive graph layout (force/drag), auto
+  post-session capture, PDF pipeline, comics capture, Muse sidebar tab.
+  `bible/` is code-ready but EMPTY — THE_PLAN.md needs research + Muse
+  generation (devising work, next campaign session).
+- **Next: Chris approves the merge** (main ← project/fate-of-cthulhu).
 
 ### Phase 3 — drudge (2026-08-10)
 - **zero's run (incomplete):** pinned react/react-dom to 19.1.9 in
