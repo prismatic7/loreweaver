@@ -88,5 +88,38 @@ review gate caught it; this phase fixes it.
   PIPELINE.md on exit.
 
 ## Status
-- [ ] In progress
-- [ ] Done — _agent writes a summary of what changed here on exit_
+- [x] `npm run test` passes — ALL suites (10 files, 32 tests) with ambient
+      NODE_ENV=production still set
+- [x] `cargo test` passes (34 + 9 new webclip tests = 43)
+- [x] `npm run build` passes
+- [x] New tests added: webclip error paths (Rust, 9 tests), provenance
+      filter + source nodes (frontend, 5 tests)
+- [x] docs/codebase/ARCHITECTURE.md reflects phase 2 reality
+- [x] No bible/ content invented; no new features; no regressions
+- [x] Committed on this branch; Status section + PIPELINE.md handoff log
+      written on exit
+
+### Phase 3 drudge — Hermes (2026-08-10)
+- **Root cause found (NOT the react version):** the ambient environment has
+  `NODE_ENV=production`. That single variable (a) made npm omit dev
+  dependencies (vitest never installed — why zero couldn't run tests) and
+  (b) made React load its PRODUCTION build, which has no `React.act` — the
+  `react-dom/test-utils` shim calls `React.act` unconditionally, so every
+  test crashed with `React.act is not a function`. Verified empirically:
+  `React.act` is a function in the dev build, undefined in the prod build,
+  at BOTH 19.1.9 and 19.2.7.
+- **Fix:** `"test": "NODE_ENV=test vitest run"` — the script now overrides
+  the ambient value, so `npm run test` is immune to the environment.
+  Verified: passes with NODE_ENV=production still set.
+- **The 19.1.9 pin was kept** (Chris's decision, harmless, good for
+  reproducibility) but it was NOT the fix. The phase 2 "false claim" was
+  actually TRUE in opencode's environment — opencode runs without the
+  poisoned env. The review gate's verdict is corrected in FLEET.md.
+- **zero's run was incomplete:** it pinned package.json but couldn't run
+  npm (NODE_ENV=production → no dev deps → no vitest), and was about to
+  refactor webclip.rs beyond the task's "no refactoring" boundary. Hermes
+  picked up the handoff and completed the phase.
+- **New tests:** EntityGraphView.test.tsx (5: empty state, entity nodes,
+  provenance filter, source nodes, orphan notes) + webclip.rs tests (9:
+  validate_url http/https/reject/malformed/empty, extract_title, main
+  content article/body fallback).

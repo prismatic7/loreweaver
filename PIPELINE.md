@@ -17,10 +17,45 @@
 | 4 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
 
 ## Current phase
-**3 — Drudge** (zero, autonomous)
+**3 — Drudge** (zero, autonomous) → **completed by Hermes** (zero's run was
+incomplete; Hermes picked up the handoff — see log below)
 
 ## Handoff log
 _Each harness writes its status here on exit: what changed, what's next, what's blocking._
+
+### Phase 3 — drudge (2026-08-10)
+- **zero's run (incomplete):** pinned react/react-dom to 19.1.9 in
+  package.json but could not run npm (ambient NODE_ENV=production → npm
+  omits dev deps → no vitest). Was about to refactor webclip.rs beyond the
+  task's "no refactoring" boundary. No commits, no status written.
+- **Hermes picked up the handoff and completed the phase:**
+  - **Root cause of the frontend test failure (NOT the react version):**
+    ambient `NODE_ENV=production` in the Hermes TUI environment. It (a)
+    makes npm omit dev dependencies and (b) makes React load its
+    PRODUCTION build, which has no `React.act` — the react-dom/test-utils
+    shim calls `React.act` unconditionally, so every test crashed.
+    Verified: `React.act` is a function in the dev build, undefined in
+    the prod build, at both 19.1.9 and 19.2.7.
+  - **Fix:** `"test": "NODE_ENV=test vitest run"` — immune to ambient
+    env. Verified: 10 files / 32 tests pass with NODE_ENV=production set.
+  - **The 19.1.9 pin was kept** (Chris's decision) but was NOT the fix.
+    opencode's phase 2 "27 tests ✓" claim was TRUE in its environment —
+    the review gate's "false claim" verdict is corrected in FLEET.md.
+  - **New tests:** EntityGraphView.test.tsx (5: empty state, entity
+    nodes, provenance filter, source nodes, orphan notes) + webclip.rs
+    tests (9: validate_url http/https/reject/malformed/empty,
+    extract_title, main content article/body fallback). webclip.rs got a
+    minimal `validate_url` extraction (the smallest change that makes
+    the non-network error paths testable — within the task's scope).
+  - **Docs:** ARCHITECTURE.md gained a "Provenance, Bible Conditioning,
+    and Capture (phase 2)" section; EntityGraphView added to the
+    frontend structure list.
+  - **Verification:** `npm run test` 32 ✓ (with NODE_ENV=production set),
+    `cargo test` 43 ✓ (34 + 9 new), `npm run build` ✓.
+- **Next (phase 4 review):** final diff vs the whole arc (DESIGN_SKETCH
+  → phase 2 → phase 3), then Chris approves the merge. Note: `bible/`
+  folder is still empty — THE_PLAN.md needs research + Muse generation
+  (devising work, not drudge).
 
 ### Phase 2 — opencode build (2026-08-10)
 - **Docs foundation:** Committed DESIGN.md, PRODUCT.md, FEATURE_PROPOSAL.md,

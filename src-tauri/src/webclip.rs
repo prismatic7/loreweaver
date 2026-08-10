@@ -18,14 +18,23 @@ use crate::WebClip;
 /// Browser-ish User-Agent so sites don't reject the request as a bot.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-/// Fetches `url`, extracts the main readable content, and converts it to Markdown.
+/// Validates a URL for clipping: must parse and use http/https.
 ///
-/// Returns a `WebClip` on success, or a human-readable error string on failure.
-pub fn clip_url(url: &str) -> Result<WebClip, String> {
+/// Extracted from `clip_url` so the non-network error paths are unit-testable
+/// without hitting the network.
+fn validate_url(url: &str) -> Result<reqwest::Url, String> {
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("Only http and https URLs can be clipped".to_string());
     }
+    Ok(parsed)
+}
+
+/// Fetches `url`, extracts the main readable content, and converts it to Markdown.
+///
+/// Returns a `WebClip` on success, or a human-readable error string on failure.
+pub fn clip_url(url: &str) -> Result<WebClip, String> {
+    let parsed = validate_url(url)?;
 
     // Build a configured agent: 30s timeout, follow up to 5 redirects, browser-ish UA.
     let agent = ureq::AgentBuilder::new()
@@ -95,4 +104,66 @@ fn extract_main_content(html: &str) -> String {
 
     // Fallback: return the whole document.
     html.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_url_accepts_http() {
+        let parsed = validate_url("http://example.com/page").unwrap();
+        assert_eq!(parsed.scheme(), "http");
+    }
+
+    #[test]
+    fn validate_url_accepts_https() {
+        let parsed = validate_url("https://example.com/page?q=1").unwrap();
+        assert_eq!(parsed.scheme(), "https");
+    }
+
+    #[test]
+    fn validate_url_rejects_non_http_schemes() {
+        let err = validate_url("ftp://example.com/file").unwrap_err();
+        assert!(err.contains("Only http and https"));
+    }
+
+    #[test]
+    fn validate_url_rejects_malformed_urls() {
+        let err = validate_url("not a url at all").unwrap_err();
+        assert!(err.contains("Invalid URL"));
+    }
+
+    #[test]
+    fn validate_url_rejects_empty_string() {
+        let err = validate_url("").unwrap_err();
+        assert!(err.contains("Invalid URL"));
+    }
+
+    #[test]
+    fn extract_title_returns_title_text() {
+        let html = "<html><head><title>My Page</title></head><body><p>hi</p></body></html>";
+        assert_eq!(extract_title(html).as_deref(), Some("My Page"));
+    }
+
+    #[test]
+    fn extract_title_returns_none_without_title_tag() {
+        let html = "<html><body><p>no title here</p></body></html>";
+        assert_eq!(extract_title(html), None);
+    }
+
+    #[test]
+    fn extract_main_content_prefers_article() {
+        let html = "<html><body><nav>menu</nav><article><p>the good stuff</p></article></body></html>";
+        let main = extract_main_content(html);
+        assert!(main.contains("the good stuff"));
+        assert!(!main.contains("menu"));
+    }
+
+    #[test]
+    fn extract_main_content_falls_back_to_body() {
+        let html = "<html><body><p>only body content</p></body></html>";
+        let main = extract_main_content(html);
+        assert!(main.contains("only body content"));
+    }
 }
