@@ -40,6 +40,9 @@ base64 = "0.22"
 urlencoding = "2"
 rfd = "0.15"
 walkdir = "2"
+specta = { version = "2.0.0-rc.25", features = ["derive", "serde_json"] }
+tauri-specta = { version = "2.0.0-rc.25", features = ["derive", "typescript"] }
+specta-typescript = "0.0.12"
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native", "sync-secret-service"] }
 url = "2.5.8"
 ipnetwork = "0.21.1"

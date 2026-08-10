@@ -93,16 +93,17 @@ pub struct AppState {
 
 // --- Data Structures ---
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct CampaignNote {
     pub id: String,
     pub title: String,
     pub path: String,
+    #[specta(type = HashMap<String, specta_typescript::Unknown>)]
     pub frontmatter: HashMap<String, Value>,
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct RuleEntry {
     pub id: String,
     pub path: String,
@@ -112,7 +113,7 @@ pub struct RuleEntry {
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct SearchResult {
     pub r#type: String, // "note" | "rule"
     pub title: String,
@@ -121,7 +122,7 @@ pub struct SearchResult {
     pub path: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct AppSettings {
     pub llm_provider: String,
     pub llm_model: String,
@@ -148,24 +149,33 @@ pub struct AppSettings {
     pub allow_local_providers: bool,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct TemplateProperty {
     pub r#type: String,
-    pub default: serde_json::Value,
+    #[specta(type = specta_typescript::Unknown)]
+    pub default: Value,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct TemplateAction {
     pub label: String,
     pub hook: String,
     pub plugin: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct TemplateEntry {
     pub name: String,
     pub properties: std::collections::HashMap<String, TemplateProperty>,
     pub actions: Vec<TemplateAction>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, specta::Type)]
+pub struct VaultSettings {
+    pub name: Option<String>,
+    pub campaign_system: Option<String>,
+    pub description: Option<String>,
+    pub tag_colors: Option<HashMap<String, String>>,
 }
 
 // --- Tauri Commands ---
@@ -1652,13 +1662,7 @@ fn open_vault_dialog() -> Result<Option<String>, String> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct VaultSettings {
-    pub name: Option<String>,
-    pub campaign_system: Option<String>,
-    pub description: Option<String>,
-    pub tag_colors: Option<HashMap<String, String>>,
-}
+
 
 #[tauri::command]
 async fn load_vault_settings(state: State<'_, AppState>) -> Result<VaultSettings, String> {
@@ -2057,6 +2061,32 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Export TypeScript bindings for all Tauri command input/output types.
+///
+/// Runs once at application startup via `main.rs` so the React frontend can import strongly-typed
+/// interfaces from `src/bindings.ts`. The output path is anchored to `CARGO_MANIFEST_DIR`
+/// so it is correct regardless of the working directory at runtime.
+#[cfg(not(test))]
+pub fn export_bindings() {
+    let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("src")
+        .join("bindings.ts");
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .typ::<CampaignNote>()
+        .typ::<RuleEntry>()
+        .typ::<SearchResult>()
+        .typ::<AppSettings>()
+        .typ::<VaultSettings>()
+        .typ::<TemplateEntry>()
+        .typ::<TemplateProperty>()
+        .typ::<TemplateAction>()
+        .typ::<plugins::PluginInfo>()
+        .dangerously_cast_bigints_to_number()
+        .export(specta_typescript::Typescript::default(), bindings_path)
+        .expect("Failed to export bindings");
 }
 
 #[cfg(test)]

@@ -32,7 +32,7 @@ use std::sync::{Mutex, OnceLock};
 
 
 /// Represents metadata and script content for a loaded plugin.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
 pub struct PluginInfo {
     /// Unique identifier for the plugin (e.g. `"dice-roller"`).
     pub id: String,

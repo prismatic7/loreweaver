@@ -179,7 +179,7 @@ export const TrashView: React.FC<TrashViewProps> = ({
                         >
                           Path:{" "}
                           <code>
-                            {note.frontmatter?.original_path ||
+                            {(note.frontmatter?.original_path as string) ||
                               note.path}
                           </code>
                         </div>
