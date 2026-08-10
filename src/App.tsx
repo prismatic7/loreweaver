@@ -28,6 +28,7 @@ import {
 } from "./components/Modals";
 
 import { useVault } from "./hooks/useVault";
+import { useWorld } from "./hooks/useWorld";
 import { useNotes } from "./hooks/useNotes";
 import { useRules } from "./hooks/useRules";
 import { useSearch } from "./hooks/useSearch";
@@ -42,12 +43,14 @@ import { useSessionTools } from "./hooks/useSessionTools";
 import { useVaultActions } from "./hooks/useVaultActions";
 import { useCaptureInbox } from "./hooks/useCaptureInbox";
 
-import { RuleEntry, SearchResult, WebClip } from "./types";
+import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
 
   const { vaultPath, vaults, switchVault, refreshVaultPath, getVaultLabel, loadVaults } = useVault();
+  const { noteTypes, provenanceTaxonomy } = useWorld(vaultPath);
+  const [worlds, setWorlds] = useState<WorldInfo[]>([]);
   const {
     notes,
     notesByFolder,
@@ -383,6 +386,97 @@ function App() {
     }
   }, [showPrompt, confirm, alert]);
 
+  const loadWorlds = useCallback(async () => {
+    try {
+      const list = await invoke<WorldInfo[]>("list_worlds");
+      setWorlds(list || []);
+    } catch (err) {
+      console.error("Failed to list worlds:", err);
+    }
+  }, []);
+
+  const handleSwitchWorld = useCallback(
+    async (path: string) => {
+      try {
+        await switchVault(path);
+        await refreshVaultData();
+        await loadWorlds();
+      } catch (err) {
+        alert("Failed to switch world: " + err);
+      }
+    },
+    [switchVault, refreshVaultData, loadWorlds, alert],
+  );
+
+  const handleCreateWorld = useCallback(
+    async (name: string, scaffoldFrom: string | null) => {
+      try {
+        const path = await invoke<string>("create_world", {
+          name,
+          scaffoldFrom,
+        });
+        await handleSwitchWorld(path);
+      } catch (err) {
+        alert("Failed to create world: " + err);
+      }
+    },
+    [handleSwitchWorld, alert],
+  );
+
+  const handleExportWorld = useCallback(
+    async (world: WorldInfo) => {
+      try {
+        const dest = await showPrompt(
+          "Export destination path (zip):",
+          `${world.name}.zip`,
+        );
+        if (!dest || !dest.trim()) return;
+        const result = await invoke<string>("export_world", {
+          vaultPath: world.path,
+          destPath: dest.trim(),
+        });
+        alert("Exported world to: " + result);
+      } catch (err) {
+        alert("Failed to export world: " + err);
+      }
+    },
+    [showPrompt, alert],
+  );
+
+  const handleImportWorld = useCallback(
+    async (zipPath: string) => {
+      try {
+        const path = await invoke<string>("import_world", { zipPath });
+        await loadWorlds();
+        await handleSwitchWorld(path);
+      } catch (err) {
+        alert("Failed to import world: " + err);
+      }
+    },
+    [loadWorlds, handleSwitchWorld, alert],
+  );
+
+  const handleOpenLiminal = useCallback(() => {
+    alert("The Liminal is not yet wired to a dedicated view in this build.");
+  }, [alert]);
+
+  const handleMakeWorldFromLiminal = useCallback(
+    async (name: string) => {
+      try {
+        const path = await invoke<string>("make_world_from_liminal", { name });
+        await loadWorlds();
+        await handleSwitchWorld(path);
+      } catch (err) {
+        alert("Failed to birth world from Liminal: " + err);
+      }
+    },
+    [loadWorlds, handleSwitchWorld, alert],
+  );
+
+  useEffect(() => {
+    loadWorlds();
+  }, [loadWorlds]);
+
   return (
     <AppShell
       activeView={activeView}
@@ -390,16 +484,13 @@ function App() {
       theme={theme}
       setTheme={setTheme}
       vaultPath={vaultPath}
-      vaults={vaults}
-      onSwitchVault={async (path) => {
-        try {
-          await switchVault(path);
-          await refreshVaultData();
-        } catch (err) {
-          alert("Failed to switch vault: " + err);
-        }
-      }}
-      onCreateVault={() => setShowNewVaultModal(true)}
+      worlds={worlds}
+      onSwitchWorld={handleSwitchWorld}
+      onOpenLiminal={handleOpenLiminal}
+      onCreateWorld={handleCreateWorld}
+      onExportWorld={handleExportWorld}
+      onImportWorld={handleImportWorld}
+      onMakeWorldFromLiminal={handleMakeWorldFromLiminal}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
       isSearchOpen={isSearchOpen}
@@ -490,6 +581,7 @@ function App() {
             handleSaveClipAsNote={captureInbox.handleSaveClipAsNote}
             handleSaveCapture={captureInbox.handleSaveCapture}
             handleFileDrop={captureInbox.handleFileDrop}
+            provenanceTaxonomy={provenanceTaxonomy}
           />
         ) : (
           <SettingsRightPanel tab={settingsTab} setTab={setSettingsTab} />
@@ -538,6 +630,7 @@ function App() {
           setActiveView={setActiveView}
           onSelectNoteFromCanvas={vaultActions.handleSelectNoteFromCanvas}
           onSelectCanvas={vaultActions.handleSelectCanvas}
+          provenanceTaxonomy={provenanceTaxonomy}
         />
       )}
 
@@ -613,6 +706,8 @@ function App() {
       {activeView === "graph" && (
         <EntityGraphView
           notes={notes}
+          noteTypes={noteTypes}
+          provenanceTaxonomy={provenanceTaxonomy}
           onOpenNote={(noteId) => {
             setSelectedNoteId(noteId);
             setActiveView("vault");

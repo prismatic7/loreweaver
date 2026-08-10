@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { PenLine, Brain, Layers, Link2 } from "lucide-react";
-import { CampaignNote, WebClip } from "../types";
+import {
+  CampaignNote,
+  DEFAULT_PROVENANCE_TAXONOMY,
+  ProvenanceType,
+  WebClip,
+} from "../types";
 
 export type RightDrawerTab =
   | "search"
@@ -97,6 +102,8 @@ export interface RightDrawerProps {
   handleSaveClipAsNote: () => void;
   handleSaveCapture: () => void;
   handleFileDrop: (file: File) => void;
+  /** World provenance taxonomy; falls back to DEFAULT_PROVENANCE_TAXONOMY. */
+  provenanceTaxonomy?: ProvenanceType[];
 }
 
 export const RightDrawer: React.FC<RightDrawerProps> = (props) => {
@@ -384,6 +391,7 @@ const CaptureInbox: React.FC<
     | "handleSaveClipAsNote"
     | "handleSaveCapture"
     | "handleFileDrop"
+    | "provenanceTaxonomy"
   >
 > = ({
   captureTitle,
@@ -400,6 +408,7 @@ const CaptureInbox: React.FC<
   handleSaveClipAsNote,
   handleSaveCapture,
   handleFileDrop,
+  provenanceTaxonomy = DEFAULT_PROVENANCE_TAXONOMY,
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -484,9 +493,11 @@ const CaptureInbox: React.FC<
           }}
           data-od-id="capture-source-type"
         >
-          <option value="canon">canon</option>
-          <option value="history">history</option>
-          <option value="invention">invention</option>
+          {provenanceTaxonomy.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label.toLowerCase()}
+            </option>
+          ))}
           <option value="custom">custom</option>
         </select>
         <button

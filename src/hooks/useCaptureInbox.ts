@@ -79,6 +79,7 @@ export const useCaptureInbox = (deps: CaptureInboxDeps): CaptureInboxState => {
         sourceTitle: clipResult.title,
         sourceAuthor: clipResult.site,
         sourceUrl: clipResult.url,
+        target: "liminal",
       })
         .then(() => {
           alert("Note saved.");
@@ -102,6 +103,7 @@ export const useCaptureInbox = (deps: CaptureInboxDeps): CaptureInboxState => {
       content,
       sourceType: captureSourceType || null,
       sourceUrl: captureUrl.trim() || null,
+      target: "liminal",
     })
       .then(() => {
         alert("Note saved.");

@@ -15,7 +15,8 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { CampaignNote, RuleEntry, SearchResult } from "../types";
+import { CampaignNote, RuleEntry, SearchResult, WorldInfo } from "../types";
+import { WorldShelf } from "./WorldShelf";
 
 export type AppView =
   | "dashboard"
@@ -36,9 +37,14 @@ export interface AppShellProps {
   theme: "dark" | "light";
   setTheme: (theme: "dark" | "light") => void;
   vaultPath: string;
-  vaults: Array<{ path: string; name: string }>;
-  onSwitchVault: (path: string) => void;
-  onCreateVault: () => void;
+  // World Shelf
+  worlds: WorldInfo[];
+  onSwitchWorld: (path: string) => void;
+  onOpenLiminal: () => void;
+  onCreateWorld: (name: string, scaffoldFrom: string | null) => Promise<void>;
+  onExportWorld: (world: WorldInfo) => Promise<void>;
+  onImportWorld: (zipPath: string) => Promise<void>;
+  onMakeWorldFromLiminal: (name: string) => Promise<void>;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   isSearchOpen: boolean;
@@ -60,9 +66,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   theme,
   setTheme,
   vaultPath,
-  vaults,
-  onSwitchVault,
-  onCreateVault,
+  worlds,
+  onSwitchWorld,
+  onOpenLiminal,
+  onCreateWorld,
+  onExportWorld,
+  onImportWorld,
+  onMakeWorldFromLiminal,
   searchQuery,
   setSearchQuery,
   isSearchOpen,
@@ -210,46 +220,16 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <FolderOpen size={14} style={{ color: "var(--accent)" }} />
-              <select
-                value={vaultPath}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "NEW_VAULT_TRIGGER") {
-                    onCreateVault();
-                  } else if (val) {
-                    onSwitchVault(val);
-                  }
-                }}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--fg)",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  outline: "none",
-                  paddingRight: "8px",
-                }}
-              >
-                {vaults.map((v) => (
-                  <option
-                    key={v.path}
-                    value={v.path}
-                    style={{ background: "var(--surface)", color: "var(--fg)" }}
-                  >
-                    {v.name}
-                  </option>
-                ))}
-                <option
-                  value="NEW_VAULT_TRIGGER"
-                  style={{
-                    background: "var(--surface)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  + Create New Vault...
-                </option>
-              </select>
+              <WorldShelf
+                worlds={worlds}
+                activeWorldPath={vaultPath}
+                onSwitchWorld={onSwitchWorld}
+                onOpenLiminal={onOpenLiminal}
+                onCreateWorld={onCreateWorld}
+                onExportWorld={onExportWorld}
+                onImportWorld={onImportWorld}
+                onMakeWorldFromLiminal={onMakeWorldFromLiminal}
+              />
             </div>
           </div>
 
