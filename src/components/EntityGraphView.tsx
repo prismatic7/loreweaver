@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { CampaignNote } from "../types";
+import React, { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { CampaignNote, SourceEntry } from "../types";
 
 /**
  * EntityGraphView
@@ -16,6 +17,7 @@ interface GraphNode {
   type: string;
   x: number;
   y: number;
+  kind: "entity" | "source";
 }
 
 interface GraphEdge {
@@ -29,6 +31,8 @@ interface EntityGraphViewProps {
   onOpenNote: (noteId: string) => void;
 }
 
+type ProvenanceFilter = "all" | "canon" | "history" | "invention";
+
 const TYPE_COLORS: Record<string, string> = {
   npc: "oklch(60% 0.22 340)",
   location: "oklch(65% 0.2 260)",
@@ -36,6 +40,8 @@ const TYPE_COLORS: Record<string, string> = {
   item: "oklch(70% 0.18 140)",
   event: "oklch(75% 0.15 320)",
 };
+
+const SOURCE_COLOR = "oklch(70% 0.12 45)";
 
 const extractWikiLinks = (text: string): string[] => {
   const links: string[] = [];
@@ -55,10 +61,33 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
   onOpenNote,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sources, setSources] = useState<SourceEntry[]>([]);
+  const [filter, setFilter] = useState<ProvenanceFilter>("all");
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<SourceEntry[]>("list_sources")
+      .then((data) => {
+        if (!cancelled) setSources(data || []);
+      })
+      .catch((err) => console.error("Failed loading sources:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const { nodes, edges } = useMemo(() => {
+    // Apply the provenance filter to the note set before building the graph.
+    const filteredNotes =
+      filter === "all"
+        ? notes
+        : notes.filter(
+            (n) =>
+              String(n.frontmatter?.source_type || "").toLowerCase() === filter,
+          );
+
     // Build entity nodes from notes that have a meaningful `type`.
-    const entityNotes = notes.filter((n) => {
+    const entityNotes = filteredNotes.filter((n) => {
       const type = String(n.frontmatter?.type || "").toLowerCase();
       return ["npc", "location", "faction", "item", "event"].includes(type);
     });
@@ -74,6 +103,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
         type,
         x: 400 + Math.cos(angle) * radius,
         y: 300 + Math.sin(angle) * radius,
+        kind: "entity",
       });
     });
 
@@ -117,8 +147,47 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
       });
     });
 
+    // Add source nodes and provenance edges. A note links to its source via
+    // `source_id` frontmatter (falling back to `source_url`).
+    const sourceById = new Map(sources.map((s) => [s.id, s]));
+    const sourceByUrl = new Map(
+      sources.filter((s) => s.url).map((s) => [s.url, s]),
+    );
+    const sourceNodeIds = new Set<string>();
+    const sourceAngleOffset = 0.4;
+
+    entityNotes.forEach((note) => {
+      const sourceId = note.frontmatter?.source_id;
+      const sourceUrl = note.frontmatter?.source_url;
+      let source: SourceEntry | undefined;
+      if (typeof sourceId === "string" && sourceById.has(sourceId)) {
+        source = sourceById.get(sourceId);
+      } else if (typeof sourceUrl === "string" && sourceByUrl.has(sourceUrl)) {
+        source = sourceByUrl.get(sourceUrl);
+      }
+      if (!source) return;
+
+      const sourceNodeId = `source-${source.id}`;
+      if (!nodeMap.has(sourceNodeId)) {
+        const angle =
+          sourceAngleOffset +
+          (sourceNodeIds.size / Math.max(sources.length, 1)) * 2 * Math.PI;
+        const radius = 360;
+        nodeMap.set(sourceNodeId, {
+          id: sourceNodeId,
+          label: source.title || source.url || source.id,
+          type: source.source_type || "source",
+          x: 400 + Math.cos(angle) * radius,
+          y: 300 + Math.sin(angle) * radius,
+          kind: "source",
+        });
+        sourceNodeIds.add(sourceNodeId);
+      }
+      addEdge(note.id, sourceNodeId, "source");
+    });
+
     return { nodes: Array.from(nodeMap.values()), edges: edgeList };
-  }, [notes]);
+  }, [notes, sources, filter]);
 
   if (nodes.length === 0) {
     return (
@@ -140,6 +209,13 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     );
   }
 
+  const filterOptions: Array<{ value: ProvenanceFilter; label: string }> = [
+    { value: "all", label: "All" },
+    { value: "canon", label: "Canon" },
+    { value: "history", label: "History" },
+    { value: "invention", label: "Invention" },
+  ];
+
   return (
     <div
       className="view-container"
@@ -153,12 +229,38 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: "16px",
         }}
       >
         <span className="panel-title">Entity &amp; Relationship Graph</span>
-        <span style={{ fontSize: "11px", color: "var(--muted)" }}>
-          {nodes.length} entities · {edges.length} relationships
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ display: "flex", gap: "4px" }}>
+            {filterOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setFilter(opt.value)}
+                style={{
+                  background:
+                    filter === opt.value ? "var(--border)" : "transparent",
+                  border: "1px solid var(--border)",
+                  color:
+                    filter === opt.value ? "var(--accent)" : "var(--muted)",
+                  padding: "4px 10px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                }}
+                data-od-id={`graph-filter-${opt.value}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+            {nodes.length} nodes · {edges.length} relationships
+          </span>
+        </div>
       </div>
       <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
         <svg width="100%" height="100%" style={{ minWidth: 800, minHeight: 600 }}>
@@ -167,6 +269,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
             const from = nodes.find((n) => n.id === e.from);
             const to = nodes.find((n) => n.id === e.to);
             if (!from || !to) return null;
+            const isSourceEdge = e.label === "source";
             return (
               <g key={i}>
                 <line
@@ -174,8 +277,9 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                   y1={from.y}
                   x2={to.x}
                   y2={to.y}
-                  stroke="var(--border)"
-                  strokeWidth="1.5"
+                  stroke={isSourceEdge ? SOURCE_COLOR : "var(--border)"}
+                  strokeWidth={isSourceEdge ? 1.5 : 1.5}
+                  strokeDasharray={isSourceEdge ? "4 3" : undefined}
                 />
                 <text
                   x={(from.x + to.x) / 2}
@@ -192,7 +296,10 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
 
           {/* Nodes */}
           {nodes.map((n) => {
-            const color = TYPE_COLORS[n.type] || "oklch(60% 0.15 180)";
+            const isSource = n.kind === "source";
+            const color = isSource
+              ? SOURCE_COLOR
+              : TYPE_COLORS[n.type] || "oklch(60% 0.15 180)";
             const isSelected = selectedId === n.id;
             return (
               <g
@@ -200,16 +307,29 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                 transform={`translate(${n.x}, ${n.y})`}
                 onClick={() => {
                   setSelectedId(n.id);
-                  onOpenNote(n.id);
+                  if (!isSource) onOpenNote(n.id);
                 }}
-                style={{ cursor: "pointer" }}
+                style={{ cursor: isSource ? "default" : "pointer" }}
               >
-                <circle
-                  r={isSelected ? 30 : 26}
-                  fill={color}
-                  stroke="var(--surface)"
-                  strokeWidth="3"
-                />
+                {isSource ? (
+                  <rect
+                    x={-22}
+                    y={-22}
+                    width={44}
+                    height={44}
+                    rx={6}
+                    fill={color}
+                    stroke="var(--surface)"
+                    strokeWidth="3"
+                  />
+                ) : (
+                  <circle
+                    r={isSelected ? 30 : 26}
+                    fill={color}
+                    stroke="var(--surface)"
+                    strokeWidth="3"
+                  />
+                )}
                 <text
                   y="4"
                   fontSize="12"

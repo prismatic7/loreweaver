@@ -5,6 +5,7 @@ import {
   Compass,
   FolderOpen,
   Layers,
+  Link2,
   Map as MapIcon,
   Moon,
   Network,
@@ -50,6 +51,7 @@ export interface AppShellProps {
   children: React.ReactNode;
   rightPanel: React.ReactNode;
   onLoadTrash: () => void;
+  onClipUrl: () => void;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -71,6 +73,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   children,
   rightPanel,
   onLoadTrash,
+  onClipUrl,
 }) => {
   return (
     <div className="app-container">
@@ -251,6 +254,23 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
 
           <div className="toolbar-actions">
+            <button
+              className="btn btn-sm"
+              onClick={onClipUrl}
+              title="Clip a web page into a note"
+              data-od-id="toolbar-clip-url"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "6px 10px",
+                fontSize: "11px",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Link2 size={13} /> Clip URL
+            </button>
             <div className="search-wrapper" ref={searchRef}>
               <div className="search-bar">
                 <Search />

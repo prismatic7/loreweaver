@@ -52,6 +52,7 @@ mod plugins;
 pub mod providers;
 mod search;
 mod watcher;
+mod webclip;
 
 // --- App State ---
 
@@ -1117,6 +1118,150 @@ async fn delete_session_memory(state: State<'_, AppState>, id: &str) -> Result<(
     db::delete_session_memory(&conn, id).map_err(|e| e.to_string())
 }
 
+/// Lists all provenance sources for the active vault.
+#[tauri::command]
+async fn list_sources(state: State<'_, AppState>) -> Result<Vec<SourceEntry>, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::list_sources(&conn).map_err(|e| e.to_string())
+}
+
+/// Saves (creates or updates) a provenance source. Returns the source id.
+#[tauri::command]
+async fn save_source(state: State<'_, AppState>, source: SourceEntry) -> Result<String, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::upsert_source(&conn, &source).map_err(|e| e.to_string())
+}
+
+/// Deletes a provenance source by id.
+#[tauri::command]
+async fn delete_source(state: State<'_, AppState>, source_id: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::delete_source(&conn, source_id).map_err(|e| e.to_string())
+}
+
+/// Fetches a single provenance source by id, if it exists.
+#[tauri::command]
+async fn get_source(
+    state: State<'_, AppState>,
+    source_id: &str,
+) -> Result<Option<SourceEntry>, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::get_source(&conn, source_id).map_err(|e| e.to_string())
+}
+
+/// Slugifies a title into a safe filename component (lowercase, alphanumeric,
+/// hyphens for spaces/illegal chars).
+fn slugify_title(title: &str) -> String {
+    let mut slug = String::new();
+    let mut prev_hyphen = false;
+    for c in title.trim().chars() {
+        if c.is_alphanumeric() {
+            slug.push(c.to_ascii_lowercase());
+            prev_hyphen = false;
+        } else if !prev_hyphen {
+            slug.push('-');
+            prev_hyphen = true;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+/// Captures a quick note into the vault's `Captures/` inbox folder.
+///
+/// Writes the note to disk via `validate_safe_path` + `write_note_to_disk`, upserts
+/// it into the DB, indexes its vectors, and returns the new note id. Provenance
+/// fields (source_type, source_title, source_author, source_url, source_date) are
+/// stored in frontmatter so the watcher/ingest pipeline stays compatible.
+#[tauri::command]
+async fn capture_note(
+    state: State<'_, AppState>,
+    title: &str,
+    content: &str,
+    source_type: Option<&str>,
+    source_title: Option<&str>,
+    source_author: Option<&str>,
+    source_url: Option<&str>,
+) -> Result<String, String> {
+    let clean_title = title.trim();
+    if clean_title.is_empty() {
+        return Err("Title is required for a capture".to_string());
+    }
+
+    let vault_path = state.vault_path.lock().await;
+
+    // Build the capture file path: Captures/<slugified-title>-<timestamp>.md
+    let slug = slugify_title(clean_title);
+    let slug = if slug.is_empty() {
+        "capture".to_string()
+    } else {
+        slug
+    };
+    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let rel_path = format!("Captures/{}-{}.md", slug, timestamp);
+    let full_path = validate_safe_path(&vault_path, &rel_path)?;
+
+    // Assemble frontmatter: type + provenance keys.
+    let mut frontmatter = HashMap::new();
+    frontmatter.insert("type".to_string(), Value::String("Capture".to_string()));
+    frontmatter.insert(
+        "created_at".to_string(),
+        Value::String(chrono::Utc::now().to_rfc3339()),
+    );
+    if let Some(st) = source_type {
+        if !st.trim().is_empty() {
+            frontmatter.insert("source_type".to_string(), Value::String(st.to_string()));
+        }
+    }
+    if let Some(st) = source_title {
+        if !st.trim().is_empty() {
+            frontmatter.insert("source_title".to_string(), Value::String(st.to_string()));
+        }
+    }
+    if let Some(sa) = source_author {
+        if !sa.trim().is_empty() {
+            frontmatter.insert("source_author".to_string(), Value::String(sa.to_string()));
+        }
+    }
+    if let Some(su) = source_url {
+        if !su.trim().is_empty() {
+            frontmatter.insert("source_url".to_string(), Value::String(su.to_string()));
+        }
+    }
+    frontmatter.insert(
+        "source_date".to_string(),
+        Value::String(chrono::Utc::now().format("%Y-%m-%d").to_string()),
+    );
+
+    // Write to disk (creates the Captures/ folder as needed).
+    write_note_to_disk(&full_path, content, &frontmatter)?;
+
+    // Upsert into DB and index vectors.
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    let note_id = db::upsert_note(&conn, &rel_path, clean_title, content, &frontmatter)
+        .map_err(|e| e.to_string())?;
+    if watcher::should_ai_index(&full_path, &frontmatter) {
+        let _ = search::index_note_vectors(&conn, &note_id, content);
+    }
+    search::invalidate_cache();
+
+    Ok(note_id)
+}
+
+/// Fetches a URL and returns its readable content as clean Markdown.
+///
+/// Performs blocking HTTP I/O, so it is dispatched onto Tauri's blocking thread
+/// pool via `run_blocking` to keep the async runtime responsive.
+#[tauri::command]
+async fn clip_webpage(_state: State<'_, AppState>, url: &str) -> Result<WebClip, String> {
+    let url_owned = url.to_string();
+    run_blocking(move || webclip::clip_url(&url_owned)).await
+}
+
 /// Generates a structured session summary from the current chat messages.
 ///
 /// Takes the chat transcript as JSON, calls the configured LLM to produce a
@@ -1208,6 +1353,7 @@ async fn orchestrate_agent(
     let allow_local;
     let system_context;
     {
+        let vault_path = state.vault_path.lock().await;
         let conn_arc = state.conn.lock().await;
         let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
         allow_local = db::get_setting(&conn, "allow_local_providers")
@@ -1215,7 +1361,8 @@ async fn orchestrate_agent(
             .flatten()
             .map(|v| v == "true")
             .unwrap_or(false);
-        system_context = agent::build_system_context(&conn, prompt, active_note_id)?;
+        system_context =
+            agent::build_system_context(&conn, prompt, active_note_id, &vault_path)?;
     }
 
     if let Some(base) = base_url {
@@ -2141,7 +2288,13 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             save_session_memory,
             list_session_memory,
             delete_session_memory,
-            summarize_session
+            summarize_session,
+            list_sources,
+            save_source,
+            delete_source,
+            get_source,
+            capture_note,
+            clip_webpage
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -2156,6 +2309,8 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<CampaignNote>()
         .typ::<RuleEntry>()
         .typ::<SearchResult>()
+        .typ::<SourceEntry>()
+        .typ::<WebClip>()
         .typ::<AppSettings>()
         .typ::<VaultSettings>()
         .typ::<TemplateEntry>()
@@ -2646,7 +2801,7 @@ mod tests {
                 let conn_guard = state.conn.lock().await;
                 let conn = conn_guard.lock().unwrap();
                 let context =
-                    agent::build_system_context(&conn, "what about the blade", Some(&note_id))
+                    agent::build_system_context(&conn, "what about the blade", Some(&note_id), "")
                         .unwrap();
                 assert!(
                     context.system_prompt.contains("Sword of Dawn"),

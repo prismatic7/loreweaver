@@ -144,6 +144,23 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
+    // 7c. Sources Table:
+    // Stores provenance records (canon, history, invention, or user-defined types)
+    // that notes can link to via the `source_id` frontmatter key. Kept separate from
+    // the notes table so provenance metadata is reusable across many notes.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS sources (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            author TEXT NOT NULL DEFAULT '',
+            source_type TEXT NOT NULL DEFAULT 'canon',
+            url TEXT NOT NULL DEFAULT '',
+            date TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        );",
+        [],
+    )?;
+
     // 8. FTS5 Virtual Tables for Full-Text Search:
     // High-performance SQLite FTS5 index structures for fast full-text keyword matching and BM25 ranking.
     let _ = conn.execute(
@@ -544,6 +561,79 @@ pub fn delete_session_memory(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Returns every source row in the database.
+pub fn list_sources(conn: &Connection) -> Result<Vec<super::SourceEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, author, source_type, url, date FROM sources ORDER BY title ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(super::SourceEntry {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            author: row.get(2)?,
+            source_type: row.get(3)?,
+            url: row.get(4)?,
+            date: row.get(5)?,
+        })
+    })?;
+    let mut sources = Vec::new();
+    for r in rows {
+        sources.push(r?);
+    }
+    Ok(sources)
+}
+
+/// Inserts or updates a source row by id. Returns the source id.
+pub fn upsert_source(conn: &Connection, source: &super::SourceEntry) -> Result<String> {
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO sources (id, title, author, source_type, url, date, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            author = excluded.author,
+            source_type = excluded.source_type,
+            url = excluded.url,
+            date = excluded.date;",
+        params![
+            source.id,
+            source.title,
+            source.author,
+            source.source_type,
+            source.url,
+            source.date,
+            now
+        ],
+    )?;
+    Ok(source.id.clone())
+}
+
+/// Deletes a source row by id.
+pub fn delete_source(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM sources WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Fetches a single source row by id, if it exists.
+pub fn get_source(conn: &Connection, id: &str) -> Result<Option<super::SourceEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, author, source_type, url, date FROM sources WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(super::SourceEntry {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            author: row.get(2)?,
+            source_type: row.get(3)?,
+            url: row.get(4)?,
+            date: row.get(5)?,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Upserts a rule by id. If the id already exists, updates all fields.
 pub fn upsert_rule(
     conn: &Connection,
@@ -792,5 +882,54 @@ mod tests {
             .query_row("SELECT count(*) FROM rules", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_source_crud() {
+        let conn = init_db(":memory:").expect("Failed to initialize memory DB");
+
+        // Initially empty.
+        assert!(list_sources(&conn).unwrap().is_empty());
+
+        // Insert a source.
+        let source = crate::SourceEntry {
+            id: "src-1".to_string(),
+            title: "The Necronomicon".to_string(),
+            author: "Abdul Alhazred".to_string(),
+            source_type: "canon".to_string(),
+            url: "https://example.com/necro".to_string(),
+            date: "1928".to_string(),
+        };
+        let id = upsert_source(&conn, &source).unwrap();
+        assert_eq!(id, "src-1");
+
+        let fetched = get_source(&conn, "src-1").unwrap().expect("source exists");
+        assert_eq!(fetched.title, "The Necronomicon");
+        assert_eq!(fetched.author, "Abdul Alhazred");
+        assert_eq!(fetched.source_type, "canon");
+
+        // Update the same id (upsert).
+        let updated = crate::SourceEntry {
+            id: "src-1".to_string(),
+            title: "The Necronomicon (Annotated)".to_string(),
+            author: "Abdul Alhazred".to_string(),
+            source_type: "history".to_string(),
+            url: "https://example.com/necro".to_string(),
+            date: "1928".to_string(),
+        };
+        upsert_source(&conn, &updated).unwrap();
+        let fetched = get_source(&conn, "src-1").unwrap().unwrap();
+        assert_eq!(fetched.title, "The Necronomicon (Annotated)");
+        assert_eq!(fetched.source_type, "history");
+
+        // Listing returns the single source.
+        let all = list_sources(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, "src-1");
+
+        // Delete.
+        delete_source(&conn, "src-1").unwrap();
+        assert!(get_source(&conn, "src-1").unwrap().is_none());
+        assert!(list_sources(&conn).unwrap().is_empty());
     }
 }

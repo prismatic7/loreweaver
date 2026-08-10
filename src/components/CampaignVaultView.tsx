@@ -140,7 +140,18 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
     : [];
 
   const otherFrontmatterKeys = Object.keys(editFrontmatter).filter(
-    (key) => key !== "type" && key !== "tags" && !templatePropKeys.includes(key)
+    (key) =>
+      key !== "type" &&
+      key !== "tags" &&
+      !templatePropKeys.includes(key) &&
+      ![
+        "source_type",
+        "source_title",
+        "source_author",
+        "source_url",
+        "source_date",
+        "source_id",
+      ].includes(key),
   );
 
   return (
@@ -744,6 +755,122 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               color: "var(--fg)",
                             }}
                           />
+                        </div>
+
+                        {/* Provenance fields */}
+                        <div
+                          style={{
+                            borderTop: "1px solid var(--border)",
+                            paddingTop: "8px",
+                            marginTop: "4px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                              color: "var(--muted)",
+                              display: "block",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            Provenance
+                          </span>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                width: "100px",
+                                color: "var(--muted)",
+                              }}
+                            >
+                              Source type:
+                            </label>
+                            <select
+                              value={
+                                typeof editFrontmatter.source_type === "string"
+                                  ? editFrontmatter.source_type
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                setEditFrontmatter((prev) => ({
+                                  ...prev,
+                                  source_type: e.target.value,
+                                }))
+                              }
+                              style={{
+                                flex: 1,
+                                padding: "4px 8px",
+                                fontSize: "12px",
+                                background: "var(--bg)",
+                                border: "1px solid var(--border)",
+                                borderRadius: "4px",
+                                color: "var(--fg)",
+                              }}
+                            >
+                              <option value="">— none —</option>
+                              <option value="canon">canon</option>
+                              <option value="history">history</option>
+                              <option value="invention">invention</option>
+                              <option value="custom">custom</option>
+                            </select>
+                          </div>
+                          {[
+                            ["source_title", "Source title:"],
+                            ["source_author", "Source author:"],
+                            ["source_url", "Source URL:"],
+                            ["source_date", "Source date:"],
+                          ].map(([key, label]) => (
+                            <div
+                              key={key}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                              }}
+                            >
+                              <label
+                                style={{
+                                  fontSize: "12px",
+                                  width: "100px",
+                                  color: "var(--muted)",
+                                }}
+                              >
+                                {label}
+                              </label>
+                              <input
+                                type="text"
+                                value={
+                                  editFrontmatter[key] !== undefined
+                                    ? String(editFrontmatter[key])
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  setEditFrontmatter((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                                style={{
+                                  flex: 1,
+                                  padding: "4px 8px",
+                                  fontSize: "12px",
+                                  background: "var(--bg)",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "4px",
+                                  color: "var(--fg)",
+                                }}
+                              />
+                            </div>
+                          ))}
                         </div>
 
                         {/* Template defined property controls */}

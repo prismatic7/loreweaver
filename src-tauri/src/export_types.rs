@@ -27,6 +27,27 @@ pub struct RuleEntry {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct SourceEntry {
+    pub id: String,
+    pub title: String,
+    pub author: String,
+    pub source_type: String,
+    pub url: String,
+    pub date: String,
+}
+
+/// Result of a web clipping operation: the fetched page's readable content
+/// converted to clean Markdown, plus provenance metadata.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct WebClip {
+    pub title: String,
+    pub site: String,
+    pub url: String,
+    pub markdown: String,
+    pub fetched_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
 pub struct SearchResult {
     pub r#type: String,
     pub title: String,
@@ -110,6 +131,8 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<CampaignNote>()
         .typ::<RuleEntry>()
         .typ::<SearchResult>()
+        .typ::<SourceEntry>()
+        .typ::<WebClip>()
         .typ::<AppSettings>()
         .typ::<VaultSettings>()
         .typ::<TemplateEntry>()

@@ -1,6 +1,6 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { PenLine, Brain, Layers, Link2 } from "lucide-react";
-import { CampaignNote } from "../types";
+import { CampaignNote, WebClip } from "../types";
 
 export type RightDrawerTab =
   | "search"
@@ -82,6 +82,21 @@ export interface RightDrawerProps {
   // Backlinks tab
   backlinks: CampaignNote[];
   setSelectedNoteId: (id: string) => void;
+  // Capture Inbox
+  captureTitle: string;
+  setCaptureTitle: (value: string) => void;
+  captureContent: string;
+  setCaptureContent: (value: string) => void;
+  captureUrl: string;
+  setCaptureUrl: (value: string) => void;
+  captureSourceType: string;
+  setCaptureSourceType: (value: string) => void;
+  isClipping: boolean;
+  clipResult: WebClip | null;
+  handleClipUrl: () => void;
+  handleSaveClipAsNote: () => void;
+  handleSaveCapture: () => void;
+  handleFileDrop: (file: File) => void;
 }
 
 export const RightDrawer: React.FC<RightDrawerProps> = (props) => {
@@ -262,6 +277,20 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
   handleEvaluateEncounterThreat,
   handleInitiativeTracker,
   handleEncounterBuilder,
+  captureTitle,
+  setCaptureTitle,
+  captureContent,
+  setCaptureContent,
+  captureUrl,
+  setCaptureUrl,
+  captureSourceType,
+  setCaptureSourceType,
+  isClipping,
+  clipResult,
+  handleClipUrl,
+  handleSaveClipAsNote,
+  handleSaveCapture,
+  handleFileDrop,
 }) => (
   <div
     style={{
@@ -304,6 +333,23 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
       }}
     />
 
+    <CaptureInbox
+      captureTitle={captureTitle}
+      setCaptureTitle={setCaptureTitle}
+      captureContent={captureContent}
+      setCaptureContent={setCaptureContent}
+      captureUrl={captureUrl}
+      setCaptureUrl={setCaptureUrl}
+      captureSourceType={captureSourceType}
+      setCaptureSourceType={setCaptureSourceType}
+      isClipping={isClipping}
+      clipResult={clipResult}
+      handleClipUrl={handleClipUrl}
+      handleSaveClipAsNote={handleSaveClipAsNote}
+      handleSaveCapture={handleSaveCapture}
+      handleFileDrop={handleFileDrop}
+    />
+
     <DiceRoller
       diceNotation={diceNotation}
       setDiceNotation={setDiceNotation}
@@ -320,6 +366,235 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
     />
   </div>
 );
+
+const CaptureInbox: React.FC<
+  Pick<
+    RightDrawerProps,
+    | "captureTitle"
+    | "setCaptureTitle"
+    | "captureContent"
+    | "setCaptureContent"
+    | "captureUrl"
+    | "setCaptureUrl"
+    | "captureSourceType"
+    | "setCaptureSourceType"
+    | "isClipping"
+    | "clipResult"
+    | "handleClipUrl"
+    | "handleSaveClipAsNote"
+    | "handleSaveCapture"
+    | "handleFileDrop"
+  >
+> = ({
+  captureTitle,
+  setCaptureTitle,
+  captureContent,
+  setCaptureContent,
+  captureUrl,
+  setCaptureUrl,
+  captureSourceType,
+  setCaptureSourceType,
+  isClipping,
+  clipResult,
+  handleClipUrl,
+  handleSaveClipAsNote,
+  handleSaveCapture,
+  handleFileDrop,
+}) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--border)",
+        paddingTop: "12px",
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) handleFileDrop(file);
+      }}
+    >
+      <span
+        style={{
+          fontSize: "10px",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          color: "var(--muted)",
+          display: "block",
+          marginBottom: "8px",
+        }}
+      >
+        Capture Inbox
+      </span>
+
+      <input
+        type="text"
+        value={captureTitle}
+        onChange={(e) => setCaptureTitle(e.target.value)}
+        placeholder="Title (optional)"
+        style={{
+          width: "100%",
+          padding: "6px 8px",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: "4px",
+          color: "var(--fg)",
+          fontSize: "12px",
+          outline: "none",
+          marginBottom: "6px",
+        }}
+      />
+      <textarea
+        value={captureContent}
+        onChange={(e) => setCaptureContent(e.target.value)}
+        placeholder="Paste text, drop a file, or type a capture..."
+        style={{
+          width: "100%",
+          minHeight: "80px",
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: "4px",
+          color: "var(--fg)",
+          fontFamily: "var(--font-body)",
+          fontSize: "12px",
+          padding: "6px 8px",
+          resize: "vertical",
+          outline: "none",
+        }}
+      />
+
+      <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+        <select
+          value={captureSourceType}
+          onChange={(e) => setCaptureSourceType(e.target.value)}
+          style={{
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            color: "var(--fg)",
+            fontSize: "11px",
+            padding: "4px 6px",
+          }}
+          data-od-id="capture-source-type"
+        >
+          <option value="canon">canon</option>
+          <option value="history">history</option>
+          <option value="invention">invention</option>
+          <option value="custom">custom</option>
+        </select>
+        <button
+          className="btn btn-sm btn-primary"
+          style={{ flex: 1, padding: "6px", fontSize: "11px", cursor: "pointer" }}
+          onClick={handleSaveCapture}
+          type="button"
+          data-od-id="capture-save-note"
+        >
+          Save as note
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+        <input
+          type="text"
+          value={captureUrl}
+          onChange={(e) => setCaptureUrl(e.target.value)}
+          placeholder="https://... (clip a page)"
+          style={{
+            flex: 1,
+            padding: "6px 8px",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            color: "var(--fg)",
+            fontSize: "11px",
+            outline: "none",
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleClipUrl();
+          }}
+        />
+        <button
+          className="btn btn-sm"
+          style={{ padding: "6px 10px", fontSize: "11px", cursor: "pointer" }}
+          onClick={handleClipUrl}
+          disabled={isClipping}
+          type="button"
+          data-od-id="capture-clip-url"
+        >
+          {isClipping ? "Clipping..." : "Clip"}
+        </button>
+      </div>
+
+      {clipResult && (
+        <div
+          style={{
+            marginTop: "8px",
+            padding: "8px",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            fontSize: "11px",
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "var(--fg)" }}>
+            {clipResult.title}
+          </div>
+          <div style={{ color: "var(--muted)", marginTop: "2px" }}>
+            {clipResult.site}
+          </div>
+          <div
+            style={{
+              marginTop: "6px",
+              maxHeight: "80px",
+              overflowY: "auto",
+              color: "var(--muted)",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {clipResult.markdown.slice(0, 400)}
+            {clipResult.markdown.length > 400 ? "…" : ""}
+          </div>
+          <button
+            className="btn btn-sm btn-primary"
+            style={{
+              width: "100%",
+              marginTop: "6px",
+              padding: "6px",
+              fontSize: "11px",
+              cursor: "pointer",
+            }}
+            onClick={handleSaveClipAsNote}
+            type="button"
+            data-od-id="capture-save-clip"
+          >
+            Save clip as note
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: "8px",
+          padding: "8px",
+          border: `1px dashed ${isDragOver ? "var(--accent)" : "var(--border)"}`,
+          borderRadius: "4px",
+          textAlign: "center",
+          fontSize: "10px",
+          color: "var(--muted)",
+        }}
+      >
+        Drop a text file here to capture it
+      </div>
+    </div>
+  );
+};
 
 const DiceRoller: React.FC<
   Pick<

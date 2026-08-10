@@ -1,0 +1,53 @@
+# PIPELINE: fate-of-cthulhu
+
+## Team
+- **Head of Dept:** Chris — decides, signs off
+- **A1:** Hermes — plans, routes, reviews, holds state between phases
+- **Console:** opencode — recon, build, validation
+- **Devising:** agy — works with Chris to figure out what he wants
+- **Stagehand:** zero — drudge work nobody else wants
+
+## Phases
+| # | Phase | Harness | Mode | Output | Gate | Status |
+|---|-------|---------|------|--------|------|--------|
+| 0 | Recon | opencode | autonomous | scaffolding report | report reviewed | ✅ |
+| 1 | Devising | agy + Chris | interactive | design sketch + bones in tree | Chris signs off | ✅ |
+| 2 | Build | opencode | autonomous | bones validated, weirdness fixed, hard bits done | diff vs sketch | ⏳ |
+| 3 | Drudge | zero | autonomous | boilerplate, coverage, docs, obvious fills | diff reviewed | ⬜ |
+| 4 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
+
+## Current phase
+**2 — Build** (opencode, autonomous)
+
+## Handoff log
+_Each harness writes its status here on exit: what changed, what's next, what's blocking._
+
+### Phase 1 — Hermes + Chris devising (2026-08-10)
+- DESIGN_SKETCH.md written to worktree root and signed off by Chris.
+- North star: the shoggoth — integration, not generation. Ideas land, grow,
+  bloom. Test: "does this help the ideas land, grow, and connect?"
+- Campaign bible structure: bible/ with TONE, TOUCHSTONES, THE_PLAN,
+  CONSPIRACY, PEOPLE, PLACES, RULES, SESSION_LOG.
+- Five capture surfaces: browser, books/comics, PDFs, scratchpad, vault.
+- Resolved decisions: provenance depth depth depth (source nodes, custom
+  taxonomies); web clipping = app pulls the page; PDFs = import → markdown;
+  comics = images AND text; the Muse = sidebar tab in every view.
+- THE_PLAN.md does not exist yet — research first (FoC mechanics, Yog-Sothoth
+  canon, 2003 texture, touchstone distillation), then generated with the Muse.
+- Next: phase 2 build — docs foundation, provenance model, bible
+  conditioning, capture inbox, web clipping.
+
+### Phase 0 — opencode recon (2026-08-10)
+- RECON.md written to worktree root. All 7 campaign-loop features are real
+  implementations; only true placeholder is local STT.
+- **Docs finding (critical):** DESIGN.md / PRODUCT.md / FEATURE_PROPOSAL.md
+  exist in the main repo but are UNTRACKED — therefore absent from the
+  worktree, therefore invisible to agents. This mechanically explains why
+  every agent has ignored them. Fix: commit them in phase 2.
+- Tests exist (8 Vitest suites + ~29 Rust tests); AGENTS.md test claims are
+  stale and need updating.
+- No campaign-bible/tone conditioning in the Architect — generic retrieval only.
+- Gaps vs campaign vision: no era-hopping (Timeline), static entity graph,
+  STT file-upload only, manual session memory.
+- Next: phase 1 devising — campaign bible structure + generation conditioning
+  design, with Chris and agy.
