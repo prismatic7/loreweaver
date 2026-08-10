@@ -68,4 +68,4 @@ To support fast offline semantic lookup without cloud latency:
 | **Image Generation** | `Planned (Placeholder)` | The UI panel is a timed mockup; ComfyUI/Stable Diffusion API bindings exist in Rust but are not yet linked to the UI. |
 | **Hardened Sandbox** | `Planned` | Sandbox isolation beyond basic Boa scope limitations is not yet implemented. |
 
-For detailed low-level descriptions of backend boundaries and IPC data flows, please refer to [docs/codebase/ARCHITECTURE.md](file:///Users/chris/Development/loreweaver/docs/codebase/ARCHITECTURE.md).
+For detailed low-level descriptions of backend boundaries and IPC data flows, please refer to [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md).

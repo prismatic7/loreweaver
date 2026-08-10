@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useOnClickOutside } from "usehooks-ts";
 import "./App.css";
@@ -39,8 +40,9 @@ import { useIngest } from "./hooks/useIngest";
 import { useFolderActions } from "./hooks/useFolderActions";
 import { useSessionTools } from "./hooks/useSessionTools";
 import { useVaultActions } from "./hooks/useVaultActions";
+import { useCaptureInbox } from "./hooks/useCaptureInbox";
 
-import { RuleEntry, SearchResult } from "./types";
+import { RuleEntry, SearchResult, WebClip } from "./types";
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
@@ -356,6 +358,31 @@ function App() {
     handleEncounterBuilder,
   });
 
+  const captureInbox = useCaptureInbox({ alert, confirm });
+
+  const handleToolbarClipUrl = useCallback(async () => {
+    const url = await showPrompt("Enter a URL to clip:", "https://");
+    if (!url || !url.trim()) return;
+    try {
+      const clip = await invoke<WebClip>("clip_webpage", { url: url.trim() });
+      const title = clip.title || url.trim();
+      confirm(`Save "${title}" as a note?`, () => {
+        invoke<string>("capture_note", {
+          title,
+          content: clip.markdown,
+          sourceType: "history",
+          sourceTitle: clip.title,
+          sourceAuthor: clip.site,
+          sourceUrl: clip.url,
+        })
+          .then(() => alert("Note saved."))
+          .catch((err) => alert("Failed to save note: " + err));
+      });
+    } catch (err) {
+      alert("Failed to clip webpage: " + err);
+    }
+  }, [showPrompt, confirm, alert]);
+
   return (
     <AppShell
       activeView={activeView}
@@ -383,6 +410,7 @@ function App() {
       onSelectSearchResult={handleSelectSearchResult}
       searchRef={searchRef}
       onLoadTrash={loadTrashNotes}
+      onClipUrl={handleToolbarClipUrl}
       rightPanel={
         activeView !== "settings" ? (
           <RightDrawer
@@ -448,6 +476,20 @@ function App() {
             handleTranscribeAudio={sessionTools.handleTranscribeAudio}
             backlinks={backlinks}
             setSelectedNoteId={setSelectedNoteId}
+            captureTitle={captureInbox.captureTitle}
+            setCaptureTitle={captureInbox.setCaptureTitle}
+            captureContent={captureInbox.captureContent}
+            setCaptureContent={captureInbox.setCaptureContent}
+            captureUrl={captureInbox.captureUrl}
+            setCaptureUrl={captureInbox.setCaptureUrl}
+            captureSourceType={captureInbox.captureSourceType}
+            setCaptureSourceType={captureInbox.setCaptureSourceType}
+            isClipping={captureInbox.isClipping}
+            clipResult={captureInbox.clipResult}
+            handleClipUrl={captureInbox.handleClipUrl}
+            handleSaveClipAsNote={captureInbox.handleSaveClipAsNote}
+            handleSaveCapture={captureInbox.handleSaveCapture}
+            handleFileDrop={captureInbox.handleFileDrop}
           />
         ) : (
           <SettingsRightPanel tab={settingsTab} setTab={setSettingsTab} />

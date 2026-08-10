@@ -62,6 +62,15 @@ export type SearchResult = {
 	path: string,
 };
 
+export type SourceEntry = {
+	id: string,
+	title: string,
+	author: string,
+	source_type: string,
+	url: string,
+	date: string,
+};
+
 export type TemplateAction = {
 	label: string,
 	hook: string,
@@ -84,5 +93,17 @@ export type VaultSettings = {
 	campaign_system: string | null,
 	description: string | null,
 	tag_colors: { [key in string]: string } | null,
+};
+
+/**
+ *  Result of a web clipping operation: the fetched page's readable content
+ *  converted to clean Markdown, plus provenance metadata.
+ */
+export type WebClip = {
+	title: string,
+	site: string,
+	url: string,
+	markdown: string,
+	fetched_at: string,
 };
 

@@ -31,11 +31,37 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 - `plugins.rs` loads plugin manifests and runs Boa-based hook functions.
 - `providers/` centralizes AI provider HTTP logic: `llm.rs` (chat), `image.rs` (image generation), `speech.rs` (TTS), `models.rs` (model listing).
 
+## Provenance, Bible Conditioning, and Capture (phase 2)
+
+- **Provenance model:** a `sources` table (id, title, author, source_type,
+  url, date) plus `SourceEntry`; commands `list_sources`, `save_source`,
+  `delete_source`, `get_source`. Notes carry provenance in frontmatter
+  (`source_type`, `source_title`, `source_author`, `source_url`,
+  `source_date`, `source_id`) — no notes-table change, so the watcher and
+  ingest stay compatible. The entity graph renders source nodes (square,
+  distinct colour) with `source` edges, and a provenance filter
+  (All/Canon/History/Invention) narrows the note set before graph
+  construction.
+- **Bible conditioning:** `build_system_context` (agent.rs) takes
+  `vault_path` and injects `bible/{TONE,TOUCHSTONES,THE_PLAN,CONSPIRACY,
+  PEOPLE,PLACES,RULES,SESSION_LOG}.md` as a fixed always-on block — NOT
+  retrieved-by-similarity. Missing bible files are skipped gracefully.
+- **Capture inbox:** `capture_note` writes to `Captures/<slug>-<ts>.md`
+  via `validate_safe_path`; the Capture Inbox UI lives in the Scratchpad
+  tab of the right drawer and accepts text/paste/URL/file-drop.
+- **Web clipping:** `webclip.rs` fetches a URL (ureq, 30s timeout, browser
+  UA), extracts the main readable content (`<article>` / `<main>` / body
+  fallback via scraper), converts to Markdown (html2md), and returns a
+  `WebClip` with provenance (title, site, url, fetched_at). `clip_webpage`
+  is the Tauri command; the "Clip URL" toolbar button and inbox clip flow
+  use it. URL validation is a pure `validate_url` helper (http/https only)
+  so the non-network error paths are unit-testable.
+
 ## Frontend Structure
 
 - `src/App.tsx` is the top-level orchestrator that composes domain hooks and renders shell components.
 - `src/hooks/` contains domain hooks that encapsulate Tauri IPC calls and local state.
-- `src/components/` contains shell components (`AppShell`, `RightDrawer`, `Modals`) and feature views (`CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`).
+- `src/components/` contains shell components (`AppShell`, `RightDrawer`, `Modals`) and feature views (`CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`, `EntityGraphView`).
 - `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`).
 
 ## Plugin Model

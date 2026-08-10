@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run",
+    "test": "NODE_ENV=test vitest run",
     "verify-docs": "node docs/verify.mjs"
   },
   "dependencies": {
@@ -27,8 +27,8 @@
     "fuse.js": "^7.5.0",
     "lucide-react": "^1.25.0",
     "pdfjs-dist": "^6.2.108",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "19.1.9",
+    "react-dom": "19.1.9",
     "react-hook-form": "^7.82.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
