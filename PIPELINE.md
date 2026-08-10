@@ -13,8 +13,8 @@
 | 0 | Recon | opencode | autonomous | scaffolding report | report reviewed | ✅ |
 | 1 | Devising | agy + Chris | interactive | design sketch + bones in tree | Chris signs off | ✅ |
 | 2 | Build | opencode | autonomous | bones validated, weirdness fixed, hard bits done | diff vs sketch | ✅ |
-| 3 | Drudge | zero | autonomous | boilerplate, coverage, docs, obvious fills | diff reviewed | ⬜ |
-| 4 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
+| 3 | Drudge | zero | autonomous | boilerplate, coverage, docs, obvious fills | diff reviewed | ✅ |
+| 4 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ✅ |
 
 ## Current phase
 **4 — Review** (Hermes + Chris, interactive) → **VERDICT: PASS, with 1 catch (fixed)** — see log below
