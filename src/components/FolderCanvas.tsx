@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye } from "lucide-react";
 
@@ -218,11 +218,16 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
     };
   }, [contextMenu]);
 
-  // Filter notes belonging to current folder or subfolders
-  const folderNotes = notes.filter((n) => {
-    if (!currentFolder) return true;
-    return n.path.startsWith(currentFolder);
-  });
+  // Filter notes belonging to current folder or subfolders.
+  // Memoized so the derived-edges/containers effects below don't re-run on every
+  // render (which previously caused an infinite render loop when setDynamicContainers
+  // produced a fresh array each time).
+  const folderNotes = useMemo(() => {
+    return notes.filter((n) => {
+      if (!currentFolder) return true;
+      return n.path.startsWith(currentFolder);
+    });
+  }, [notes, currentFolder]);
 
   const findTargetNote = (target: string) => {
     const cleanTarget = target.replace(/[\[\]]/g, "").trim().toLowerCase();
