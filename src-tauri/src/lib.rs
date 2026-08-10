@@ -2299,6 +2299,230 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
+
+    fn test_state(temp_dir: &std::path::Path) -> AppState {
+        let db_path = temp_dir.join("test.db");
+        let db_path_str = db_path.to_string_lossy().to_string();
+        let conn = Arc::new(Mutex::new(db::init_db(&db_path_str).unwrap()));
+        AppState {
+            db_path: TokioMutex::new(db_path_str),
+            vault_path: TokioMutex::new(temp_dir.to_string_lossy().to_string()),
+            plugins_path: TokioMutex::new(temp_dir.join("plugins").to_string_lossy().to_string()),
+            watcher: TokioMutex::new(None),
+            conn: TokioMutex::new(conn),
+            campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
+            shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_notes() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("Worldbuilding")).unwrap();
+        let state = test_state(tmp.path());
+        let note = CampaignNote {
+            id: "note-1".to_string(),
+            title: "Ancient City".to_string(),
+            path: "Worldbuilding/AncientCity.md".to_string(),
+            frontmatter: HashMap::new(),
+            content: "# Ancient City\nA city built on stone arches.".to_string(),
+        };
+
+        tauri::async_runtime::block_on(async {
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                save_note(s, note.clone()).await.unwrap();
+            }
+
+            // Verify file written to disk
+            let on_disk = tmp.path().join("Worldbuilding/AncientCity.md");
+            assert!(on_disk.exists(), "note file not written to disk");
+            let disk_content = std::fs::read_to_string(&on_disk).unwrap();
+            assert!(disk_content.contains("Ancient City"));
+
+            // Verify load_notes returns the note
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let notes = load_notes(s).await.unwrap();
+                assert_eq!(notes.len(), 1);
+                assert_eq!(notes[0].title, "Ancient City");
+                assert_eq!(notes[0].path, "Worldbuilding/AncientCity.md");
+                assert!(notes[0].content.contains("Ancient City"));
+            }
+        });
+    }
+
+    #[test]
+    fn test_list_folders_excludes_trash_hidden_assets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        std::fs::create_dir_all(vault.join("Worldbuilding").join("Cities")).unwrap();
+        std::fs::create_dir_all(vault.join("Characters")).unwrap();
+        std::fs::create_dir_all(vault.join(".trash")).unwrap();
+        std::fs::create_dir_all(vault.join("Worldbuilding/.hidden")).unwrap();
+        std::fs::create_dir_all(vault.join("Worldbuilding/Cities/_assets")).unwrap();
+
+        let state = test_state(vault);
+
+        tauri::async_runtime::block_on(async {
+            let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+            let folders = list_folders(s).await.unwrap();
+
+            assert!(folders.contains(&"Worldbuilding".to_string()));
+            assert!(folders.contains(&"Characters".to_string()));
+            assert!(folders.contains(&"Worldbuilding/Cities".to_string()));
+            // Excluded paths
+            assert!(!folders.contains(&".trash".to_string()));
+            assert!(!folders.contains(&"Worldbuilding/.hidden".to_string()));
+            assert!(!folders.contains(&"Worldbuilding/Cities/_assets".to_string()));
+            // Hidden and assets dirs must not appear anywhere
+            assert!(folders.iter().all(|f| !f.starts_with('.') && !f.contains("/.") && !f.ends_with("_assets")));
+        });
+    }
+
+    #[test]
+    fn test_save_load_delete_rule() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let rule = RuleEntry {
+            id: "rule-abc".to_string(),
+            path: "Combat/Charge.md".to_string(),
+            title: "Charge".to_string(),
+            category: "Combat".to_string(),
+            source: "Homebrew".to_string(),
+            content: "Move at least 20 feet in a straight line, then gain advantage.".to_string(),
+        };
+
+        tauri::async_runtime::block_on(async {
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let saved_id = save_rule(s, rule.clone()).await.unwrap();
+                assert_eq!(saved_id, "rule-abc");
+            }
+
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let rules = load_rules(s).await.unwrap();
+                assert_eq!(rules.len(), 1);
+                assert_eq!(rules[0].id, "rule-abc");
+                assert_eq!(rules[0].title, "Charge");
+                assert_eq!(rules[0].category, "Combat");
+            }
+
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                delete_rule(s, "rule-abc").await.unwrap();
+            }
+
+            {
+                let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+                let rules = load_rules(s).await.unwrap();
+                assert!(rules.is_empty(), "rule should be deleted");
+            }
+        });
+    }
+
+    #[test]
+    fn test_search_vault_returns_matching_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        // Seed a note directly into the DB with a distinctive lexical token.
+        tauri::async_runtime::block_on(async {
+            {
+                let conn_guard = state.conn.lock().await;
+                let conn = conn_guard.lock().unwrap();
+                db::upsert_note(
+                    &conn,
+                    "Worldbuilding/GoblinHoard.md",
+                    "Goblin Hoard",
+                    "The goblins buried their glittering hoard beneath the hill.",
+                    &HashMap::new(),
+                )
+                .unwrap();
+            }
+            search::invalidate_cache();
+
+            let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+            let results = search_vault(s, "goblin", "notes").await.unwrap();
+            assert!(
+                results.iter().any(|r| r.title == "Goblin Hoard"),
+                "expected a note titled 'Goblin Hoard' in results, got {:?}",
+                results.iter().map(|r| &r.title).collect::<Vec<_>>()
+            );
+
+            search::invalidate_cache();
+        });
+    }
+
+    #[test]
+    fn test_build_system_context_includes_active_note() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        tauri::async_runtime::block_on(async {
+            let note_id = {
+                let conn_guard = state.conn.lock().await;
+                let conn = conn_guard.lock().unwrap();
+                db::upsert_note(
+                    &conn,
+                    "Worldbuilding/SwordOfDawn.md",
+                    "Sword of Dawn",
+                    "A radiant blade forged at dawn.",
+                    &HashMap::new(),
+                )
+                .unwrap()
+            };
+            search::invalidate_cache();
+
+            {
+                let conn_guard = state.conn.lock().await;
+                let conn = conn_guard.lock().unwrap();
+                let context =
+                    agent::build_system_context(&conn, "what about the blade", Some(&note_id))
+                        .unwrap();
+                assert!(
+                    context.system_prompt.contains("Sword of Dawn"),
+                    "system prompt should reference the active note title"
+                );
+                assert!(
+                    context.active_note_context.contains("Sword of Dawn"),
+                    "active note context should include the note"
+                );
+            }
+            search::invalidate_cache();
+        });
+    }
+
+    #[test]
+    fn test_orchestrate_agent_rejects_unsupported_provider() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        tauri::async_runtime::block_on(async {
+            let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
+            let res = orchestrate_agent(
+                s,
+                "hello",
+                "nonexistent",
+                "some-model",
+                None,
+                None,
+                None,
+            )
+            .await;
+            assert!(
+                res.is_err(),
+                "unsupported provider should fail before any HTTP call"
+            );
+            let err = res.unwrap_err();
+            assert!(
+                err.contains("Unsupported LLM provider"),
+                "unexpected error: {}",
+                err
+            );
+        });
+    }
 }
 
 #[cfg(test)]
