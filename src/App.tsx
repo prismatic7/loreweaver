@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useOnClickOutside } from "usehooks-ts";
 import "./App.css";
@@ -427,35 +428,40 @@ function App() {
   const handleExportWorld = useCallback(
     async (world: WorldInfo) => {
       try {
-        const dest = await showPrompt(
-          "Export destination path (zip):",
-          `${world.name}.zip`,
-        );
-        if (!dest || !dest.trim()) return;
+        const dest = await save({
+          defaultPath: `${world.name}.zip`,
+          filters: [{ name: "World bundle", extensions: ["zip"] }],
+        });
+        if (!dest || typeof dest !== "string") return;
         const result = await invoke<string>("export_world", {
           vaultPath: world.path,
-          destPath: dest.trim(),
+          destPath: dest,
         });
         alert("Exported world to: " + result);
       } catch (err) {
         alert("Failed to export world: " + err);
       }
     },
-    [showPrompt, alert],
+    [alert],
   );
 
-  const handleImportWorld = useCallback(
-    async (zipPath: string) => {
-      try {
-        const path = await invoke<string>("import_world", { zipPath });
-        await loadWorlds();
-        await handleSwitchWorld(path);
-      } catch (err) {
-        alert("Failed to import world: " + err);
-      }
-    },
-    [loadWorlds, handleSwitchWorld, alert],
-  );
+  const handleImportWorld = useCallback(async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "World bundle", extensions: ["zip"] }],
+      });
+      if (!selected || typeof selected !== "string") return;
+      const path = await invoke<string>("import_world", {
+        zipPath: selected,
+      });
+      await loadWorlds();
+      await handleSwitchWorld(path);
+    } catch (err) {
+      alert("Failed to import world: " + err);
+    }
+  }, [loadWorlds, handleSwitchWorld, alert]);
 
   const [liminalOpen, setLiminalOpen] = useState(false);
 

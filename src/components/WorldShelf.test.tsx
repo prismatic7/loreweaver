@@ -83,15 +83,10 @@ describe("WorldShelf", () => {
     expect(onExportWorld).toHaveBeenCalledWith(worlds[0]);
   });
 
-  it("calls onImportWorld when a zip file is chosen", () => {
+  it("calls onImportWorld when the import button is pressed", () => {
     const onImportWorld = vi.fn(async () => {});
     render(<WorldShelf {...makeProps({ onImportWorld })} />);
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, {
-      target: {
-        files: [{ path: "/tmp/world.zip" }] as unknown as FileList,
-      },
-    });
-    expect(onImportWorld).toHaveBeenCalledWith("/tmp/world.zip");
+    fireEvent.click(screen.getByTitle("Import World (zip)"));
+    expect(onImportWorld).toHaveBeenCalledTimes(1);
   });
 });

@@ -43,7 +43,7 @@ export interface AppShellProps {
   onOpenLiminal: () => void;
   onCreateWorld: (name: string, scaffoldFrom: string | null) => Promise<void>;
   onExportWorld: (world: WorldInfo) => Promise<void>;
-  onImportWorld: (zipPath: string) => Promise<void>;
+  onImportWorld: () => Promise<void>;
   onMakeWorldFromLiminal: (name: string) => Promise<void>;
   searchQuery: string;
   setSearchQuery: (query: string) => void;

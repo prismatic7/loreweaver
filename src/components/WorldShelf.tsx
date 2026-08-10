@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { Plus, Download, Upload, Inbox, Sparkles } from "lucide-react";
 import { WorldInfo } from "../types";
 
@@ -17,7 +17,7 @@ export interface WorldShelfProps {
   onOpenLiminal: () => void;
   onCreateWorld: (name: string, scaffoldFrom: string | null) => Promise<void>;
   onExportWorld: (world: WorldInfo) => Promise<void>;
-  onImportWorld: (zipPath: string) => Promise<void>;
+  onImportWorld: () => Promise<void>;
   onMakeWorldFromLiminal: (name: string) => Promise<void>;
 }
 
@@ -36,7 +36,6 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
   const [scaffoldFrom, setScaffoldFrom] = useState<string>("");
   const [showLiminalBirth, setShowLiminalBirth] = useState(false);
   const [liminalName, setLiminalName] = useState("");
-  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleCreate = async () => {
     const name = newWorldName.trim();
@@ -55,13 +54,8 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
     setShowLiminalBirth(false);
   };
 
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const path = (file as File & { path?: string }).path || file.name;
-      await onImportWorld(path);
-    }
-    if (importInputRef.current) importInputRef.current.value = "";
+  const handleImportClick = async () => {
+    await onImportWorld();
   };
 
   return (
@@ -134,7 +128,7 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
       </button>
       <button
         className="btn btn-sm"
-        onClick={() => importInputRef.current?.click()}
+        onClick={handleImportClick}
         title="Import World (zip)"
         data-od-id="world-shelf-import"
         style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
@@ -162,14 +156,6 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
       >
         <Inbox size={13} />
       </button>
-
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".zip"
-        style={{ display: "none" }}
-        onChange={handleImportFile}
-      />
 
       {showNewWorld && (
         <div
