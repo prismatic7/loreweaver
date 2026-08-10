@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { PenLine, Brain, Layers, Link2 } from "lucide-react";
 import { CampaignNote } from "../types";
 
@@ -26,7 +26,7 @@ export interface RightDrawerProps {
   handleRollCharacterSheet: () => void;
   handleEvaluateEncounterThreat: () => void;
   // AI tab
-  currentChatMessages: Array<{ role: "user" | "assistant"; text: string }>;
+  currentChatMessages: Array<{ role: "user" | "assistant"; text: string; imageUrl?: string }>;
   chatInput: string;
   setChatInput: (value: string) => void;
   handleSendChatMessage: () => void;
@@ -37,6 +37,27 @@ export interface RightDrawerProps {
   sessionCloneTargetVaultPath: string;
   setSessionCloneTargetVaultPath: (path: string) => void;
   vaults: Array<{ path: string; name: string }>;
+  // P7: Session memory
+  memoryFacts: Array<{ id: string; fact: string; category: string; created_at: number }>;
+  loadMemoryFacts: () => void;
+  addMemoryFact: (fact: string, category: string) => void;
+  deleteMemoryFact: (id: string) => void;
+  // P8: Session summary
+  isSummarizing: boolean;
+  summaryText: string;
+  handleSummarizeSession: () => void;
+  // P9: NPC voice
+  npcVoiceText: string;
+  setNpcVoiceText: (value: string) => void;
+  npcVoiceName: string;
+  setNpcVoiceName: (value: string) => void;
+  isSpeakingNpc: boolean;
+  npcAudioUrl: string;
+  handleSpeakAsNpc: () => void;
+  // P10: Image-in-chat
+  isGeneratingChatImage: boolean;
+  chatImageUrl: string;
+  handleGenerateChatImage: () => void;
   // Asset tab
   imagePrompt: string;
   setImagePrompt: (value: string) => void;
@@ -481,7 +502,28 @@ const AiTab: React.FC<RightDrawerProps> = ({
   sessionCloneTargetVaultPath,
   setSessionCloneTargetVaultPath,
   vaults,
-}) => (
+  memoryFacts,
+  loadMemoryFacts,
+  addMemoryFact,
+  deleteMemoryFact,
+  isSummarizing,
+  summaryText,
+  handleSummarizeSession,
+  npcVoiceText,
+  setNpcVoiceText,
+  npcVoiceName,
+  setNpcVoiceName,
+  isSpeakingNpc,
+  npcAudioUrl,
+  handleSpeakAsNpc,
+  isGeneratingChatImage,
+  handleGenerateChatImage,
+}) => {
+  useEffect(() => {
+    loadMemoryFacts();
+  }, [loadMemoryFacts]);
+
+  return (
   <div
     style={{
       display: "flex",
@@ -528,6 +570,12 @@ const AiTab: React.FC<RightDrawerProps> = ({
           label="Export"
           dataOdId="ai-export-session"
         />
+        <AiActionButton
+          onClick={handleSummarizeSession}
+          disabled={!vaultPath || isSummarizing}
+          label={isSummarizing ? "Summarizing..." : "Summarize Session"}
+          dataOdId="ai-summarize-session"
+        />
       </div>
 
       <div
@@ -569,6 +617,170 @@ const AiTab: React.FC<RightDrawerProps> = ({
           dataOdId="ai-clone-session"
         />
       </div>
+
+      {/* P8: Session summary output */}
+      {summaryText && (
+        <div
+          style={{
+            marginTop: "10px",
+            padding: "10px",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "6px",
+            fontSize: "11px",
+            lineHeight: "1.5",
+            maxHeight: "180px",
+            overflowY: "auto",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {summaryText}
+        </div>
+      )}
+
+      {/* P7: Session memory */}
+      <div style={{ marginTop: "12px" }}>
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            color: "var(--muted)",
+            display: "block",
+            marginBottom: "6px",
+          }}
+        >
+          Session Memory
+        </span>
+        <div style={{ display: "flex", gap: "4px", marginBottom: "6px" }}>
+          <input
+            id="memory-fact-input"
+            style={{
+              flex: 1,
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              padding: "4px 6px",
+              fontSize: "11px",
+              borderRadius: 4,
+              color: "var(--fg)",
+            }}
+            placeholder="Add a fact the Architect should remember..."
+          />
+          <AiActionButton
+            onClick={() => {
+              const input = document.getElementById(
+                "memory-fact-input",
+              ) as HTMLInputElement | null;
+              if (input && input.value.trim()) {
+                addMemoryFact(input.value.trim(), "general");
+                input.value = "";
+              }
+            }}
+            disabled={!vaultPath}
+            label="Add"
+            dataOdId="ai-add-memory"
+          />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          {memoryFacts.length === 0 ? (
+            <div style={{ fontSize: "11px", color: "var(--muted)", fontStyle: "italic" }}>
+              No memory facts yet.
+            </div>
+          ) : (
+            memoryFacts.map((fact) => (
+              <div
+                key={fact.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "11px",
+                  padding: "4px 6px",
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "4px",
+                }}
+              >
+                <span style={{ flex: 1 }}>{fact.fact}</span>
+                <button
+                  onClick={() => deleteMemoryFact(fact.id)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--danger)",
+                    cursor: "pointer",
+                    fontSize: "11px",
+                    padding: "0 2px",
+                  }}
+                  title="Delete fact"
+                  data-od-id={`ai-delete-memory-${fact.id}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* P9: NPC voice */}
+      <div style={{ marginTop: "12px" }}>
+        <span
+          style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            color: "var(--muted)",
+            display: "block",
+            marginBottom: "6px",
+          }}
+        >
+          NPC Voice
+        </span>
+        <textarea
+          value={npcVoiceText}
+          onChange={(e) => setNpcVoiceText(e.target.value)}
+          placeholder="Enter what the NPC says..."
+          style={{
+            width: "100%",
+            minHeight: "48px",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "4px",
+            padding: "6px",
+            color: "var(--fg)",
+            fontSize: "11px",
+            fontFamily: "var(--font-body)",
+            resize: "vertical",
+          }}
+        />
+        <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
+          <input
+            value={npcVoiceName}
+            onChange={(e) => setNpcVoiceName(e.target.value)}
+            placeholder="Voice name/ID (optional)"
+            style={{
+              flex: 1,
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              padding: "4px 6px",
+              fontSize: "11px",
+              borderRadius: 4,
+              color: "var(--fg)",
+            }}
+          />
+          <AiActionButton
+            onClick={handleSpeakAsNpc}
+            disabled={!vaultPath || isSpeakingNpc || !npcVoiceText.trim()}
+            label={isSpeakingNpc ? "Speaking..." : "Speak as NPC"}
+            dataOdId="ai-npc-speak"
+          />
+        </div>
+        {npcAudioUrl && (
+          <audio src={npcAudioUrl} controls style={{ width: "100%", marginTop: "6px" }} />
+        )}
+      </div>
     </div>
 
     <div
@@ -588,6 +800,13 @@ const AiTab: React.FC<RightDrawerProps> = ({
           style={{ fontSize: "12px", padding: "8px 12px" }}
         >
           {msg.text}
+          {msg.imageUrl && (
+            <img
+              src={msg.imageUrl}
+              alt="Generated"
+              style={{ maxWidth: "100%", marginTop: "8px", borderRadius: "4px" }}
+            />
+          )}
         </div>
       ))}
     </div>
@@ -618,9 +837,16 @@ const AiTab: React.FC<RightDrawerProps> = ({
           if (e.key === "Enter") handleSendChatMessage();
         }}
       />
+      <AiActionButton
+        onClick={handleGenerateChatImage}
+        disabled={!vaultPath || isGeneratingChatImage || !chatInput.trim()}
+        label={isGeneratingChatImage ? "..." : "🖼️"}
+        dataOdId="ai-chat-image"
+      />
     </div>
   </div>
-);
+  );
+};
 
 const AiActionButton: React.FC<{
   onClick: () => void;

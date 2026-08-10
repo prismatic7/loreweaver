@@ -224,7 +224,18 @@ function App() {
   const agent = useAgent(
     vaultPath,
     vaults,
-    { llmProvider, llmModel, llmApiKey, llmBaseUrl },
+    {
+      llmProvider,
+      llmModel,
+      llmApiKey,
+      llmBaseUrl,
+      imageProvider,
+      imageModel,
+      imageApiKey,
+      imageBaseUrl,
+      ttsProvider,
+      ttsApiKey,
+    },
     selectedNoteId,
   );
 
@@ -386,6 +397,23 @@ function App() {
             sessionCloneTargetVaultPath={agent.sessionCloneTargetVaultPath}
             setSessionCloneTargetVaultPath={agent.setSessionCloneTargetVaultPath}
             vaults={vaults}
+            memoryFacts={agent.memoryFacts}
+            loadMemoryFacts={agent.loadMemoryFacts}
+            addMemoryFact={agent.addMemoryFact}
+            deleteMemoryFact={agent.deleteMemoryFact}
+            isSummarizing={agent.isSummarizing}
+            summaryText={agent.summaryText}
+            handleSummarizeSession={agent.handleSummarizeSession}
+            npcVoiceText={agent.npcVoiceText}
+            setNpcVoiceText={agent.setNpcVoiceText}
+            npcVoiceName={agent.npcVoiceName}
+            setNpcVoiceName={agent.setNpcVoiceName}
+            isSpeakingNpc={agent.isSpeakingNpc}
+            npcAudioUrl={agent.npcAudioUrl}
+            handleSpeakAsNpc={agent.handleSpeakAsNpc}
+            isGeneratingChatImage={agent.isGeneratingChatImage}
+            chatImageUrl={agent.chatImageUrl}
+            handleGenerateChatImage={agent.handleGenerateChatImage}
             imagePrompt={sessionTools.imagePrompt}
             setImagePrompt={sessionTools.setImagePrompt}
             imageStyle={sessionTools.imageStyle}

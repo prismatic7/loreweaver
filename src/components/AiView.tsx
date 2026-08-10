@@ -2,7 +2,7 @@ import React from "react";
 import { Send } from "lucide-react";
 
 export interface AiViewProps {
-  currentChatMessages: Array<{ role: "user" | "assistant"; text: string }>;
+  currentChatMessages: Array<{ role: "user" | "assistant"; text: string; imageUrl?: string }>;
   chatInput: string;
   setChatInput: (value: string) => void;
   handleSendChatMessage: () => void;
@@ -57,6 +57,17 @@ export const AiView: React.FC<AiViewProps> = ({
             {currentChatMessages.map((msg, i) => (
               <div key={i} className={`chat-bubble ${msg.role}`}>
                 {msg.text}
+                {msg.imageUrl && (
+                  <img
+                    src={msg.imageUrl}
+                    alt="Generated"
+                    style={{
+                      maxWidth: "100%",
+                      marginTop: "8px",
+                      borderRadius: "4px",
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>
