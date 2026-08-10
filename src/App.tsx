@@ -11,6 +11,8 @@ import { AiView } from "./components/AiView";
 import { CampaignVaultView } from "./components/CampaignVaultView";
 import { CharacterSheetView } from "./components/CharacterSheetView";
 import { MapBuilderView } from "./components/MapBuilderView";
+import { EntityGraphView } from "./components/EntityGraphView";
+import { TimelineView } from "./components/TimelineView";
 import { AppShell, type AppView } from "./components/AppShell";
 import { RightDrawer, type RightDrawerTab } from "./components/RightDrawer";
 import { SettingsRightPanel } from "./components/SettingsRightPanel";
@@ -556,6 +558,26 @@ function App() {
           vaultPath={vaultPath}
           mapRelPath="Maps/Active_Map.canvas"
           alert={alert}
+        />
+      )}
+
+      {activeView === "graph" && (
+        <EntityGraphView
+          notes={notes}
+          onOpenNote={(noteId) => {
+            setSelectedNoteId(noteId);
+            setActiveView("vault");
+          }}
+        />
+      )}
+
+      {activeView === "timeline" && (
+        <TimelineView
+          notes={notes}
+          onOpenNote={(noteId) => {
+            setSelectedNoteId(noteId);
+            setActiveView("vault");
+          }}
         />
       )}
 

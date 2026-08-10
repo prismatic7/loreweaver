@@ -7,6 +7,7 @@ import {
   Layers,
   Map as MapIcon,
   Moon,
+  Network,
   Search,
   Settings as SettingsIcon,
   Sun,
@@ -24,7 +25,9 @@ export type AppView =
   | "canvas"
   | "trash"
   | "character-sheets"
-  | "map";
+  | "map"
+  | "graph"
+  | "timeline";
 
 export interface AppShellProps {
   activeView: AppView;
@@ -123,6 +126,20 @@ export const AppShell: React.FC<AppShellProps> = ({
             icon={<MapIcon size={18} />}
             onClick={() => setActiveView("map")}
           />
+          <RibbonButton
+            activeView={activeView}
+            target="graph"
+            title="Entity Graph"
+            icon={<Network size={18} />}
+            onClick={() => setActiveView("graph")}
+          />
+          <RibbonButton
+            activeView={activeView}
+            target="timeline"
+            title="Timeline"
+            icon={<Layers size={18} />}
+            onClick={() => setActiveView("timeline")}
+          />
         </div>
 
         <div className="ribbon-footer">
@@ -176,6 +193,8 @@ export const AppShell: React.FC<AppShellProps> = ({
             {activeView === "trash" && "Vault & Rulebook Trash"}
             {activeView === "character-sheets" && "Character Sheets"}
             {activeView === "map" && "Map Builder"}
+            {activeView === "graph" && "Entity Graph"}
+            {activeView === "timeline" && "Timeline"}
 
             <div
               style={{
