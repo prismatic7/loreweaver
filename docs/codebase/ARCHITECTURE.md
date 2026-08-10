@@ -76,8 +76,18 @@ provenance taxonomy, and theme. Signed-off design: `DESIGN_SKETCH_WORLDS.md`.
   world's directory structure + manifest skeleton, no content.
 - **The Liminal** (`campaigns/_liminal/`): the between-worlds holding pen.
   `capture_note` accepts a `target: "liminal"` to land captures there (no DB
-  upsert). `claim_liminal_note` moves a note into a world; `make_world_from_liminal`
-  births a new world from the liminal captures.
+  upsert). `list_liminal_notes` (read-only) lists `_liminal/Captures/*.md` as
+  `CampaignNote`s sorted by title. `claim_liminal_note` moves a note into a
+  world; `make_world_from_liminal` births a new world from the liminal captures.
+- **Liminal view UI** (`LiminalView.tsx`): full-screen dedicated view wired to
+  the World Shelf's Liminal entry (replaces the arc-2 placeholder alert).
+  Renders the capture list with per-note claim-into-world (select + Claim) and
+  a birth-a-new-world action. Opened via `liminalOpen` state in `App.tsx`;
+  while open it shadows all other views and the right drawer.
+- **Native world dialogs**: `tauri-plugin-dialog` (Rust + `@tauri-apps/plugin-dialog`)
+  is wired via `dialog:default` capability. Export opens a save dialog
+  (default `WorldName.zip`); import opens an open dialog filtered to `.zip`.
+  Both replace the arc-2 text-prompt / hidden-file-input approaches.
 - **Theme override**: world tokens → global tokens → defaults. Scope is accent +
   palette + serif toggle only (no full typography override). The 10% accent rule
   and rest restraint rule hold in every theme. `useWorld` (frontend) applies the
