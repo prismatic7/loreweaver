@@ -6,10 +6,11 @@ Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it
 
 ## Doc precedence (read before making claims about the codebase)
 
-1. **DESIGN_SKETCH.md** — the signed-off design for the FATE of Cthulhu campaign build
-2. **DESIGN.md** — the design north star ("The Tactile Ledger")
-3. **PRODUCT.md** — product intent
-4. **docs/codebase/*** — current code reality (source of truth for what exists)
+1. **DESIGN_SKETCH_WORLDS.md** — the signed-off design for the World Objects build (arc 2); supersedes DESIGN_SKETCH.md where they conflict
+2. **DESIGN_SKETCH.md** — the signed-off design for the FATE of Cthulhu campaign build (arc 1)
+3. **DESIGN.md** — the design north star ("The Tactile Ledger")
+4. **PRODUCT.md** — product intent
+5. **docs/codebase/*** — current code reality (source of truth for what exists)
 
 ## Reference Docs (read before making claims about the codebase)
 

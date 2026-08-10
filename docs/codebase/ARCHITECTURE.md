@@ -57,6 +57,40 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
   use it. URL validation is a pure `validate_url` helper (http/https only)
   so the non-network error paths are unit-testable.
 
+## World Objects (arc 2)
+
+The World Object is the unit of plurality: a world folder (`campaigns/<world>/`)
+with a `world.json` manifest that declares its identity, note-type registry,
+provenance taxonomy, and theme. Signed-off design: `DESIGN_SKETCH_WORLDS.md`.
+
+- **`worlds.rs`** owns the manifest: `load_manifest` (per-field fallback to
+  defaults), `ensure_manifest` (auto-generates a default `world.json` on first
+  launch — additive, never overwrites), `validate_manifest`. Defaults: 5 legacy
+  note types (npc/location/faction/item/event) and a 4-entry provenance
+  taxonomy (canon/history/invention/**speculation** — the Provisional ships for
+  all worlds). Commands: `get_world_manifest`, `list_worlds` (excludes
+  `_liminal`), `create_world` (with optional scaffold-from).
+- **`bundles.rs`** owns zip export/import and folder scaffold. `export_world`
+  zips a world folder; `import_world` validates the embedded manifest and
+  extracts to `campaigns/<id>` (zip-slip guarded); scaffold mirrors a source
+  world's directory structure + manifest skeleton, no content.
+- **The Liminal** (`campaigns/_liminal/`): the between-worlds holding pen.
+  `capture_note` accepts a `target: "liminal"` to land captures there (no DB
+  upsert). `claim_liminal_note` moves a note into a world; `make_world_from_liminal`
+  births a new world from the liminal captures.
+- **Theme override**: world tokens → global tokens → defaults. Scope is accent +
+  palette + serif toggle only (no full typography override). The 10% accent rule
+  and rest restraint rule hold in every theme. `useWorld` (frontend) applies the
+  resolved CSS vars to `document.documentElement`.
+- **Note-type + provenance registries**: the graph, canvas, metadata panel, and
+  capture UI read the world's `note_types` / `provenance_taxonomy`, falling back
+  to the defaults so legacy vaults keep working. `speculation` appears as a
+  provenance option everywhere provenance is chosen/filtered.
+- **Bible gating**: `agent.rs` reads the manifest's `bible` flag; when `false`,
+  bible conditioning is skipped (always-on when true/default).
+- **World Shelf UI** (`WorldShelf.tsx`): switcher with icon/name/description/
+  last-opened, new-world (scaffold choice), Liminal entry, export/import.
+
 ## Frontend Structure
 
 - `src/App.tsx` is the top-level orchestrator that composes domain hooks and renders shell components.
