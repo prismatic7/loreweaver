@@ -90,4 +90,38 @@ Phase 1 devising produced DESIGN_SKETCH.md — the contract for this phase.
   PIPELINE.md on exit.
 
 ## Status
-- [ ] In progress
+- [x] Docs committed; AGENTS.md updated with precedence + correct test claims
+- [x] Provenance fields on notes; sources visible as graph nodes; filtering works
+- [x] Bible folder convention documented; bible injected always-on in
+      build_system_context (evidence: agent.rs diff)
+- [x] Capture inbox accepts text/paste/URL/file; captures land as notes
+- [x] Web clipping fetches a URL → readable markdown note with provenance
+- [x] `npm run build` passes; `npm run test` passes (27); `cargo test` passes (34)
+- [x] No regressions in existing features (timeline, graph, canvas, chat,
+      session memory, STT/TTS, plugins)
+
+### Phase 2 build — opencode (2026-08-10)
+- **Docs foundation:** Committed DESIGN.md, PRODUCT.md, FEATURE_PROPOSAL.md,
+  DESIGN_SKETCH.md, RECON.md, PIPELINE.md, TASK.md. Added doc precedence
+  (DESIGN_SKETCH > DESIGN > PRODUCT > docs/codebase/*) to AGENTS.md; corrected
+  stale test claims (8 Vitest suites + ~30 Rust tests; `npm run test` and
+  `cargo test` are real verification paths). Fixed ARCHITECTURE.md:71 hardcoded
+  absolute path → relative `docs/codebase/ARCHITECTURE.md`.
+- **Provenance model:** `sources` table + `SourceEntry` type; `list_sources` /
+  `save_source` / `delete_source` / `get_source` commands. Provenance lives in
+  note frontmatter (`source_type`, `source_title`, `source_author`, `source_url`,
+  `source_date`, `source_id`) — no notes-table change, watcher/ingest compatible.
+  Frontend: provenance fields in the note editor's Metadata panel; source nodes
+  (square, distinct color) + "source" edges in the entity graph; provenance
+  filter (All/Canon/History/Invention).
+- **Bible conditioning:** `build_system_context` now takes `vault_path` and
+  injects `bible/{TONE,TOUCHSTONES,THE_PLAN,CONSPIRACY,PEOPLE,PLACES,RULES,
+  SESSION_LOG}.md` as a fixed always-on block (not retrieved-by-similarity).
+- **Capture inbox:** `capture_note` command writes to `Captures/<slug>-<ts>.md`
+  via `validate_safe_path`; Capture Inbox UI in the Scratchpad tab accepts
+  text/paste/URL/file-drop and lands captures as notes.
+- **Web clipping:** new `webclip.rs` (ureq fetch + scraper/html2md extraction);
+  `clip_webpage` command; "Clip URL" toolbar button + inbox clip flow.
+- **Verification:** `npm run build` ✓, `npm run test` (27) ✓, `cargo test` (34) ✓.
+  Committed as `9a5e8ff`.
+- **Next (phase 3 drudge):** boilerplate, coverage, docs, obvious fills.
