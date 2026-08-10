@@ -21,7 +21,7 @@ Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it
 | [docs/codebase/CONVENTIONS.md](docs/codebase/CONVENTIONS.md)   | Naming, command patterns, data shapes                                               |
 | [docs/codebase/INTEGRATIONS.md](docs/codebase/INTEGRATIONS.md) | Filesystem, SQLite, search/embeddings, AI providers, plugins                        |
 | [docs/codebase/CONCERNS.md](docs/codebase/CONCERNS.md)         | Known risk areas — read before touching plugins or search                           |
-| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (8 Vitest suites + ~30 Rust tests; `npm run test` and `cargo test` are real verification paths) |
+| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (10 Vitest suites / 32 tests + 43 Rust tests; `npm run test` and `cargo test` are real verification paths) |
 
 Keep these docs current: if you change architecture, conventions, or a risk area meaningfully, update the relevant file in the same change.
 
@@ -41,7 +41,7 @@ npm run build         # vite build; also the de-facto TypeScript type-check gate
 npm run tauri dev     # full app dev loop (Rust + frontend)
 ```
 
-- Tests exist: 8 Vitest suites (`npm run test`) and ~30 Rust tests (`cargo test`). Both are real verification paths — run them before claiming work passes.
+- Tests exist: 10 Vitest suites / 32 tests (`npm run test`) and 43 Rust tests (`cargo test`). Both are real verification paths — run them before claiming work passes.
 - Cargo/rustc may not be available in every terminal environment here; if `cargo check` isn't runnable, say so rather than assuming the Rust side compiles.
 
 ## Cross-Cutting Conventions
