@@ -74,5 +74,11 @@ No design decisions here — execute exactly what's listed.
   design, skip it and note why — the review gate decides.
 
 ## Status
-- [ ] In progress
-- [ ] Done — _agent writes a summary of what changed here on exit_
+- [x] Done (2026-08-11, completed by Hermes after zero's run failed its contract)
+- **Summary:** Liminal view UI built + wired (replaces placeholder alert);
+  `list_liminal_notes` read-only command added (additive, allowed); native
+  file dialogs via `tauri-plugin-dialog` (export save / import open, `.zip`);
+  coverage: LiminalView.test.tsx (5) + Rust liminal_tests (3); docs updated
+  with real measured counts (14 Vitest suites / 52 tests; 57 Rust tests, 56
+  pass + 1 keychain flake skipped). Verification: npm 52/52 ✓, cargo 56/56 ✓,
+  build ✓. See PIPELINE.md phase 2 entry for details.
