@@ -19,11 +19,44 @@ design: `DESIGN_SKETCH_WORLDS.md` (committed `e28607a`).
 | # | Phase | Harness | Mode | Output | Gate | Status |
 |---|-------|---------|------|--------|------|--------|
 | 0 | Devising | Hermes + Chris | interactive | DESIGN_SKETCH_WORLDS.md | Chris signs off | ✅ |
-| 1 | Build | opencode | autonomous | worlds.rs, registries, theme override, Liminal, bundles, World Shelf | diff vs sketch | ⏳ |
+| 1 | Build | opencode | autonomous | worlds.rs, registries, theme override, Liminal, bundles, World Shelf | diff vs sketch | ✅ |
 | 2 | Drudge | zero | autonomous | boilerplate, coverage, docs | diff reviewed | ⬜ |
 | 3 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
 
 ## Arc 2 handoff log
+### Phase 1 — build (2026-08-10, opencode autonomous)
+- **Delivered all 7 arc-2 deliverables, each mapped to a signed-off decision:**
+  1. **`world.json` schema v1 + loader** (`worlds.rs`): load/validate with
+     fallback chain (manifest → defaults); `ensure_manifest` auto-generates a
+     default manifest on first launch (additive, never overwrites). Defaults:
+     5 legacy note types + 4-entry provenance taxonomy (canon/history/
+     invention/**speculation** — the Provisional ships for all worlds).
+  2. **Note-type registry**: graph, canvas, metadata UI read the world's
+     `note_types` (fallback to defaults → legacy 5 still render).
+  3. **Provenance override**: `speculation` in the default taxonomy
+     everywhere; per-world taxonomy respected in sources UI + graph filter.
+  4. **Theme override**: world → global → defaults; accent + palette + serif
+     toggle only (signed-off decision 1); 10% accent + restraint preserved.
+  5. **The Liminal** (`campaigns/_liminal/`): captures land there
+     (`capture_note target:liminal`); `claim_liminal_note` + 
+     `make_world_from_liminal` birth action.
+  6. **Zip bundles** (`bundles.rs`): export/import (zip-slip guarded) +
+     folder scaffold (structure, no content) — round-trip verified.
+  7. **World Shelf UI** (`WorldShelf.tsx`): switcher with identity, new
+     world (scaffold choice), Liminal entry, export/import.
+- **Bible gating**: `agent.rs` reads the manifest `bible` flag; skips
+  conditioning when false, always-on when true/default.
+- **Verification:** `cargo test` 54 ✓ (43 + 10 new), `npm run test` 47 ✓
+  (32 + 15 new), `npm run build` ✓. Cargo 1.97.1 available and used.
+- **Docs:** AGENTS.md precedence (DESIGN_SKETCH_WORLDS.md above
+  DESIGN_SKETCH.md); ARCHITECTURE.md World Objects section.
+- **Commits:** `8789626` (backend), `afc0215` (frontend), `0ac6dc3` (docs).
+- **Known gaps (out of scope, future phases):** dedicated Liminal view is a
+  placeholder alert (claim/route UI not built); export uses a text prompt for
+  destination (no native file dialog); voice bank, versioned history, live
+  STT, graph layout + Thread, era-hopping all remain future phases.
+- **Next: phase 2 drudge** — boilerplate, coverage, docs, obvious fills.
+
 ### Phase 0 — devising (2026-08-10)
 - Chris's priority order: **3 (ownership) → 4 (many worlds) → 2 (QoL) → 1
   (imaginative space)**. Domains 3+4 collapse into one system: the World
