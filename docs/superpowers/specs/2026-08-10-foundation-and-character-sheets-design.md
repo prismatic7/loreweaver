@@ -48,12 +48,18 @@ This slice delivers three changes that unblock the rest of the roadmap and ship 
 
 Strictly mechanical. No behavior change, no visual change, no design change.
 
-- Extract the session-tool state + handlers (scratchpad, dice, image, TTS — currently roughly
-  `App.tsx` lines 216–381) into a new hook `useSessionTools`.
-- Extract the vault-action confirm/trash/delete/normalize handlers (currently roughly lines 383–482)
-  into a new hook `useVaultActions`.
+- Extract the session-tool state + handlers (scratchpad, dice, image, TTS — the state/handlers named
+  `scratchpadText`, `diceHistory`, `diceNotation`, `imagePrompt`, `imageStyle`, `isGeneratingImage`,
+  `generatedImageUrl`, `ttsText`, `isGeneratingSpeech`, `generatedSpeechUrl`, `rollDiceNotation`,
+  `handleGenerateImage`, `handleGenerateSpeech`) into a new hook `useSessionTools`.
+- Extract the vault-action confirm/trash/delete/normalize handlers (`handleNormalizeVaultMarkdown`,
+  `handleSelectNoteFromCanvas`, `handleSelectCanvas`, `handleTrashNote`, `handleDeleteRule`,
+  `handleEmptyTrash`, `handleDeleteTrashedNote`, `handleRollCharacterSheetCb`,
+  `handleEvaluateEncounterThreatCb`) into a new hook `useVaultActions`.
 - `App.tsx` becomes a thin composition shell that wires hooks → views.
 - Follow existing hook patterns in `src/hooks/` (e.g. `useNotes`, `useRules`).
+- **Reference stable identifiers (hook/state/function names), never line numbers** — line numbers
+  drift as the file changes.
 
 ## P4 — Character Sheet Builder
 
@@ -86,6 +92,9 @@ Strictly mechanical. No behavior change, no visual change, no design change.
   properties as a form, backed by the existing `list_templates` command.
 - An "Import from PDF" entry point in that view that calls `convert_pdf_to_markdown`, then opens the
   result as a note for review (no field auto-mapping in this slice).
+- **AppView wiring touchpoints** (must not be missed): add `"character-sheets"` to the `AppView`
+  union type in `src/components/AppShell.tsx`, register the nav entry, and render the new view in
+  `App.tsx` alongside the other `activeView === "..."` branches.
 
 ## Out of Scope (this slice)
 
@@ -99,6 +108,61 @@ Strictly mechanical. No behavior change, no visual change, no design change.
 
 - P11 and P15 are independent and can run in parallel.
 - P4 depends on the pdf-inspector crate integration but not on P11/P15.
+
+## Unattended Execution (overnight small agent)
+
+This slice is designed to be iterated by a small local agent overnight to save token bloat. The
+following safeguards are mandatory.
+
+### Preflight (run first, before any code)
+
+1. `cargo --version` and `rustc --version` — confirm the Rust toolchain is available.
+2. `npm install` — confirm frontend deps are installed.
+3. If **cargo is unavailable**, do **P15 only** and report P11/P4 as **blocked** (never claim Rust
+   work compiles without running `cargo check`). Do not attempt Rust edits without verification.
+
+### pdf-inspector spike (before P4 real integration)
+
+- Add `pdf-inspector` to `Cargo.toml` pinned to a known-good version, then run a small throwaway
+  compile + API probe (e.g. convert a tiny text PDF) to confirm the crate compiles and the API
+  matches the spec.
+- If the crate will not compile or the API differs materially, **stop P4** and report the blocker
+  rather than guessing at a workaround.
+
+### Definition of Done (per item)
+
+- **P15**: `npm run build` passes; `App.tsx` is a thin shell; no behavior/visual change (diff review).
+- **P11**: `cargo check` passes; `reindex_vault` command exists and is registered; Settings button
+  wired; `npm run build` passes.
+- **P4**: `cargo check` passes; `pdf.rs` module + `convert_pdf_to_markdown` command registered;
+  `CharacterSheetView` added to `AppView` and rendered; PDF import opens result as a note;
+  `npm run build` passes.
+
+### Stop conditions & iteration cap
+
+- Hard stop on any blocker: cargo missing, pdf-inspector won't compile, or a verification command
+  fails twice with no clear fix.
+- Iteration cap: max 3 fix attempts per item before stopping and reporting.
+- Runtime cap: stop after ~6–8 hours (overnight) regardless of progress.
+
+### Commit discipline
+
+- Commit after each verified item (P15, then P11, then P4) so partial work survives and is
+  reviewable. Never commit unverified work.
+
+### Handoff artifact
+
+- Write a progress doc (e.g. `docs/superpowers/progress/2026-08-10-foundation.md`) with: per-item
+  status (done/blocked/skipped), captured verification output, and any blockers. This is the
+  handoff for the next session.
+
+### Serial order for a single agent
+
+1. Preflight.
+2. pdf-inspector spike (isolated, throwaway).
+3. **P15** (safe, verifiable win).
+4. **P11** (bounded, mechanical).
+5. **P4** (riskiest, last, isolated).
 
 ## Verification
 
