@@ -320,6 +320,26 @@ pub fn load_all_notes(conn: &Connection) -> Result<Vec<super::CampaignNote>> {
     Ok(notes)
 }
 
+/// Returns every rule row in the database.
+pub fn load_all_rules(conn: &Connection) -> Result<Vec<super::RuleEntry>> {
+    let mut stmt = conn.prepare("SELECT id, path, title, category, source, content FROM rules")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(super::RuleEntry {
+            id: row.get(0)?,
+            path: row.get(1)?,
+            title: row.get(2)?,
+            category: row.get(3)?,
+            source: row.get(4)?,
+            content: row.get(5)?,
+        })
+    })?;
+    let mut rules = Vec::new();
+    for r in rows {
+        rules.push(r?);
+    }
+    Ok(rules)
+}
+
 pub fn seed_default_rules(conn: &Connection) -> Result<()> {
     // Check if empty
     let count: i64 = conn.query_row("SELECT count(*) FROM rules", [], |r| r.get(0))?;

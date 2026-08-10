@@ -45,6 +45,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [testConnectionError, setTestConnectionError] = useState<string | null>(
     null,
   );
+  const [isReindexing, setIsReindexing] = useState(false);
 
   const isTestingConnection = isTestingConnectionProp ?? localIsTesting;
 
@@ -123,6 +124,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .catch((err) => {
         setLocalIsTesting(false);
         setTestConnectionError(err.toString());
+      });
+  };
+
+  const handleReindex = () => {
+    if (isReindexing) return;
+    setIsReindexing(true);
+    invoke("reindex_vault")
+      .then(() => {
+        alert("Vault reindexed successfully!");
+      })
+      .catch((err) => {
+        alert("Reindex failed: " + err);
+      })
+      .finally(() => {
+        setIsReindexing(false);
       });
   };
 
@@ -531,23 +547,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* Embedding Dimension Warning */}
           {activeConfigTab === "embed" && (
-            <div
-              style={{
-                background: "oklch(65% 0.12 85 / 0.08)",
-                border: "1px solid var(--warn)",
-                color: "var(--warn)",
-                padding: "10px 12px",
-                borderRadius: "4px",
-                fontSize: "11px",
-                lineHeight: "1.4",
-              }}
-            >
-              <strong>DIMENSION COMPATIBILITY CAVEAT:</strong>{" "}
-              Modifying your embedding provider changes the dimension
-              length of generated vectors. After saving, run{" "}
-              <strong>Reindex</strong> on your vault to reindex all
-              notes.
-            </div>
+            <>
+              <div
+                style={{
+                  background: "oklch(65% 0.12 85 / 0.08)",
+                  border: "1px solid var(--warn)",
+                  color: "var(--warn)",
+                  padding: "10px 12px",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  lineHeight: "1.4",
+                }}
+              >
+                <strong>DIMENSION COMPATIBILITY CAVEAT:</strong>{" "}
+                Modifying your embedding provider changes the dimension
+                length of generated vectors. After saving, run{" "}
+                <strong>Reindex</strong> on your vault to reindex all
+                notes.
+              </div>
+              <button
+                className="btn"
+                type="button"
+                style={{
+                  marginTop: "10px",
+                  padding: "8px 12px",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                }}
+                onClick={handleReindex}
+                disabled={isReindexing}
+                data-od-id="settings-reindex-btn"
+              >
+                {isReindexing ? "🔄 Reindexing..." : "♻️ Reindex Vault"}
+              </button>
+            </>
           )}
 
           {/* Active Configuration Details */}

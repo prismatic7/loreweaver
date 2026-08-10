@@ -932,6 +932,31 @@ async fn load_rules(state: State<'_, AppState>) -> Result<Vec<RuleEntry>, String
     Ok(rules)
 }
 
+/// Rebuilds all note and rule vector embeddings from stored content.
+///
+/// Used after changing the embedding provider/dimension. Clears and
+/// regenerates every chunk embedding, then invalidates the search cache.
+#[tauri::command]
+async fn reindex_vault(state: State<'_, AppState>) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+
+    // Rebuild note chunks by re-indexing each note's full content.
+    let notes = db::load_all_notes(&conn).map_err(|e| e.to_string())?;
+    for note in &notes {
+        search::index_note_vectors(&conn, &note.id, &note.content)?;
+    }
+
+    // Rebuild rule chunks by re-indexing each rule's full content.
+    let rules = db::load_all_rules(&conn).map_err(|e| e.to_string())?;
+    for rule in &rules {
+        db::reindex_rule_chunks(&conn, &rule.id, &rule.content).map_err(|e| e.to_string())?;
+    }
+
+    search::invalidate_cache();
+    Ok(())
+}
+
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).
 #[tauri::command]
 async fn search_vault(
@@ -1983,7 +2008,8 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             save_vault_settings,
             load_canvas_file,
             save_canvas_file,
-            list_templates
+            list_templates,
+            reindex_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
