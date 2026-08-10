@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useOnClickOutside } from "usehooks-ts";
@@ -34,10 +33,10 @@ import { useDialogs } from "./hooks/useDialogs";
 import { useMarkdownRender } from "./hooks/useMarkdownRender";
 import { useIngest } from "./hooks/useIngest";
 import { useFolderActions } from "./hooks/useFolderActions";
+import { useSessionTools } from "./hooks/useSessionTools";
+import { useVaultActions } from "./hooks/useVaultActions";
 
-import { fallbackRoll } from "./utils/dice";
-
-import { CampaignNote, RuleEntry, SearchResult } from "./types";
+import { RuleEntry, SearchResult } from "./types";
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
@@ -213,12 +212,6 @@ function App() {
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(true);
   const [rightDrawerTab, setRightDrawerTab] = useState<RightDrawerTab>("scratchpad");
 
-  const [scratchpadText, setScratchpadText] = useState(() => {
-    return (
-      localStorage.getItem("loreweaver_scratchpad") ||
-      "## GM Session Scratchpad\n- Active Party: \n- Notes: \n- Combat Tracker: \n"
-    );
-  });
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
@@ -226,24 +219,6 @@ function App() {
 
   const searchRef = useRef<HTMLDivElement | null>(null);
   useOnClickOutside(searchRef as any, () => setIsSearchOpen(false));
-
-  useEffect(() => {
-    localStorage.setItem("loreweaver_scratchpad", scratchpadText);
-  }, [scratchpadText]);
-
-  const [diceHistory, setDiceHistory] = useState<string[]>([]);
-  const [diceNotation, setDiceNotation] = useState<string>("2d20+5");
-
-  const [imagePrompt, setImagePrompt] = useState(
-    "A detailed portrait of Lirael, the elven mage",
-  );
-  const [imageStyle, setImageStyle] = useState("Fantasy Portrait");
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string>("");
-
-  const [ttsText, setTtsText] = useState("");
-  const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
-  const [generatedSpeechUrl, setGeneratedSpeechUrl] = useState<string>("");
 
   const agent = useAgent(
     vaultPath,
@@ -309,150 +284,6 @@ function App() {
     [notes, rules, setSelectedNoteId, setSelectedRuleId],
   );
 
-  const rollDiceNotation = (notation: string) => {
-    if (!notation.trim()) return;
-    const hasDicePlugin = pluginsList.some((p) => p.id === "dice-roller" && p.active);
-    const addHistory = (text: string) => {
-      setDiceHistory((prev) => [text, ...prev.slice(0, 15)]);
-    };
-
-    if (hasDicePlugin) {
-      invoke<string>("execute_plugin_hook", {
-        pluginId: "dice-roller",
-        hook: "roll_notation",
-        payload: notation,
-      })
-        .then((resultStr) => {
-          const res = JSON.parse(resultStr);
-          addHistory(`${res.notation}: ${res.rolls} = ${res.total}`);
-        })
-        .catch(() => {
-          addHistory(fallbackRoll(notation));
-        });
-    } else {
-      addHistory(fallbackRoll(notation));
-    }
-  };
-
-  const handleGenerateImage = () => {
-    setIsGeneratingImage(true);
-    setGeneratedImageUrl("");
-
-    invoke<string>("generate_image", {
-      prompt: imagePrompt,
-      style: imageStyle,
-      provider: imageProvider,
-      model: imageModel,
-      apiKey: imageApiKey || null,
-      baseUrl: imageBaseUrl || null,
-    })
-      .then((dataUrl) => {
-        setGeneratedImageUrl(dataUrl);
-      })
-      .catch((err) => {
-        alert("Image generation failed: " + err);
-      })
-      .finally(() => {
-        setIsGeneratingImage(false);
-      });
-  };
-
-  const handleGenerateSpeech = () => {
-    if (!ttsText.trim()) return;
-    setIsGeneratingSpeech(true);
-    setGeneratedSpeechUrl("");
-
-    invoke<string>("generate_speech", {
-      text: ttsText,
-      provider: ttsProvider,
-      apiKey: ttsApiKey || null,
-      voice: ttsProvider === "openai" ? "alloy" : null,
-      baseUrl: null,
-    })
-      .then((audioUrl) => {
-        setGeneratedSpeechUrl(audioUrl);
-      })
-      .catch((err) => {
-        alert("Speech generation failed: " + err);
-      })
-      .finally(() => {
-        setIsGeneratingSpeech(false);
-      });
-  };
-
-  const handleNormalizeVaultMarkdown = () => {
-    if (!notes.length) return;
-
-    Promise.all(
-      notes.map((note) => {
-        const normalizedContent = normalizeCampaignMarkdown(note.content, "save");
-        const normalizedNote: CampaignNote = { ...note, content: normalizedContent };
-
-        if (normalizedContent === note.content) {
-          return Promise.resolve();
-        }
-
-        return saveNote(normalizedNote);
-      }),
-    )
-      .then(() => loadNotes())
-      .then(() => alert("Campaign vault markdown normalized successfully!"))
-      .catch((err) => alert("Failed to normalize vault markdown: " + err));
-  };
-
-  const handleSelectNoteFromCanvas = (noteId: string) => {
-    const targetNote = notes.find((n) => n.id === noteId);
-    if (targetNote) {
-      setSelectedNoteId(noteId);
-      const isCanvas =
-        targetNote.frontmatter?.type === "Canvas" || targetNote.path.endsWith(".canvas");
-      if (isCanvas) {
-        const parts = targetNote.path.split("/");
-        parts.pop();
-        const folderName = parts.join("/");
-        setCurrentCanvasFolder(folderName);
-        setActiveView("canvas");
-      } else {
-        setIsEditingNote(false);
-        setActiveView("vault");
-      }
-    }
-  };
-
-  const handleSelectCanvas = (canvasPath: string) => {
-    const targetNote = notes.find(
-      (n) => n.frontmatter?.canvasPath === canvasPath || n.path === canvasPath,
-    );
-    if (targetNote) {
-      setSelectedNoteId(targetNote.id);
-      setActiveView("canvas");
-    }
-  };
-
-  const handleTrashNote = (notePath: string) => {
-    confirm(`Are you sure you want to move "${notePath}" to the trash?`, async () => {
-      await trashNote(notePath);
-    });
-  };
-
-  const handleDeleteRule = (ruleId: string) => {
-    confirm("Are you sure you want to delete this rule entry?", async () => {
-      await deleteRule(ruleId);
-    });
-  };
-
-  const handleEmptyTrash = () => {
-    confirm("Are you sure you want to permanently delete all items in the trash?", async () => {
-      await emptyTrash();
-    });
-  };
-
-  const handleDeleteTrashedNote = (trashNotePath: string) => {
-    confirm("Permanently delete this item from disk? This cannot be undone.", async () => {
-      await deleteTrashedNote(trashNotePath);
-    });
-  };
-
   const backlinks = useMemo(() => {
     if (!selectedNoteId) return [];
     const currentNoteObj = notes.find((n) => n.id === selectedNoteId);
@@ -468,18 +299,36 @@ function App() {
     });
   }, [notes, selectedNoteId]);
 
-  const handleRollCharacterSheetCb = () =>
-    handleRollCharacterSheet(alert, async (note) => {
-      try {
-        await saveNote(note);
-        setSelectedNoteId(note.id);
-        setActiveView("vault");
-      } catch (err) {
-        alert("Failed to save character: " + err);
-      }
-    });
+  const sessionTools = useSessionTools({
+    pluginsList,
+    alert,
+    imageProvider,
+    imageModel,
+    imageApiKey,
+    imageBaseUrl,
+    ttsProvider,
+    ttsApiKey,
+  });
 
-  const handleEvaluateEncounterThreatCb = () => handleEvaluateEncounterThreat(alert);
+  const vaultActions = useVaultActions({
+    notes,
+    saveNote,
+    loadNotes,
+    trashNote,
+    deleteRule,
+    emptyTrash,
+    deleteTrashedNote,
+    normalizeCampaignMarkdown,
+    setSelectedNoteId,
+    setSelectedRuleId,
+    setActiveView,
+    setIsEditingNote,
+    setCurrentCanvasFolder,
+    confirm,
+    alert,
+    handleRollCharacterSheet,
+    handleEvaluateEncounterThreat,
+  });
 
   return (
     <AppShell
@@ -516,15 +365,15 @@ function App() {
             setIsOpen={setIsRightDrawerOpen}
             tab={rightDrawerTab}
             setTab={setRightDrawerTab}
-            scratchpadText={scratchpadText}
-            setScratchpadText={setScratchpadText}
-            diceNotation={diceNotation}
-            setDiceNotation={setDiceNotation}
-            diceHistory={diceHistory}
-            rollDiceNotation={rollDiceNotation}
+            scratchpadText={sessionTools.scratchpadText}
+            setScratchpadText={sessionTools.setScratchpadText}
+            diceNotation={sessionTools.diceNotation}
+            setDiceNotation={sessionTools.setDiceNotation}
+            diceHistory={sessionTools.diceHistory}
+            rollDiceNotation={sessionTools.rollDiceNotation}
             pluginsList={pluginsList}
-            handleRollCharacterSheet={handleRollCharacterSheetCb}
-            handleEvaluateEncounterThreat={handleEvaluateEncounterThreatCb}
+            handleRollCharacterSheet={vaultActions.handleRollCharacterSheetCb}
+            handleEvaluateEncounterThreat={vaultActions.handleEvaluateEncounterThreatCb}
             currentChatMessages={agent.currentChatMessages}
             chatInput={agent.chatInput}
             setChatInput={agent.setChatInput}
@@ -536,19 +385,19 @@ function App() {
             sessionCloneTargetVaultPath={agent.sessionCloneTargetVaultPath}
             setSessionCloneTargetVaultPath={agent.setSessionCloneTargetVaultPath}
             vaults={vaults}
-            imagePrompt={imagePrompt}
-            setImagePrompt={setImagePrompt}
-            imageStyle={imageStyle}
-            setImageStyle={setImageStyle}
-            isGeneratingImage={isGeneratingImage}
-            generatedImageUrl={generatedImageUrl}
-            handleGenerateImage={handleGenerateImage}
-            ttsText={ttsText}
-            setTtsText={setTtsText}
+            imagePrompt={sessionTools.imagePrompt}
+            setImagePrompt={sessionTools.setImagePrompt}
+            imageStyle={sessionTools.imageStyle}
+            setImageStyle={sessionTools.setImageStyle}
+            isGeneratingImage={sessionTools.isGeneratingImage}
+            generatedImageUrl={sessionTools.generatedImageUrl}
+            handleGenerateImage={sessionTools.handleGenerateImage}
+            ttsText={sessionTools.ttsText}
+            setTtsText={sessionTools.setTtsText}
             ttsProvider={ttsProvider}
-            isGeneratingSpeech={isGeneratingSpeech}
-            generatedSpeechUrl={generatedSpeechUrl}
-            handleGenerateSpeech={handleGenerateSpeech}
+            isGeneratingSpeech={sessionTools.isGeneratingSpeech}
+            generatedSpeechUrl={sessionTools.generatedSpeechUrl}
+            handleGenerateSpeech={sessionTools.handleGenerateSpeech}
             backlinks={backlinks}
             setSelectedNoteId={setSelectedNoteId}
           />
@@ -589,16 +438,16 @@ function App() {
           renderFolderDropdown={renderFolderDropdown}
           handleNewNote={() => handleNewNote()}
           handleNewFolder={handleNewFolder}
-          handleTrashNote={handleTrashNote}
+          handleTrashNote={vaultActions.handleTrashNote}
           renderMarkdown={renderMarkdown}
           currentCanvasFolder={currentCanvasFolder}
           setCurrentCanvasFolder={setCurrentCanvasFolder}
-          handleNormalizeVaultMarkdown={handleNormalizeVaultMarkdown}
+          handleNormalizeVaultMarkdown={vaultActions.handleNormalizeVaultMarkdown}
           triggerImmediateSave={immediateSave}
           notes={notes}
           setActiveView={setActiveView}
-          onSelectNoteFromCanvas={handleSelectNoteFromCanvas}
-          onSelectCanvas={handleSelectCanvas}
+          onSelectNoteFromCanvas={vaultActions.handleSelectNoteFromCanvas}
+          onSelectCanvas={vaultActions.handleSelectCanvas}
         />
       )}
 
@@ -618,7 +467,7 @@ function App() {
           handleNewRule={() => setShowNewRuleModal(true)}
           handleNewRuleFolder={handleNewRuleFolder}
           handleInsertRuleImage={handleInsertRuleImage}
-          handleDeleteRule={handleDeleteRule}
+          handleDeleteRule={vaultActions.handleDeleteRule}
           editRuleTitle={editRuleTitle}
           setEditRuleTitle={setEditRuleTitle}
           editRulePath={editRulePath}
@@ -646,9 +495,9 @@ function App() {
       {activeView === "trash" && (
         <TrashView
           trashedNotes={trashedNotes}
-          handleEmptyTrash={handleEmptyTrash}
+          handleEmptyTrash={vaultActions.handleEmptyTrash}
           handleRestoreNote={restoreNote}
-          handleDeleteTrashedNote={handleDeleteTrashedNote}
+          handleDeleteTrashedNote={vaultActions.handleDeleteTrashedNote}
         />
       )}
 
@@ -671,9 +520,9 @@ function App() {
 
       <ContextMenu
         menu={contextMenu}
-        onNoteTrash={handleTrashNote}
+        onNoteTrash={vaultActions.handleTrashNote}
         onFolderTrash={handleTrashFolder}
-        onRuleDelete={handleDeleteRule}
+        onRuleDelete={vaultActions.handleDeleteRule}
         onClose={() => setContextMenu(null)}
       />
 
