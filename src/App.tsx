@@ -10,6 +10,7 @@ import { RulesView } from "./components/RulesView";
 import { AiView } from "./components/AiView";
 import { CampaignVaultView } from "./components/CampaignVaultView";
 import { CharacterSheetView } from "./components/CharacterSheetView";
+import { MapBuilderView } from "./components/MapBuilderView";
 import { AppShell, type AppView } from "./components/AppShell";
 import { RightDrawer, type RightDrawerTab } from "./components/RightDrawer";
 import { SettingsRightPanel } from "./components/SettingsRightPanel";
@@ -547,6 +548,14 @@ function App() {
             setSelectedNoteId(noteId);
             setActiveView("vault");
           }}
+        />
+      )}
+
+      {activeView === "map" && (
+        <MapBuilderView
+          vaultPath={vaultPath}
+          mapRelPath="Maps/Active_Map.canvas"
+          alert={alert}
         />
       )}
 

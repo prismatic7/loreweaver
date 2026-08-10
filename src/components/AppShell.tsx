@@ -5,6 +5,7 @@ import {
   Compass,
   FolderOpen,
   Layers,
+  Map as MapIcon,
   Moon,
   Search,
   Settings as SettingsIcon,
@@ -22,7 +23,8 @@ export type AppView =
   | "settings"
   | "canvas"
   | "trash"
-  | "character-sheets";
+  | "character-sheets"
+  | "map";
 
 export interface AppShellProps {
   activeView: AppView;
@@ -114,6 +116,13 @@ export const AppShell: React.FC<AppShellProps> = ({
             icon={<Users size={18} />}
             onClick={() => setActiveView("character-sheets")}
           />
+          <RibbonButton
+            activeView={activeView}
+            target="map"
+            title="Map Builder"
+            icon={<MapIcon size={18} />}
+            onClick={() => setActiveView("map")}
+          />
         </div>
 
         <div className="ribbon-footer">
@@ -166,6 +175,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             {activeView === "settings" && "Settings"}
             {activeView === "trash" && "Vault & Rulebook Trash"}
             {activeView === "character-sheets" && "Character Sheets"}
+            {activeView === "map" && "Map Builder"}
 
             <div
               style={{
