@@ -25,6 +25,8 @@ interface VaultActionsDeps {
     onSave: (note: CampaignNote) => Promise<void>,
   ) => void;
   handleEvaluateEncounterThreat: (alert: (m: string) => void) => void;
+  handleInitiativeTracker: (alert: (m: string) => void) => void;
+  handleEncounterBuilder: (alert: (m: string) => void) => void;
 }
 
 export const useVaultActions = (deps: VaultActionsDeps) => {
@@ -45,6 +47,8 @@ export const useVaultActions = (deps: VaultActionsDeps) => {
     alert,
     handleRollCharacterSheet,
     handleEvaluateEncounterThreat,
+    handleInitiativeTracker,
+    handleEncounterBuilder,
   } = deps;
 
   const handleNormalizeVaultMarkdown = useCallback(() => {
@@ -174,6 +178,16 @@ export const useVaultActions = (deps: VaultActionsDeps) => {
     [handleEvaluateEncounterThreat, alert],
   );
 
+  const handleInitiativeTrackerCb = useCallback(
+    () => handleInitiativeTracker(alert),
+    [handleInitiativeTracker, alert],
+  );
+
+  const handleEncounterBuilderCb = useCallback(
+    () => handleEncounterBuilder(alert),
+    [handleEncounterBuilder, alert],
+  );
+
   return {
     handleNormalizeVaultMarkdown,
     handleSelectNoteFromCanvas,
@@ -184,5 +198,7 @@ export const useVaultActions = (deps: VaultActionsDeps) => {
     handleDeleteTrashedNote,
     handleRollCharacterSheetCb,
     handleEvaluateEncounterThreatCb,
+    handleInitiativeTrackerCb,
+    handleEncounterBuilderCb,
   };
 };

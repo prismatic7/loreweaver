@@ -1,0 +1,8 @@
+{
+  "id": "initiative-tracker",
+  "name": "Initiative Tracker",
+  "version": "1.0.0",
+  "description": "System-agnostic combat turn-order tracker with HP/status tracking, turn cycling, and a combat log.",
+  "permissions": ["hooks"],
+  "entry": "index.js"
+}

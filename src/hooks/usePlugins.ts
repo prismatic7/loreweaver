@@ -110,11 +110,108 @@ export function usePlugins(vaultPath: string) {
     [executeHook],
   );
 
+  // --- P1: Initiative Tracker ---
+  const handleInitiativeTracker = useCallback(
+    async (alert: (message: string) => void) => {
+      const namesStr = prompt(
+        "Enter combatant names (comma separated):",
+        "Aragorn, Legolas, Goblin 1, Goblin 2",
+      );
+      if (!namesStr) return;
+      const names = namesStr.split(",").map((s) => s.trim()).filter(Boolean);
+      if (names.length === 0) return;
+
+      const combatants = names.map((name) => {
+        const initStr = prompt(`Initiative for ${name}:`, "10");
+        const hpStr = prompt(`HP for ${name}:`, "10");
+        return {
+          name,
+          initiative: parseInt(initStr || "10") || 0,
+          hp: parseInt(hpStr || "10") || 0,
+          maxHp: parseInt(hpStr || "10") || 0,
+        };
+      });
+
+      try {
+        const resStr = await executeHook(
+          "initiative-tracker",
+          "init_combat",
+          JSON.stringify({ combatants }),
+        );
+        const state = JSON.parse(resStr);
+        const current = state.combatants[state.currentIndex];
+        alert(
+          `Combat started (Round ${state.round}).\n\nCurrent turn: ${current?.name || "none"}\n\n` +
+            state.combatants
+              .map(
+                (c: any, i: number) =>
+                  `${i === state.currentIndex ? "▶ " : "  "}${c.name} (init ${c.initiative}, HP ${c.hp}/${c.maxHp})`,
+              )
+              .join("\n"),
+        );
+      } catch (err) {
+        alert("Initiative tracker failed: " + err);
+      }
+    },
+    [executeHook],
+  );
+
+  // --- P2: Encounter Builder ---
+  const handleEncounterBuilder = useCallback(
+    async (alert: (message: string) => void) => {
+      const name = prompt("Encounter name:", "Ambush at the Crossroads");
+      if (!name) return;
+      const levelsStr = prompt(
+        "Party levels (comma separated):",
+        "3, 3, 3, 3",
+      );
+      if (!levelsStr) return;
+      const advStr = prompt(
+        "Adversaries as 'Name:CR:count' (semicolon separated):",
+        "Goblin:1:2; Hobgoblin:2:1",
+      );
+      if (!advStr) return;
+
+      const partyLevels = levelsStr
+        .split(",")
+        .map((s) => parseInt(s.trim()) || 1);
+      const adversaries = advStr
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => {
+          const [n, cr, count] = s.split(":");
+          return {
+            name: n?.trim() || "Adversary",
+            cr: parseInt(cr || "1") || 1,
+            count: parseInt(count || "1") || 1,
+          };
+        });
+
+      try {
+        const resStr = await executeHook(
+          "encounter-builder",
+          "build_encounter",
+          JSON.stringify({ name, partyLevels, adversaries }),
+        );
+        const data = JSON.parse(resStr);
+        alert(
+          `Encounter: ${data.name}\nDifficulty: ${data.difficulty}\nTotal CR: ${data.totalCR}\n\n${data.verdict}\n\nCombatants ready: ${data.combatants.length}`,
+        );
+      } catch (err) {
+        alert("Encounter builder failed: " + err);
+      }
+    },
+    [executeHook],
+  );
+
   return {
     pluginsList,
     loadPlugins,
     executeHook,
     handleRollCharacterSheet,
     handleEvaluateEncounterThreat,
+    handleInitiativeTracker,
+    handleEncounterBuilder,
   };
 }

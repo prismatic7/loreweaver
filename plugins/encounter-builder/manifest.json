@@ -1,0 +1,8 @@
+{
+  "id": "encounter-builder",
+  "name": "Encounter Builder",
+  "version": "1.0.0",
+  "description": "System-agnostic encounter composer: build encounters from adversaries, auto-calc difficulty, and export a combat-ready encounter.",
+  "permissions": ["hooks"],
+  "entry": "index.js"
+}

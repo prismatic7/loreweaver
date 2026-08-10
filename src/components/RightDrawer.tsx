@@ -25,6 +25,8 @@ export interface RightDrawerProps {
   pluginsList: Array<{ id: string; name: string; active?: boolean }>;
   handleRollCharacterSheet: () => void;
   handleEvaluateEncounterThreat: () => void;
+  handleInitiativeTracker: () => void;
+  handleEncounterBuilder: () => void;
   // AI tab
   currentChatMessages: Array<{ role: "user" | "assistant"; text: string; imageUrl?: string }>;
   chatInput: string;
@@ -254,6 +256,8 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
   pluginsList,
   handleRollCharacterSheet,
   handleEvaluateEncounterThreat,
+  handleInitiativeTracker,
+  handleEncounterBuilder,
 }) => (
   <div
     style={{
@@ -307,6 +311,8 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
       pluginsList={pluginsList}
       handleRollCharacterSheet={handleRollCharacterSheet}
       handleEvaluateEncounterThreat={handleEvaluateEncounterThreat}
+      handleInitiativeTracker={handleInitiativeTracker}
+      handleEncounterBuilder={handleEncounterBuilder}
     />
   </div>
 );
@@ -411,8 +417,16 @@ const PluginButtons: React.FC<
     | "pluginsList"
     | "handleRollCharacterSheet"
     | "handleEvaluateEncounterThreat"
+    | "handleInitiativeTracker"
+    | "handleEncounterBuilder"
   >
-> = ({ pluginsList, handleRollCharacterSheet, handleEvaluateEncounterThreat }) => (
+> = ({
+  pluginsList,
+  handleRollCharacterSheet,
+  handleEvaluateEncounterThreat,
+  handleInitiativeTracker,
+  handleEncounterBuilder,
+}) => (
   <div
     style={{
       borderTop: "1px solid var(--border)",
@@ -470,6 +484,44 @@ const PluginButtons: React.FC<
                 data-od-id="plugin-evaluate-threat"
               >
                 Evaluate Threat
+              </button>
+            );
+          }
+          if (plugin.id === "initiative-tracker" && plugin.active) {
+            return (
+              <button
+                key={plugin.id}
+                className="btn btn-sm"
+                style={{
+                  width: "100%",
+                  padding: "6px",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                }}
+                onClick={handleInitiativeTracker}
+                type="button"
+                data-od-id="plugin-initiative-tracker"
+              >
+                ⚔️ Initiative Tracker
+              </button>
+            );
+          }
+          if (plugin.id === "encounter-builder" && plugin.active) {
+            return (
+              <button
+                key={plugin.id}
+                className="btn btn-sm"
+                style={{
+                  width: "100%",
+                  padding: "6px",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                }}
+                onClick={handleEncounterBuilder}
+                type="button"
+                data-od-id="plugin-encounter-builder"
+              >
+                🗺️ Encounter Builder
               </button>
             );
           }

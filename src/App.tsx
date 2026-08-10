@@ -132,8 +132,13 @@ function App() {
     ttsProvider,
     ttsApiKey,
   } = useSettings();
-  const { pluginsList, handleRollCharacterSheet, handleEvaluateEncounterThreat } =
-    usePlugins(vaultPath);
+  const {
+    pluginsList,
+    handleRollCharacterSheet,
+    handleEvaluateEncounterThreat,
+    handleInitiativeTracker,
+    handleEncounterBuilder,
+  } = usePlugins(vaultPath);
 
   const {
     confirmDialog,
@@ -340,6 +345,8 @@ function App() {
     alert,
     handleRollCharacterSheet,
     handleEvaluateEncounterThreat,
+    handleInitiativeTracker,
+    handleEncounterBuilder,
   });
 
   return (
@@ -386,6 +393,8 @@ function App() {
             pluginsList={pluginsList}
             handleRollCharacterSheet={vaultActions.handleRollCharacterSheetCb}
             handleEvaluateEncounterThreat={vaultActions.handleEvaluateEncounterThreatCb}
+            handleInitiativeTracker={vaultActions.handleInitiativeTrackerCb}
+            handleEncounterBuilder={vaultActions.handleEncounterBuilderCb}
             currentChatMessages={agent.currentChatMessages}
             chatInput={agent.chatInput}
             setChatInput={agent.setChatInput}
