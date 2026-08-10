@@ -125,6 +125,55 @@ pub struct PluginInfo {
     pub active: bool,
 }
 
+/// A single note-type registry entry declared by a world's manifest.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct NoteType {
+    pub id: String,
+    pub label: String,
+    pub color: String,
+}
+
+/// A single provenance-taxonomy entry declared by a world's manifest.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct ProvenanceType {
+    pub id: String,
+    pub label: String,
+}
+
+/// Per-world theme overrides layered on top of the global Ledger tokens.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct WorldTheme {
+    pub palette: Option<String>,
+    pub accent: Option<String>,
+    pub serif: Option<bool>,
+}
+
+/// The world object's manifest (`world.json`). Declares a world's identity,
+/// theme, note-type registry, provenance taxonomy, and bible conditioning flag.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct WorldManifest {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub theme: WorldTheme,
+    pub note_types: Vec<NoteType>,
+    pub provenance_taxonomy: Vec<ProvenanceType>,
+    pub bible: bool,
+    pub created: String,
+}
+
+/// Lightweight identity for the World Shelf (switcher) UI.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct WorldInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub path: String,
+    pub last_opened: Option<String>,
+}
+
 /// Export TypeScript bindings for all command input/output types.
 pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
     tauri_specta::Builder::<tauri::Wry>::new()
@@ -139,6 +188,11 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<TemplateProperty>()
         .typ::<TemplateAction>()
         .typ::<PluginInfo>()
+        .typ::<NoteType>()
+        .typ::<ProvenanceType>()
+        .typ::<WorldTheme>()
+        .typ::<WorldManifest>()
+        .typ::<WorldInfo>()
         .dangerously_cast_bigints_to_number()
         .export(specta_typescript::Typescript::default(), path)
         .expect("Failed to export bindings");

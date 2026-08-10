@@ -45,6 +45,7 @@ use tauri::{async_runtime, Manager, State};
 use tokio::sync::Mutex as TokioMutex;
 
 pub mod agent;
+mod bundles;
 mod db;
 mod ingest;
 mod pdf;
@@ -53,6 +54,7 @@ pub mod providers;
 mod search;
 mod watcher;
 mod webclip;
+mod worlds;
 
 // --- App State ---
 
@@ -1185,6 +1187,7 @@ async fn capture_note(
     source_title: Option<&str>,
     source_author: Option<&str>,
     source_url: Option<&str>,
+    target: Option<&str>,
 ) -> Result<String, String> {
     let clean_title = title.trim();
     if clean_title.is_empty() {
@@ -1201,8 +1204,6 @@ async fn capture_note(
         slug
     };
     let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-    let rel_path = format!("Captures/{}-{}.md", slug, timestamp);
-    let full_path = validate_safe_path(&vault_path, &rel_path)?;
 
     // Assemble frontmatter: type + provenance keys.
     let mut frontmatter = HashMap::new();
@@ -1236,6 +1237,21 @@ async fn capture_note(
         Value::String(chrono::Utc::now().format("%Y-%m-%d").to_string()),
     );
 
+    // Liminal capture: write to campaigns_root/_liminal/Captures/, do NOT
+    // upsert into the active world's DB.
+    if target == Some("liminal") {
+        let liminal_dir = state.campaigns_root.join("_liminal").join("Captures");
+        std::fs::create_dir_all(&liminal_dir).map_err(|e| e.to_string())?;
+        let rel_path = format!("{}-{}.md", slug, timestamp);
+        let full_path = liminal_dir.join(&rel_path);
+        write_note_to_disk(&full_path, content, &frontmatter)?;
+        return Ok(rel_path);
+    }
+
+    // Default: active vault Captures/ + DB upsert + vector index.
+    let rel_path = format!("Captures/{}-{}.md", slug, timestamp);
+    let full_path = validate_safe_path(&vault_path, &rel_path)?;
+
     // Write to disk (creates the Captures/ folder as needed).
     write_note_to_disk(&full_path, content, &frontmatter)?;
 
@@ -1250,6 +1266,193 @@ async fn capture_note(
     search::invalidate_cache();
 
     Ok(note_id)
+}
+
+/// Returns the active world's manifest, generating a default one if missing.
+#[tauri::command]
+async fn get_world_manifest(state: State<'_, AppState>) -> Result<WorldManifest, String> {
+    let vault_path = state.vault_path.lock().await;
+    worlds::ensure_manifest(&vault_path)
+}
+
+/// Lists all worlds in the campaigns root, excluding the `_liminal` system folder.
+#[tauri::command]
+async fn list_worlds(state: State<'_, AppState>) -> Result<Vec<WorldInfo>, String> {
+    let campaigns_root = &state.campaigns_root;
+    if !campaigns_root.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut worlds = Vec::new();
+    for entry in std::fs::read_dir(campaigns_root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let folder_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if folder_name == "_liminal" {
+            continue;
+        }
+
+        let manifest = worlds::load_manifest(path.to_str().unwrap()).unwrap_or_else(|_| {
+            worlds::default_manifest(&folder_name)
+        });
+
+        // last_opened marker file inside the world folder, if present.
+        let last_opened = std::fs::read_to_string(path.join("last_opened"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        worlds.push(WorldInfo {
+            id: manifest.id,
+            name: manifest.name,
+            description: manifest.description,
+            icon: manifest.icon,
+            path: path.to_string_lossy().to_string(),
+            last_opened,
+        });
+    }
+
+    worlds.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(worlds)
+}
+
+/// Creates a new world folder + manifest. If `scaffold_from` is given, mirrors
+/// the source world's directory structure (empty dirs) + a world.json skeleton.
+#[tauri::command]
+async fn create_world(
+    state: State<'_, AppState>,
+    name: &str,
+    scaffold_from: Option<&str>,
+) -> Result<String, String> {
+    let sanitized_name: String = name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
+        .collect();
+    let sanitized_name = sanitized_name.trim();
+    if sanitized_name.is_empty() {
+        return Err("Invalid world name".to_string());
+    }
+
+    let campaigns_root = &state.campaigns_root;
+    let new_world_path = campaigns_root.join(sanitized_name);
+    if new_world_path.exists() {
+        return Err("A world with this name already exists".to_string());
+    }
+
+    bundles::scaffold_world_impl(campaigns_root, sanitized_name, scaffold_from)
+}
+
+/// Exports a world folder to a zip bundle at `dest_path`. Returns `dest_path`.
+#[tauri::command]
+async fn export_world(
+    state: State<'_, AppState>,
+    vault_path: &str,
+    dest_path: &str,
+) -> Result<String, String> {
+    // Validate the source stays within the campaigns root.
+    validate_campaigns_path(&state.campaigns_root, vault_path)?;
+    bundles::export_world_impl(vault_path, dest_path)?;
+    Ok(dest_path.to_string())
+}
+
+/// Imports a world zip bundle into the campaigns root. Returns the new world path.
+#[tauri::command]
+async fn import_world(state: State<'_, AppState>, zip_path: &str) -> Result<String, String> {
+    bundles::import_world_impl(&state.campaigns_root, zip_path)
+}
+
+/// Moves a note from `campaigns_root/_liminal/` into a target world's
+/// `Worldbuilding/` folder. Both paths must stay within the campaigns root.
+#[tauri::command]
+async fn claim_liminal_note(
+    state: State<'_, AppState>,
+    note_path: &str,
+    target_world_path: &str,
+) -> Result<(), String> {
+    let campaigns_root = &state.campaigns_root;
+
+    // Source must be inside _liminal.
+    let source = validate_campaigns_path(campaigns_root, note_path)?;
+    let liminal_dir = campaigns_root.join("_liminal");
+    let canonical_liminal = liminal_dir
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve _liminal directory: {}", e))?;
+    if !source.starts_with(&canonical_liminal) {
+        return Err("Source note is not inside the _liminal directory".to_string());
+    }
+    if !source.is_file() {
+        return Err("Source note is not a file".to_string());
+    }
+
+    // Target must be a world inside the campaigns root.
+    let target = validate_campaigns_path(campaigns_root, target_world_path)?;
+    if !target.is_dir() {
+        return Err("Target world path is not a directory".to_string());
+    }
+
+    let filename = source
+        .file_name()
+        .ok_or("Invalid source filename")?
+        .to_string_lossy()
+        .to_string();
+    let dest_dir = target.join("Worldbuilding");
+    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let dest = dest_dir.join(&filename);
+    std::fs::rename(&source, &dest).map_err(|e| format!("Failed to move note: {}", e))?;
+
+    Ok(())
+}
+
+/// Creates a new world from the liminal captures: creates `campaigns/<name>`
+/// + manifest, moves all `_liminal/Captures/*.md` into it. Returns the new path.
+#[tauri::command]
+async fn make_world_from_liminal(state: State<'_, AppState>, name: &str) -> Result<String, String> {
+    let campaigns_root = &state.campaigns_root;
+    let sanitized_name: String = name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
+        .collect();
+    let sanitized_name = sanitized_name.trim();
+    if sanitized_name.is_empty() {
+        return Err("Invalid world name".to_string());
+    }
+
+    let new_world_path = campaigns_root.join(sanitized_name);
+    if new_world_path.exists() {
+        return Err("A world with this name already exists".to_string());
+    }
+
+    // Create the world skeleton + manifest.
+    bundles::scaffold_world_impl(campaigns_root, sanitized_name, None)?;
+
+    // Move all _liminal/Captures/*.md into the new world's Worldbuilding/.
+    let captures_dir = campaigns_root.join("_liminal").join("Captures");
+    let dest_dir = new_world_path.join("Worldbuilding");
+    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    if captures_dir.is_dir() {
+        for entry in std::fs::read_dir(&captures_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                let filename = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let dest = dest_dir.join(&filename);
+                let _ = std::fs::rename(&path, &dest);
+            }
+        }
+    }
+
+    Ok(new_world_path.to_string_lossy().to_string())
 }
 
 /// Fetches a URL and returns its readable content as clean Markdown.
@@ -1773,6 +1976,15 @@ async fn switch_vault(app: tauri::AppHandle, state: State<'_, AppState>, path: &
         .to_string_lossy()
         .to_string();
 
+    // Ensure the new vault has a world.json manifest (additive, never overwrites).
+    let _ = worlds::ensure_manifest(&new_vault_path_str);
+
+    // Write/update the last_opened marker file inside the new vault folder.
+    let _ = std::fs::write(
+        canonical_target.join("last_opened"),
+        chrono::Utc::now().to_rfc3339(),
+    );
+
     let new_conn = db::init_db(&new_db_path_str).map_err(|e| e.to_string())?;
     db::seed_default_rules(&new_conn).map_err(|e| e.to_string())?;
     let new_conn = Arc::new(Mutex::new(new_conn));
@@ -2232,6 +2444,15 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
 
             let campaigns_root = app_data_dir.join("campaigns");
 
+            // Create the Liminal holding pen (between-worlds attic) and its
+            // Captures inbox. Hidden from the world shelf as a world.
+            let liminal_dir = campaigns_root.join("_liminal");
+            std::fs::create_dir_all(liminal_dir.join("Captures"))
+                .map_err(|e| err(format!("Failed to create _liminal dir: {}", e)))?;
+
+            // Ensure the default vault has a world.json manifest.
+            let _ = worlds::ensure_manifest(&vault_path);
+
             app.manage(AppState {
                 db_path: TokioMutex::new(db_path),
                 vault_path: TokioMutex::new(vault_path),
@@ -2294,7 +2515,14 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             delete_source,
             get_source,
             capture_note,
-            clip_webpage
+            clip_webpage,
+            get_world_manifest,
+            list_worlds,
+            create_world,
+            export_world,
+            import_world,
+            claim_liminal_note,
+            make_world_from_liminal
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -2317,6 +2545,11 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<TemplateProperty>()
         .typ::<TemplateAction>()
         .typ::<PluginInfo>()
+        .typ::<NoteType>()
+        .typ::<ProvenanceType>()
+        .typ::<WorldTheme>()
+        .typ::<WorldManifest>()
+        .typ::<WorldInfo>()
         .dangerously_cast_bigints_to_number()
         .export(specta_typescript::Typescript::default(), path)
         .expect("Failed to export bindings");

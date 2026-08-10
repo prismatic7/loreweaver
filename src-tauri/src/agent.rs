@@ -17,7 +17,13 @@ pub fn build_system_context(
 ) -> Result<SystemContext, String> {
     // 0. Load the campaign bible as a FIXED conditioning block (always-on, not
     //    retrieved-by-similarity). This is the world's voice, tone, and canon.
-    let bible_context = load_bible_context(vault_path);
+    //    Gated on the world manifest's `bible` flag: when a world declares
+    //    `bible: false`, bible conditioning is skipped (empty context).
+    let bible_context = if world_bible_enabled(vault_path) {
+        load_bible_context(vault_path)
+    } else {
+        String::new()
+    };
 
     // 1. Gather Context via Hybrid Search (RAG)
     let context_results = match search::hybrid_query(conn, prompt, "all") {
@@ -84,6 +90,16 @@ pub fn build_system_context(
         system_prompt,
         active_note_context,
     })
+}
+
+/// Returns whether bible conditioning is enabled for the world at `vault_path`.
+///
+/// Reads the world manifest's `bible` flag. Defaults to `true` when the
+/// manifest is missing or unreadable (always-on injection preserved).
+fn world_bible_enabled(vault_path: &str) -> bool {
+    crate::worlds::load_manifest(vault_path)
+        .map(|m| m.bible)
+        .unwrap_or(true)
 }
 
 /// Reads the campaign bible files from `<vault_path>/bible/` and concatenates them
@@ -214,5 +230,34 @@ mod tests {
         assert!(context.contains("[PEOPLE.md]"));
         assert!(!context.contains("[TONE.md]"), "missing file should be skipped");
         assert!(!context.contains("[CONSPIRACY.md]"), "missing file should be skipped");
+    }
+
+    #[test]
+    fn test_bible_gating_disabled_when_manifest_bible_false() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        let bible_dir = vault.join("bible");
+        std::fs::create_dir_all(&bible_dir).unwrap();
+        std::fs::write(bible_dir.join("TONE.md"), "Grim, cosmic horror.").unwrap();
+
+        // No manifest yet → bible enabled by default.
+        assert!(world_bible_enabled(vault.to_str().unwrap()));
+
+        // Write a manifest with bible: false → bible disabled.
+        std::fs::write(
+            vault.join("world.json"),
+            r#"{ "id": "no-bible", "name": "No Bible", "bible": false }"#,
+        )
+        .unwrap();
+        assert!(!world_bible_enabled(vault.to_str().unwrap()));
+
+        // build_system_context must skip bible injection when disabled.
+        let db_path = vault.join("test.db");
+        let conn = crate::db::init_db(db_path.to_str().unwrap()).unwrap();
+        let context = build_system_context(&conn, "hello", None, vault.to_str().unwrap()).unwrap();
+        assert!(
+            !context.system_prompt.contains("CAMPAIGN BIBLE"),
+            "bible should be skipped when manifest bible=false"
+        );
     }
 }

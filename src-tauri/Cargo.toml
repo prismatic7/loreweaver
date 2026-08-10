@@ -60,6 +60,7 @@ reqwest = "0.13.4"
 pdf-inspector = "0.1.7"
 scraper = "0.19"
 html2md = "0.2"
+zip = "2"
 
 [dev-dependencies]
 tempfile = "3.27.0"
