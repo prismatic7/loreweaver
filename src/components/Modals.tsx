@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 export interface ContextMenuItem {
   x: number;
@@ -22,11 +23,18 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  useFocusTrap({ active: open, containerRef });
+
   if (!open) return null;
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
@@ -52,7 +60,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontSize: "14px", lineHeight: 1.5 }}>{message}</div>
+        <div id={titleId} style={{ fontSize: "14px", lineHeight: 1.5 }}>
+          {message}
+        </div>
         <div
           style={{
             display: "flex",
@@ -112,14 +122,10 @@ export const PromptModal: React.FC<PromptModalProps> = ({
   onCancel,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
 
-  useEffect(() => {
-    if (open) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
-    }
-  }, [open]);
+  useFocusTrap({ active: open, containerRef, initialFocusRef: inputRef });
 
   if (!open) return null;
 
@@ -129,8 +135,11 @@ export const PromptModal: React.FC<PromptModalProps> = ({
 
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
@@ -156,7 +165,9 @@ export const PromptModal: React.FC<PromptModalProps> = ({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontSize: "14px", fontWeight: 600 }}>{message}</div>
+        <div id={titleId} style={{ fontSize: "14px", fontWeight: 600 }}>
+          {message}
+        </div>
         <input
           ref={inputRef}
           type="text"
@@ -230,11 +241,18 @@ export const AlertModal: React.FC<AlertModalProps> = ({
   message,
   onClose,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  useFocusTrap({ active: open, containerRef });
+
   if (!open) return null;
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
@@ -260,7 +278,9 @@ export const AlertModal: React.FC<AlertModalProps> = ({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontSize: "14px", lineHeight: 1.5 }}>{message}</div>
+        <div id={titleId} style={{ fontSize: "14px", lineHeight: 1.5 }}>
+          {message}
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
@@ -297,11 +317,18 @@ export const IngestModal: React.FC<IngestModalProps> = ({
   onSelect,
   onCancel,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  useFocusTrap({ active: open, containerRef });
+
   if (!open) return null;
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
@@ -329,6 +356,7 @@ export const IngestModal: React.FC<IngestModalProps> = ({
       >
         <div>
           <div
+            id={titleId}
             style={{
               fontSize: "14px",
               fontWeight: 600,
@@ -447,6 +475,10 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
   const [subcategory, setSubcategory] = useState("General");
   const [customCategory, setCustomCategory] = useState("");
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const titleId = React.useId();
+
   useEffect(() => {
     if (open) {
       setTitle("");
@@ -455,6 +487,8 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
       setCustomCategory("");
     }
   }, [open]);
+
+  useFocusTrap({ active: open, containerRef, initialFocusRef: titleInputRef });
 
   if (!open) return null;
 
@@ -468,8 +502,11 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
 
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
@@ -494,8 +531,11 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ margin: 0, fontSize: 16 }}>Add Custom Rulebook Entry</h3>
+        <h3 id={titleId} style={{ margin: 0, fontSize: 16 }}>
+          Add Custom Rulebook Entry
+        </h3>
         <input
+          ref={titleInputRef}
           placeholder="Rule Title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -601,11 +641,23 @@ export const NewVaultModal: React.FC<NewVaultModalProps> = ({
   onClose,
   currentCanvasFolder,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const titleId = React.useId();
+  useFocusTrap({
+    active: open,
+    containerRef,
+    initialFocusRef: closeButtonRef,
+  });
+
   if (!open) return null;
   return (
     <div
+      ref={containerRef}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       style={{
         position: "fixed",
         inset: 0,
@@ -630,11 +682,13 @@ export const NewVaultModal: React.FC<NewVaultModalProps> = ({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ margin: 0, fontSize: 16 }}>Campaign Vault Settings</h3>
+        <h3 id={titleId} style={{ margin: 0, fontSize: 16 }}>
+          Campaign Vault Settings
+        </h3>
         <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>
           Active Canvas Folder: {currentCanvasFolder || "Root"}
         </p>
-        <button className="btn btn-sm" onClick={onClose}>
+        <button ref={closeButtonRef} className="btn btn-sm" onClick={onClose}>
           Close
         </button>
       </div>
