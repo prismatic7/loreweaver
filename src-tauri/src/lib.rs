@@ -47,6 +47,7 @@ use tokio::sync::Mutex as TokioMutex;
 pub mod agent;
 mod db;
 mod ingest;
+mod pdf;
 mod plugins;
 pub mod providers;
 mod search;
