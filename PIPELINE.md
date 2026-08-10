@@ -7,6 +7,49 @@
 - **Devising:** agy — works with Chris to figure out what he wants
 - **Stagehand:** zero — drudge work nobody else wants
 
+---
+
+# ARC 2 — WORLD OBJECTS (2026-08-10)
+
+Instrument for many worlds. North star: the World Object — a world folder
+with a `world.json` manifest that IS its operating system. Signed-off
+design: `DESIGN_SKETCH_WORLDS.md` (committed `e28607a`).
+
+## Arc 2 phases
+| # | Phase | Harness | Mode | Output | Gate | Status |
+|---|-------|---------|------|--------|------|--------|
+| 0 | Devising | Hermes + Chris | interactive | DESIGN_SKETCH_WORLDS.md | Chris signs off | ✅ |
+| 1 | Build | opencode | autonomous | worlds.rs, registries, theme override, Liminal, bundles, World Shelf | diff vs sketch | ⏳ |
+| 2 | Drudge | zero | autonomous | boilerplate, coverage, docs | diff reviewed | ⬜ |
+| 3 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
+
+## Arc 2 handoff log
+### Phase 0 — devising (2026-08-10)
+- Chris's priority order: **3 (ownership) → 4 (many worlds) → 2 (QoL) → 1
+  (imaginative space)**. Domains 3+4 collapse into one system: the World
+  Object.
+- Six open questions signed off (all recommendations accepted):
+  1. Theme: accent + palette + serif toggle (no full typography yet)
+  2. Migration: auto-generate world.json on first launch
+  3. Liminal: `_liminal` (system-folder signal)
+  4. Bundles: zip for export/import, folder for scaffold
+  5. Registry UI: file-first (edit world.json, hot-reload)
+  6. `speculation` provenance: default for ALL worlds (the Provisional)
+- Code grounding verified: `campaigns/<name>/` + per-world DB spine
+  exists; note types hardcoded (5) + provenance hardcoded (3) + theme
+  global — all become manifest-driven registries; bible conditioning
+  already per-vault.
+- Out of scope this arc: Muse-in-text, auto post-session capture, voice
+  bank UI, versioned history, live STT, graph layout + Thread,
+  era-hopping.
+- **Next: phase 1 build** — worlds.rs manifest loader, note-type registry,
+  provenance override, theme override, `_liminal`, zip bundles, World
+  Shelf UI.
+
+---
+
+# ARC 1 — FATE OF CTHULHU CAMPAIGN FOUNDATION (2026-08-10)
+
 ## Phases
 | # | Phase | Harness | Mode | Output | Gate | Status |
 |---|-------|---------|------|--------|------|--------|
