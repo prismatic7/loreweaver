@@ -963,7 +963,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       {currentNote.title}
                     </div>
                     <div className="doc-meta">
-                      {currentNote.frontmatter.type && (
+                      {Boolean(currentNote.frontmatter.type) && (
                         <span className="doc-meta-tag">
                           {String(currentNote.frontmatter.type).toUpperCase()}
                         </span>
@@ -971,8 +971,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       <span className="doc-meta-tag">
                         {currentNote.path}
                       </span>
-                      {currentNote.frontmatter.tags &&
-                        Array.isArray(currentNote.frontmatter.tags) &&
+                      {Array.isArray(currentNote.frontmatter.tags) &&
                         currentNote.frontmatter.tags.map((t) => (
                           <span key={t} className="doc-meta-tag tag-pill">
                             #{t}
