@@ -75,6 +75,10 @@ export interface RightDrawerProps {
   isGeneratingSpeech: boolean;
   generatedSpeechUrl: string;
   handleGenerateSpeech: () => void;
+  // STT transcription
+  isTranscribing: boolean;
+  transcribedText: string;
+  handleTranscribeAudio: (file: File) => void;
   // Backlinks tab
   backlinks: CampaignNote[];
   setSelectedNoteId: (id: string) => void;
@@ -1090,6 +1094,9 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
   isGeneratingSpeech,
   generatedSpeechUrl,
   handleGenerateSpeech,
+  isTranscribing,
+  transcribedText,
+  handleTranscribeAudio,
 }) => (
   <div
     style={{
@@ -1125,7 +1132,7 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
     <div style={{ fontSize: "10px", color: "var(--muted)" }}>
       Provider: {ttsProvider}
       {ttsProvider === "local" &&
-        " (not implemented — configure OpenAI or ElevenLabs in Settings)"}
+        " (uses espeak-ng if installed — otherwise configure OpenAI or ElevenLabs)"}
     </div>
       <button
         className="btn btn-sm btn-primary"
@@ -1154,6 +1161,58 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
         <audio src={generatedSpeechUrl} controls style={{ width: "100%" }} />
       </div>
     )}
+
+    <div
+      style={{
+        borderTop: "1px solid var(--border)",
+        paddingTop: "12px",
+        marginTop: "4px",
+      }}
+    >
+      <span
+        className="panel-title"
+        style={{ marginBottom: 0, fontSize: "14px", fontWeight: 600 }}
+      >
+        Speech-to-Text
+      </span>
+      <input
+        type="file"
+        accept="audio/*"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleTranscribeAudio(file);
+          e.target.value = "";
+        }}
+        style={{
+          width: "100%",
+          marginTop: "8px",
+          fontSize: "11px",
+          color: "var(--fg)",
+        }}
+        data-od-id="transcribe-audio-input"
+      />
+      {isTranscribing && (
+        <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "6px" }}>
+          Transcribing...
+        </div>
+      )}
+      {transcribedText && (
+        <div
+          style={{
+            marginTop: "8px",
+            padding: "8px",
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "6px",
+            fontSize: "12px",
+            color: "var(--fg)",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {transcribedText}
+        </div>
+      )}
+    </div>
   </div>
 );
 

@@ -146,6 +146,8 @@ export function useSettings() {
   const imageBaseUrl = watch("image_base_url");
   const ttsProvider = watch("tts_provider");
   const ttsApiKey = watch("tts_api_key");
+  const sttProvider = watch("stt_provider");
+  const sttApiKey = watch("stt_api_key");
 
   return {
     theme,
@@ -172,5 +174,7 @@ export function useSettings() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    sttProvider,
+    sttApiKey,
   };
 }

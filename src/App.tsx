@@ -134,6 +134,8 @@ function App() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    sttProvider,
+    sttApiKey,
   } = useSettings();
   const {
     pluginsList,
@@ -328,6 +330,8 @@ function App() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    sttProvider,
+    sttApiKey,
   });
 
   const vaultActions = useVaultActions({
@@ -439,6 +443,9 @@ function App() {
             isGeneratingSpeech={sessionTools.isGeneratingSpeech}
             generatedSpeechUrl={sessionTools.generatedSpeechUrl}
             handleGenerateSpeech={sessionTools.handleGenerateSpeech}
+            isTranscribing={sessionTools.isTranscribing}
+            transcribedText={sessionTools.transcribedText}
+            handleTranscribeAudio={sessionTools.handleTranscribeAudio}
             backlinks={backlinks}
             setSelectedNoteId={setSelectedNoteId}
           />

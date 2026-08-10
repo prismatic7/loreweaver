@@ -11,6 +11,8 @@ interface SessionToolsDeps {
   imageBaseUrl: string;
   ttsProvider: string;
   ttsApiKey: string;
+  sttProvider: string;
+  sttApiKey: string;
 }
 
 export const useSessionTools = (deps: SessionToolsDeps) => {
@@ -23,6 +25,8 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    sttProvider,
+    sttApiKey,
   } = deps;
 
   const [scratchpadText, setScratchpadText] = useState(() => {
@@ -123,6 +127,38 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
       });
   };
 
+  // --- P12: STT transcription ---
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribedText, setTranscribedText] = useState("");
+
+  const handleTranscribeAudio = (file: File) => {
+    if (!file || isTranscribing) return;
+    setIsTranscribing(true);
+    setTranscribedText("");
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) {
+        setIsTranscribing(false);
+        return;
+      }
+      const base64Data = dataUrl.split(",")[1] || "";
+      try {
+        const text = await invoke<string>("transcribe_speech", {
+          audioBase64: base64Data,
+          provider: sttProvider,
+          apiKey: sttApiKey || null,
+        });
+        setTranscribedText(text);
+      } catch (err) {
+        alert("Transcription failed: " + err);
+      } finally {
+        setIsTranscribing(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return {
     scratchpadText,
     setScratchpadText,
@@ -143,5 +179,8 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     isGeneratingSpeech,
     generatedSpeechUrl,
     handleGenerateSpeech,
+    isTranscribing,
+    transcribedText,
+    handleTranscribeAudio,
   };
 };
