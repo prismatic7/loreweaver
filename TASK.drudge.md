@@ -25,17 +25,15 @@ review gate caught it; this phase fixes it.
 ## Scope
 
 ### 1. Dep alignment fix (GATE — do this FIRST, nothing else until it's green)
-- Make `npm run test` pass. Minimal change preferred:
-  - Pin react + react-dom to 19.1.x exact (matches @testing-library/react
-    16.3.2's act-compat), OR
-  - Upgrade @testing-library/react to a release compatible with react
-    19.2.x, if one exists and the upgrade is clean
-- Update package.json + package-lock.json; commit both
+- Make `npm run test` pass. **DECIDED (Chris): pin react + react-dom to
+  exact 19.1.9** (latest 19.1.x patch, matches @testing-library/react
+  16.3.2's act-compat). No upgrade path, no OR — this is the decision.
+- Update package.json (react: "19.1.9", react-dom: "19.1.9" — exact, no
+  caret) + package-lock.json; commit both
 - Verify with a clean install (`rm -rf node_modules && npm install`) so the
   lockfile is consistent, then `npm run test` green
-- If the fix requires a real design decision (upgrade breaks other tests,
-  pin conflicts with another dep), STOP and flag it in Status — do not
-  improvise a workaround
+- If the pin conflicts with another dep (peer-dependency error), STOP and
+  flag it in Status — do not improvise a workaround
 
 ### 2. Coverage for phase 2 features
 - Rust: webclip.rs has no tests. Add unit tests for the non-network error
