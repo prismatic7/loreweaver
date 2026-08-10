@@ -20,6 +20,7 @@ export type AppSettings = {
 	tts_voice: string,
 	stt_provider: string,
 	stt_api_key: string,
+	allow_local_providers: boolean,
 };
 
 export type CampaignNote = {
@@ -30,21 +31,17 @@ export type CampaignNote = {
 	content: string,
 };
 
-/**  Represents metadata and script content for a loaded plugin. */
+/**
+ *  PluginInfo mirrors the runtime type in `plugins.rs` so it can be exported to TypeScript.
+ *  It is kept minimal because Specta only needs the public shape.
+ */
 export type PluginInfo = {
-	/**  Unique identifier for the plugin (e.g. `"dice-roller"`). */
 	id: string,
-	/**  Human-readable display name. */
 	name: string,
-	/**  Semantic version string. */
 	version: string,
-	/**  Short description of plugin features. */
 	description: string,
-	/**  Explicit permission requests declared in `manifest.json`. */
 	permissions: string[],
-	/**  Raw JavaScript code loaded from the entry file (e.g. `index.js`). */
 	script_content: string,
-	/**  Flag indicating whether the plugin is enabled for execution. */
 	active: boolean,
 };
 

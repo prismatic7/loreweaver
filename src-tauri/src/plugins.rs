@@ -24,6 +24,7 @@ use boa_engine::{
     value::JsValue,
     Context, Source,
 };
+use crate::PluginInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -31,24 +32,7 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 
-/// Represents metadata and script content for a loaded plugin.
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct PluginInfo {
-    /// Unique identifier for the plugin (e.g. `"dice-roller"`).
-    pub id: String,
-    /// Human-readable display name.
-    pub name: String,
-    /// Semantic version string.
-    pub version: String,
-    /// Short description of plugin features.
-    pub description: String,
-    /// Explicit permission requests declared in `manifest.json`.
-    pub permissions: Vec<String>,
-    /// Raw JavaScript code loaded from the entry file (e.g. `index.js`).
-    pub script_content: String,
-    /// Flag indicating whether the plugin is enabled for execution.
-    pub active: bool,
-}
+
 
 /// Validates requested permissions against the host's strict allow-list.
 ///

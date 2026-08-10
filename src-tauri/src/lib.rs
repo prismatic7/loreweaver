@@ -91,92 +91,9 @@ pub struct AppState {
     pub shutdown: TokioMutex<Arc<AtomicBool>>,
 }
 
-// --- Data Structures ---
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct CampaignNote {
-    pub id: String,
-    pub title: String,
-    pub path: String,
-    #[specta(type = HashMap<String, specta_typescript::Unknown>)]
-    pub frontmatter: HashMap<String, Value>,
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct RuleEntry {
-    pub id: String,
-    pub path: String,
-    pub title: String,
-    pub category: String,
-    pub source: String,
-    pub content: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct SearchResult {
-    pub r#type: String, // "note" | "rule"
-    pub title: String,
-    pub snippet: String,
-    pub score: f32,
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct AppSettings {
-    pub llm_provider: String,
-    pub llm_model: String,
-    pub llm_api_key: String,
-    pub llm_base_url: String,
-
-    pub embed_provider: String,
-    pub embed_model: String,
-    pub embed_api_key: String,
-    pub embed_base_url: String,
-
-    pub image_provider: String,
-    pub image_model: String,
-    pub image_api_key: String,
-    pub image_base_url: String,
-
-    pub tts_provider: String,
-    pub tts_api_key: String,
-    pub tts_voice: String,
-
-    pub stt_provider: String,
-    pub stt_api_key: String,
-
-    pub allow_local_providers: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct TemplateProperty {
-    pub r#type: String,
-    #[specta(type = specta_typescript::Unknown)]
-    pub default: Value,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct TemplateAction {
-    pub label: String,
-    pub hook: String,
-    pub plugin: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, specta::Type)]
-pub struct TemplateEntry {
-    pub name: String,
-    pub properties: std::collections::HashMap<String, TemplateProperty>,
-    pub actions: Vec<TemplateAction>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default, specta::Type)]
-pub struct VaultSettings {
-    pub name: Option<String>,
-    pub campaign_system: Option<String>,
-    pub description: Option<String>,
-    pub tag_colors: Option<HashMap<String, String>>,
-}
+// Shared command input/output data shapes. Included here and by build.rs for Specta export.
+mod export_types;
+pub use export_types::*;
 
 // --- Tauri Commands ---
 
@@ -1767,7 +1684,7 @@ async fn list_templates(state: State<'_, AppState>) -> Result<Vec<TemplateEntry>
 
 /// Loads all third-party plugins from the configured plugins folder.
 #[tauri::command]
-async fn load_plugins(state: State<'_, AppState>) -> Result<Vec<plugins::PluginInfo>, String> {
+async fn load_plugins(state: State<'_, AppState>) -> Result<Vec<PluginInfo>, String> {
     let plugins_path = state.plugins_path.lock().await;
     let vault_path = state.vault_path.lock().await;
     plugins::load_all_plugins(&vault_path, &plugins_path)
@@ -2065,15 +1982,9 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
 
 /// Export TypeScript bindings for all Tauri command input/output types.
 ///
-/// Runs once at application startup via `main.rs` so the React frontend can import strongly-typed
-/// interfaces from `src/bindings.ts`. The output path is anchored to `CARGO_MANIFEST_DIR`
-/// so it is correct regardless of the working directory at runtime.
-#[cfg(not(test))]
-pub fn export_bindings() {
-    let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("src")
-        .join("bindings.ts");
+/// Called from `build.rs` at compile time so the React frontend can import strongly-typed
+/// interfaces from `src/bindings.ts`.
+pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
     tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<CampaignNote>()
         .typ::<RuleEntry>()
@@ -2083,9 +1994,9 @@ pub fn export_bindings() {
         .typ::<TemplateEntry>()
         .typ::<TemplateProperty>()
         .typ::<TemplateAction>()
-        .typ::<plugins::PluginInfo>()
+        .typ::<PluginInfo>()
         .dangerously_cast_bigints_to_number()
-        .export(specta_typescript::Typescript::default(), bindings_path)
+        .export(specta_typescript::Typescript::default(), path)
         .expect("Failed to export bindings");
 }
 
