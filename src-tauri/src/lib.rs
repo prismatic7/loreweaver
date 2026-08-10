@@ -1372,9 +1372,11 @@ async fn import_world(state: State<'_, AppState>, zip_path: &str) -> Result<Stri
 /// pen. Read-only: returns lightweight `CampaignNote` entries (id = relative
 /// path, title from frontmatter/H1/filename, content preview) so the Liminal
 /// view can render claim / make-world actions without touching the DB.
-#[tauri::command]
-async fn list_liminal_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
-    let captures_dir = state.campaigns_root.join("_liminal").join("Captures");
+/// Pure listing helper — scans `campaigns_root/_liminal/Captures/*.md` and
+/// returns parsed notes sorted by title. Separated from the Tauri command so
+/// it can be unit-tested without an `AppState`.
+fn list_liminal_notes_impl(campaigns_root: &std::path::Path) -> Result<Vec<CampaignNote>, String> {
+    let captures_dir = campaigns_root.join("_liminal").join("Captures");
     if !captures_dir.is_dir() {
         return Ok(Vec::new());
     }
@@ -1387,7 +1389,7 @@ async fn list_liminal_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNo
             continue;
         }
         let rel = path
-            .strip_prefix(&state.campaigns_root)
+            .strip_prefix(campaigns_root)
             .unwrap_or(&path)
             .to_string_lossy()
             .to_string();
@@ -1406,6 +1408,11 @@ async fn list_liminal_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNo
 
     notes.sort_by(|a, b| a.title.cmp(&b.title));
     Ok(notes)
+}
+
+#[tauri::command]
+async fn list_liminal_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
+    list_liminal_notes_impl(&state.campaigns_root)
 }
 
 /// Moves a note from `campaigns_root/_liminal/` into a target world's
@@ -2277,6 +2284,7 @@ async fn execute_plugin_hook(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle();
             let err = |msg: String| -> Box<dyn std::error::Error> {
@@ -3165,3 +3173,64 @@ mod template_tests {
     }
 }
 
+
+#[cfg(test)]
+mod liminal_tests {
+    use super::*;
+
+    fn make_campaigns_root() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("liminal_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("_liminal").join("Captures")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_list_liminal_notes_empty_when_no_captures_dir() {
+        let tmp = std::env::temp_dir().join(format!("liminal_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let notes = list_liminal_notes_impl(&tmp).unwrap();
+        assert!(notes.is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_list_liminal_notes_parses_captures_sorted_by_title() {
+        let root = make_campaigns_root();
+        std::fs::write(
+            root.join("_liminal/Captures/Beta idea.md"),
+            "---\ntype: Capture\n---\n# Beta idea\ncontent b",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("_liminal/Captures/Alpha idea.md"),
+            "---\ntype: Capture\n---\n# Alpha idea\ncontent a",
+        )
+        .unwrap();
+
+        let notes = list_liminal_notes_impl(&root).unwrap();
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0].title, "Alpha idea");
+        assert_eq!(notes[1].title, "Beta idea");
+        assert_eq!(notes[0].path, "_liminal/Captures/Alpha idea.md");
+        assert!(notes[0].content.contains("content a"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_list_liminal_notes_skips_non_markdown() {
+        let root = make_campaigns_root();
+        std::fs::write(root.join("_liminal/Captures/notes.txt"), "plain text").unwrap();
+        std::fs::write(
+            root.join("_liminal/Captures/Real.md"),
+            "---\ntype: Capture\n---\n# Real\nbody",
+        )
+        .unwrap();
+
+        let notes = list_liminal_notes_impl(&root).unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].title, "Real");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
