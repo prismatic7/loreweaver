@@ -1087,6 +1087,99 @@ async fn convert_pdf_to_markdown(base64_pdf: &str) -> Result<String, String> {
     run_blocking(move || pdf::pdf_bytes_to_markdown(&bytes)).await
 }
 
+/// Saves a persistent session memory fact for the active vault.
+#[tauri::command]
+async fn save_session_memory(
+    state: State<'_, AppState>,
+    fact: &str,
+    category: &str,
+) -> Result<String, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::insert_session_memory(&conn, fact, category).map_err(|e| e.to_string())
+}
+
+/// Lists all session memory facts for the active vault, newest first.
+#[tauri::command]
+async fn list_session_memory(
+    state: State<'_, AppState>,
+) -> Result<Vec<(String, String, String, i64)>, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::list_session_memory(&conn).map_err(|e| e.to_string())
+}
+
+/// Deletes a session memory fact by id.
+#[tauri::command]
+async fn delete_session_memory(state: State<'_, AppState>, id: &str) -> Result<(), String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::delete_session_memory(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Generates a structured session summary from the current chat messages.
+///
+/// Takes the chat transcript as JSON, calls the configured LLM to produce a
+/// recap (what happened, decisions, open threads), and returns Markdown.
+#[tauri::command]
+async fn summarize_session(
+    state: State<'_, AppState>,
+    messages_json: &str,
+    provider: &str,
+    model: &str,
+    api_key: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<String, String> {
+    let allow_local;
+    {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        allow_local = db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+    }
+
+    if let Some(base) = base_url {
+        validate_provider_url(base, allow_local)?;
+    }
+
+    let prompt = format!(
+        "You are a session recorder for a tabletop RPG campaign. \
+        Given the following chat transcript between a Game Master and the Campaign Architect, \
+        produce a concise structured session summary in Markdown with these sections:\n\
+        ## What Happened\n## Decisions Made\n## Open Threads / Follow-ups\n\n\
+        Be specific and factual. Do not add conversational filler.\n\n\
+        --- TRANSCRIPT ---\n{}\n------------------",
+        messages_json
+    );
+
+    let prompt_owned = prompt.to_string();
+    let provider_owned = provider.to_string();
+    let model_owned = model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    run_blocking(move || {
+        let system_context = crate::providers::llm::SystemContext {
+            system_prompt: "You are a concise, factual RPG session recorder.".to_string(),
+            active_note_context: String::new(),
+        };
+        crate::providers::llm::generate_response(
+            &system_context,
+            &prompt_owned,
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            allow_local,
+            &crate::providers::http_client(),
+        )
+    })
+    .await
+}
+
 /// Runs a blocking synchronous computation on Tauri's blocking thread pool.
 ///
 /// This keeps long-running HTTP or CPU-bound work out of the async runtime,
@@ -2020,7 +2113,11 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             save_canvas_file,
             list_templates,
             reindex_vault,
-            convert_pdf_to_markdown
+            convert_pdf_to_markdown,
+            save_session_memory,
+            list_session_memory,
+            delete_session_memory,
+            summarize_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

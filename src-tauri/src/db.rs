@@ -130,6 +130,20 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
+    // 7b. Session Memory Table:
+    // Stores persistent campaign facts (NPCs, decisions, plot threads) that the
+    // Campaign Architect retrieves across chat turns. Scoped per-vault because
+    // the DB is re-initialized on vault switch.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS session_memory (
+            id TEXT PRIMARY KEY,
+            fact TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'general',
+            created_at INTEGER NOT NULL
+        );",
+        [],
+    )?;
+
     // 8. FTS5 Virtual Tables for Full-Text Search:
     // High-performance SQLite FTS5 index structures for fast full-text keyword matching and BM25 ranking.
     let _ = conn.execute(
@@ -486,6 +500,47 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
         "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?1, ?2);",
         params![key, value],
     )?;
+    Ok(())
+}
+
+/// Inserts a new session memory fact.
+pub fn insert_session_memory(
+    conn: &Connection,
+    fact: &str,
+    category: &str,
+) -> Result<String> {
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO session_memory (id, fact, category, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![id, fact, category, now],
+    )?;
+    Ok(id)
+}
+
+/// Returns all session memory facts, newest first.
+pub fn list_session_memory(conn: &Connection) -> Result<Vec<(String, String, String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, fact, category, created_at FROM session_memory ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
+    })?;
+    let mut facts = Vec::new();
+    for r in rows {
+        facts.push(r?);
+    }
+    Ok(facts)
+}
+
+/// Deletes a session memory fact by id.
+pub fn delete_session_memory(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM session_memory WHERE id = ?1", params![id])?;
     Ok(())
 }
 

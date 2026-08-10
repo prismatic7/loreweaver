@@ -49,14 +49,29 @@ pub fn build_system_context(
         }
     }
 
+    // 2b. Fetch persistent session memory facts (vault-scoped).
+    let mut memory_context = String::new();
+    if let Ok(facts) = crate::db::list_session_memory(conn) {
+        if !facts.is_empty() {
+            let mut lines = Vec::new();
+            for (id, fact, category, _ts) in facts.iter().take(20) {
+                lines.push(format!("- [{}] {} (id: {})", category, fact, id));
+            }
+            memory_context = format!(
+                "\n--- PERSISTENT CAMPAIGN MEMORY (facts you have learned) ---\n{}\n--------------------------------------------------\n",
+                lines.join("\n")
+            );
+        }
+    }
+
     // 3. Assemble System Prompt
     let system_prompt = format!(
         "You are an expert RPG Campaign Architect and Game Master assistant. \
         Help the user run, develop, and balance their campaign. \
         Answer questions regarding rules and lore accurately based on the campaign materials provided below.\n\n\
-        --- RULES & LORE CONTEXT ---\n{}\n{}\n----------------------------\n\n\
+        --- RULES & LORE CONTEXT ---\n{}\n{}\n{}\n----------------------------\n\n\
         Respond in clean Markdown. Be creative and detail-oriented.",
-        context_text, active_note_context
+        context_text, active_note_context, memory_context
     );
 
     Ok(SystemContext {
