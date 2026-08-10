@@ -246,13 +246,26 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                     }}
                     className="folder-item-header"
                   >
-                    <div
+                    <button
                       onClick={() =>
                         setCollapsedFolders((prev) => ({
                           ...prev,
                           [folderName]: !isCollapsed,
                         }))
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setCollapsedFolders((prev) => ({
+                            ...prev,
+                            [folderName]: !isCollapsed,
+                          }));
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!isCollapsed}
+                      aria-label={`Toggle ${folderName} folder`}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -265,6 +278,10 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                         userSelect: "none",
                         flex: 1,
                         overflow: "hidden",
+                        background: "transparent",
+                        border: "none",
+                        textAlign: "left",
+                        fontFamily: "var(--font-body)",
                       }}
                     >
                       <ChevronRight
@@ -289,7 +306,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       >
                         {folderName}
                       </span>
-                    </div>
+                    </button>
 
                     {/* Plus dropdown button */}
                     <div style={{ position: "relative" }}>

@@ -669,6 +669,16 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     onSelectCanvas(note.path);
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (isCanvas && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSelectCanvas(note.path);
+                  }
+                }}
+                role={isCanvas ? "button" : undefined}
+                tabIndex={isCanvas ? 0 : undefined}
+                aria-label={isCanvas ? `Open canvas ${note.title}` : undefined}
                 style={{
                   position: "absolute",
                   left: nodePos.x,

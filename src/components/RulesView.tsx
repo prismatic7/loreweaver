@@ -192,13 +192,26 @@ export const RulesView: React.FC<RulesViewProps> = ({
                     }}
                     className="folder-item-header"
                   >
-                    <div
+                    <button
                       onClick={() =>
                         setCollapsedFolders((prev) => ({
                           ...prev,
                           [`rule-folder-${folderName}`]: !isCollapsed,
                         }))
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setCollapsedFolders((prev) => ({
+                            ...prev,
+                            [`rule-folder-${folderName}`]: !isCollapsed,
+                          }));
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={!isCollapsed}
+                      aria-label={`Toggle ${folderName} folder`}
                       style={{
                         display: "flex",
                         alignItems: "center",
@@ -211,6 +224,10 @@ export const RulesView: React.FC<RulesViewProps> = ({
                         userSelect: "none",
                         flex: 1,
                         overflow: "hidden",
+                        background: "transparent",
+                        border: "none",
+                        textAlign: "left",
+                        fontFamily: "var(--font-body)",
                       }}
                     >
                       <ChevronRight
@@ -233,7 +250,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       >
                         {folderName}
                       </span>
-                    </div>
+                    </button>
 
                     {/* Plus button for folder actions */}
                     <div style={{ position: "relative" }}>
@@ -325,10 +342,19 @@ export const RulesView: React.FC<RulesViewProps> = ({
           )}
 
 
-          <div
+          <button
             onClick={() =>
               document.getElementById("srd-file-input")?.click()
             }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                document.getElementById("srd-file-input")?.click();
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label="Import Markdown or PDF rulebook file"
             style={{
               marginTop: "20px",
               padding: "16px",
@@ -337,6 +363,9 @@ export const RulesView: React.FC<RulesViewProps> = ({
               textAlign: "center",
               cursor: "pointer",
               background: "var(--bg)",
+              width: "100%",
+              fontFamily: "var(--font-body)",
+              color: "var(--fg)",
             }}
           >
             <FileText
@@ -358,7 +387,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
             >
               Click to select .md, .txt, or .pdf rulebook file
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Right Document Sheet View & Editor Area */}
