@@ -37,6 +37,7 @@ export interface RightDrawerProps {
   chatInput: string;
   setChatInput: (value: string) => void;
   handleSendChatMessage: () => void;
+  renderMarkdown: (markdown: string) => React.ReactNode;
   vaultPath: string;
   resetCurrentVaultSession: () => void;
   exportCurrentVaultSession: () => void;
@@ -837,6 +838,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
   chatInput,
   setChatInput,
   handleSendChatMessage,
+  renderMarkdown,
   vaultPath,
   resetCurrentVaultSession,
   exportCurrentVaultSession,
@@ -1141,7 +1143,11 @@ const AiTab: React.FC<RightDrawerProps> = ({
           className={`chat-bubble ${msg.role}`}
           style={{ fontSize: "12px", padding: "8px 12px" }}
         >
-          {msg.text}
+          {msg.role === "assistant" ? (
+            <div className="chat-markdown">{renderMarkdown(msg.text)}</div>
+          ) : (
+            <div style={{ whiteSpace: "pre-wrap" }}>{msg.text}</div>
+          )}
           {msg.imageUrl && (
             <img
               src={msg.imageUrl}

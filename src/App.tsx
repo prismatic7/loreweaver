@@ -543,6 +543,7 @@ function App() {
             chatInput={agent.chatInput}
             setChatInput={agent.setChatInput}
             handleSendChatMessage={agent.handleSendChatMessage}
+            renderMarkdown={renderMarkdown}
             vaultPath={vaultPath}
             resetCurrentVaultSession={agent.resetCurrentVaultSession}
             exportCurrentVaultSession={() => agent.exportCurrentVaultSession(getVaultLabel)}

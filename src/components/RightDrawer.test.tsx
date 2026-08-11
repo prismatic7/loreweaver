@@ -29,6 +29,9 @@ function makeProps(overrides: Partial<RightDrawerProps> = {}): RightDrawerProps 
     chatInput: "",
     setChatInput: vi.fn(),
     handleSendChatMessage: vi.fn(),
+    renderMarkdown: vi.fn((md: string) => (
+      <div data-testid="rendered-md">{md}</div>
+    )),
     vaultPath: "/vault",
     resetCurrentVaultSession: vi.fn(),
     exportCurrentVaultSession: vi.fn(),
@@ -131,5 +134,41 @@ describe("Capture Inbox", () => {
     expect(screen.getByText("The Call of Cthulhu")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save clip as note" }));
     expect(handleSaveClipAsNote).toHaveBeenCalled();
+  });
+});
+
+describe("Architect chat markdown", () => {
+  it("renders assistant messages through renderMarkdown", () => {
+    const renderMarkdown = vi.fn((md: string) => (
+      <div data-testid="rendered-md">{md}</div>
+    ));
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "ai",
+          currentChatMessages: [
+            { role: "assistant", text: "**bold** and `code`" },
+          ],
+          renderMarkdown,
+        })}
+      />,
+    );
+    expect(renderMarkdown).toHaveBeenCalledWith("**bold** and `code`");
+    expect(screen.getByTestId("rendered-md")).toBeInTheDocument();
+  });
+
+  it("renders user messages as plain pre-wrapped text", () => {
+    const renderMarkdown = vi.fn();
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "ai",
+          currentChatMessages: [{ role: "user", text: "plain user text" }],
+          renderMarkdown,
+        })}
+      />,
+    );
+    expect(screen.getByText("plain user text")).toBeInTheDocument();
+    expect(renderMarkdown).not.toHaveBeenCalled();
   });
 });
