@@ -48,6 +48,8 @@ interface FolderActionsDeps {
     path?: string;
     isRulebook?: boolean;
   } | null;
+  activeFolderDropdown: string | null;
+  setActiveFolderDropdown: (key: string | null) => void;
 }
 
 export const useFolderActions = (deps: FolderActionsDeps) => {
@@ -76,6 +78,8 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
     confirm,
     pluginsList,
     contextMenu,
+    activeFolderDropdown,
+    setActiveFolderDropdown,
   } = deps;
 
   const [pendingAssetTarget, setPendingAssetTarget] = useState<{
@@ -430,7 +434,13 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
   const renderFolderDropdown = useCallback(
     (folderName: string, isRulebook: boolean = false) => {
       const key = isRulebook ? `rule-folder-${folderName}` : folderName;
-      if (contextMenu?.targetId !== key) return null;
+      const isOpen =
+        activeFolderDropdown === key || contextMenu?.targetId === key;
+      if (!isOpen) return null;
+
+      // Close the "+" dropdown after any action. The right-click path is
+      // closed by the ContextMenu overlay's own onClose.
+      const closeDropdown = () => setActiveFolderDropdown(null);
 
       return (
         <div
@@ -442,7 +452,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
             border: "1px solid var(--border)",
             borderRadius: 0,
             boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            zIndex: 100,
+            zIndex: 1001,
             width: "180px",
             display: "flex",
             flexDirection: "column",
@@ -470,17 +480,26 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
               <DropdownItem
                 label="New Rule Page"
                 icon={<BookOpen size={12} />}
-                onClick={() => handleCreateItemInFolder(folderName, "note", true)}
+                onClick={() => {
+                  closeDropdown();
+                  handleCreateItemInFolder(folderName, "note", true);
+                }}
               />
               <DropdownItem
                 label="New Subfolder"
                 icon={<FolderPlus size={12} />}
-                onClick={() => handleCreateItemInFolder(folderName, "folder", true)}
+                onClick={() => {
+                  closeDropdown();
+                  handleCreateItemInFolder(folderName, "folder", true);
+                }}
               />
               <DropdownItem
                 label="Import MD / PDF"
                 icon={<FileText size={12} />}
-                onClick={() => document.getElementById("srd-file-input")?.click()}
+                onClick={() => {
+                  closeDropdown();
+                  document.getElementById("srd-file-input")?.click();
+                }}
               />
             </>
           ) : (
@@ -488,12 +507,18 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
               <DropdownItem
                 label="New Note"
                 icon={<FileText size={12} />}
-                onClick={() => handleCreateItemInFolder(folderName, "note", false)}
+                onClick={() => {
+                  closeDropdown();
+                  handleCreateItemInFolder(folderName, "note", false);
+                }}
               />
               <DropdownItem
                 label="New Subfolder"
                 icon={<FolderPlus size={12} />}
-                onClick={() => handleCreateItemInFolder(folderName, "folder", false)}
+                onClick={() => {
+                  closeDropdown();
+                  handleCreateItemInFolder(folderName, "folder", false);
+                }}
               />
             </>
           )}
@@ -501,17 +526,26 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
           <DropdownItem
             label="New Canvas Board"
             icon={<Palette size={12} />}
-            onClick={() => handleCreateItemInFolder(folderName, "canvas", isRulebook)}
+            onClick={() => {
+              closeDropdown();
+              handleCreateItemInFolder(folderName, "canvas", isRulebook);
+            }}
           />
           <DropdownItem
             label="Audio Asset"
             icon={<AudioLines size={12} />}
-            onClick={() => handleCreateItemInFolder(folderName, "audio", isRulebook)}
+            onClick={() => {
+              closeDropdown();
+              handleCreateItemInFolder(folderName, "audio", isRulebook);
+            }}
           />
           <DropdownItem
             label="Image Asset"
             icon={<ImageIcon size={12} />}
-            onClick={() => handleCreateItemInFolder(folderName, "image", isRulebook)}
+            onClick={() => {
+              closeDropdown();
+              handleCreateItemInFolder(folderName, "image", isRulebook);
+            }}
           />
 
           <div
@@ -539,7 +573,10 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
                   key={plugin.id}
                   label={plugin.name || plugin.id}
                   icon={<Zap size={12} />}
-                  onClick={() => handleCreatePluginAsset(folderName, plugin, isRulebook)}
+                  onClick={() => {
+                    closeDropdown();
+                    handleCreatePluginAsset(folderName, plugin, isRulebook);
+                  }}
                 />
               ))
             ) : (
@@ -547,16 +584,18 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
                 <DropdownItem
                   label="Stat Block / NPC"
                   icon={<Swords size={12} />}
-                  onClick={() =>
-                    handleCreatePluginAsset(folderName, { id: "statblock-generator", name: "Stat Block / NPC" }, isRulebook)
-                  }
+                  onClick={() => {
+                    closeDropdown();
+                    handleCreatePluginAsset(folderName, { id: "statblock-generator", name: "Stat Block / NPC" }, isRulebook);
+                  }}
                 />
                 <DropdownItem
                   label="Interactive Map"
                   icon={<Map size={12} />}
-                  onClick={() =>
-                    handleCreatePluginAsset(folderName, { id: "campaign-map", name: "Interactive Map" }, isRulebook)
-                  }
+                  onClick={() => {
+                    closeDropdown();
+                    handleCreatePluginAsset(folderName, { id: "campaign-map", name: "Interactive Map" }, isRulebook);
+                  }}
                 />
               </>
             )}
@@ -573,13 +612,16 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
               label="Delete Folder"
               icon={<Trash2 size={12} />}
               danger
-              onClick={() => handleTrashFolder(folderName, isRulebook)}
+              onClick={() => {
+                closeDropdown();
+                handleTrashFolder(folderName, isRulebook);
+              }}
             />
           </div>
         </div>
       );
     },
-    [contextMenu, handleCreateItemInFolder, handleCreatePluginAsset, handleTrashFolder, pluginsList],
+    [contextMenu, activeFolderDropdown, setActiveFolderDropdown, handleCreateItemInFolder, handleCreatePluginAsset, handleTrashFolder, pluginsList],
   );
 
   return {

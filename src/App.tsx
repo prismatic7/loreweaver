@@ -193,6 +193,11 @@ function App() {
     isRulebook?: boolean;
   } | null>(null);
 
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+
+  // Which folder's "+" add-asset dropdown is open (keyed by folder name).
+  const [activeFolderDropdown, setActiveFolderDropdown] = useState<string | null>(null);
+
   const {
     pendingAssetTarget,
     assetFileInputRef,
@@ -225,12 +230,12 @@ function App() {
     confirm,
     pluginsList,
     contextMenu,
+    activeFolderDropdown,
+    setActiveFolderDropdown,
   });
 
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(true);
   const [rightDrawerTab, setRightDrawerTab] = useState<RightDrawerTab>("scratchpad");
-
-  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
   const [showNewVaultModal, setShowNewVaultModal] = useState(false);
@@ -636,8 +641,8 @@ function App() {
           editContent={editContent}
           setEditContent={setEditContent}
           setContextMenu={setContextMenu}
-          activeFolderDropdown={null}
-          setActiveFolderDropdown={() => {}}
+          activeFolderDropdown={activeFolderDropdown}
+          setActiveFolderDropdown={setActiveFolderDropdown}
           renderFolderDropdown={renderFolderDropdown}
           handleNewNote={() => handleNewNote()}
           handleNewFolder={handleNewFolder}
