@@ -1,6 +1,22 @@
 import { invoke } from "@tauri-apps/api/core";
 import React, { useState } from "react";
 import {
+  Brain,
+  FileText,
+  Image as ImageIcon,
+  AudioLines,
+  Mic,
+  Laptop,
+  Cloud,
+  Palette,
+  Settings as SettingsIcon,
+  RefreshCw,
+  Recycle,
+  Plug,
+  XCircle,
+  CheckCircle2,
+} from "lucide-react";
+import {
     FieldErrors,
     UseFormHandleSubmit,
     UseFormRegister,
@@ -403,11 +419,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }}
             >
               {[
-                { id: "llm", name: "Language Model", icon: "🧠" },
-                { id: "embed", name: "Embedding", icon: "📄" },
-                { id: "image", name: "Image Gen", icon: "🖼️" },
-                { id: "tts", name: "Text-to-Speech", icon: "🗣️" },
-                { id: "stt", name: "Speech-to-Text", icon: "🎙️" },
+                { id: "llm", name: "Language Model", icon: <Brain size={12} /> },
+                { id: "embed", name: "Embedding", icon: <FileText size={12} /> },
+                { id: "image", name: "Image Gen", icon: <ImageIcon size={12} /> },
+                { id: "tts", name: "Text-to-Speech", icon: <AudioLines size={12} /> },
+                { id: "stt", name: "Speech-to-Text", icon: <Mic size={12} /> },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -471,13 +487,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               {(activeConfigTab === "llm"
                 ? [
-                    { id: "ollama", name: "Ollama (Local)", logo: "🦙" },
-                    { id: "openai", name: "OpenAI (Cloud)", logo: "🟢" },
-                    { id: "gemini", name: "Google Gemini (Cloud)", logo: "🔵" },
+                    { id: "ollama", name: "Ollama (Local)", logo: <Laptop size={18} /> },
+                    { id: "openai", name: "OpenAI (Cloud)", logo: <Cloud size={18} /> },
+                    { id: "gemini", name: "Google Gemini (Cloud)", logo: <Cloud size={18} /> },
                     {
                       id: "openai-compatible",
                       name: "Custom OpenAI Compatible",
-                      logo: "⚙️",
+                      logo: <SettingsIcon size={18} />,
                     },
                   ]
                 : activeConfigTab === "embed"
@@ -485,14 +501,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {
                         id: "local",
                         name: "Local ONNX (all-MiniLM)",
-                        logo: "💻",
+                        logo: <Laptop size={18} />,
                       },
-                      { id: "ollama", name: "Ollama (Local)", logo: "🦙" },
-                      { id: "openai", name: "OpenAI (Cloud)", logo: "🟢" },
+                      { id: "ollama", name: "Ollama (Local)", logo: <Laptop size={18} /> },
+                      { id: "openai", name: "OpenAI (Cloud)", logo: <Cloud size={18} /> },
                       {
                         id: "gemini",
                         name: "Google Gemini (Cloud)",
-                        logo: "🔵",
+                        logo: <Cloud size={18} />,
                       },
                     ]
                   : activeConfigTab === "image"
@@ -500,17 +516,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {
                           id: "local",
                           name: "Local ComfyUI",
-                          logo: "💻",
+                          logo: <Laptop size={18} />,
                         },
                         {
                           id: "openai",
                           name: "OpenAI DALL-E",
-                          logo: "🟢",
+                          logo: <Cloud size={18} />,
                         },
                         {
                           id: "stability",
                           name: "Stability AI API",
-                          logo: "🎨",
+                          logo: <Palette size={18} />,
                         },
                       ]
                     : activeConfigTab === "tts"
@@ -518,24 +534,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {
                             id: "local",
                             name: "Local Native TTS",
-                            logo: "💻",
+                            logo: <Laptop size={18} />,
                           },
                           {
                             id: "openai",
                             name: "OpenAI TTS",
-                            logo: "🟢",
+                            logo: <Cloud size={18} />,
                           },
                         ]
                       : [
                           {
                             id: "local",
                             name: "Local Whisper",
-                            logo: "💻",
+                            logo: <Laptop size={18} />,
                           },
                           {
                             id: "openai",
                             name: "OpenAI Whisper",
-                            logo: "🟢",
+                            logo: <Cloud size={18} />,
                           },
                         ]
               ).map((item) => {
@@ -627,7 +643,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 disabled={isReindexing}
                 data-od-id="settings-reindex-btn"
               >
-                {isReindexing ? "🔄 Reindexing..." : "♻️ Reindex Vault"}
+                {isReindexing ? (
+                  <>
+                    <RefreshCw size={12} /> Reindexing...
+                  </>
+                ) : (
+                  <>
+                    <Recycle size={12} /> Reindex Vault
+                  </>
+                )}
               </button>
             </>
           )}
@@ -803,9 +827,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 disabled={isTestingConnection}
                 data-od-id="settings-test-connection-btn"
               >
-                {isTestingConnection
-                  ? "🔄 Testing Connection..."
-                  : "🔌 Run Connection Test"}
+                {isTestingConnection ? (
+                  <>
+                    <RefreshCw size={12} /> Testing Connection...
+                  </>
+                ) : (
+                  <>
+                    <Plug size={12} /> Run Connection Test
+                  </>
+                )}
               </button>
 
               {/* Connection Test Output */}
@@ -822,7 +852,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     lineHeight: "1.4",
                   }}
                 >
-                  ❌ <strong>Connection Failed:</strong> {testConnectionError}
+                  <XCircle size={12} /> <strong>Connection Failed:</strong> {testConnectionError}
                 </div>
               )}
 
@@ -836,7 +866,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       marginBottom: "6px",
                     }}
                   >
-                    ✅ Connected Successfully! Available Models (Click to
+                    <CheckCircle2 size={12} /> Connected Successfully! Available Models (Click to
                     select):
                   </div>
                   <div

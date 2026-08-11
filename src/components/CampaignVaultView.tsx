@@ -8,6 +8,15 @@ import {
   PenLine,
   Trash2,
   Copy,
+  Package,
+  FolderOpen,
+  FileText,
+  Map,
+  Swords,
+  AudioLines,
+  Image as ImageIcon,
+  User,
+  MapPin,
 } from "lucide-react";
 import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../types";
 
@@ -311,8 +320,12 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           color: "var(--muted)",
                         }}
                       />
-                      <span style={{ fontSize: "13px" }}>
-                        {folderName === "Root" ? "📦" : "📁"}
+                      <span style={{ display: "flex", alignItems: "center" }}>
+                        {folderName === "Root" ? (
+                          <Package size={13} />
+                        ) : (
+                          <FolderOpen size={13} />
+                        )}
                       </span>
                       <span
                         style={{
@@ -373,31 +386,63 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           note.frontmatter?.type === "Canvas" ||
                           note.path.endsWith(".canvas.md") ||
                           note.path.endsWith(".canvas");
-                        let icon = <span>📄</span>;
-                        if (isCanvas) icon = <span>🗺️</span>;
+                        let icon = (
+                          <FileText
+                            size={13}
+                            style={{ color: "var(--muted)", flexShrink: 0 }}
+                          />
+                        );
+                        if (isCanvas)
+                          icon = (
+                            <Map
+                              size={13}
+                              style={{ color: "var(--muted)", flexShrink: 0 }}
+                            />
+                          );
                         else if (
                           note.frontmatter.type === "Character" ||
                           note.frontmatter.type === "NPC"
                         )
-                          icon = <span>👤</span>;
+                          icon = (
+                            <User
+                              size={13}
+                              style={{ color: "var(--muted)", flexShrink: 0 }}
+                            />
+                          );
                         else if (
                           note.frontmatter.type === "Location" ||
                           note.frontmatter.type === "City"
                         )
-                          icon = <span>📍</span>;
+                          icon = (
+                            <MapPin
+                              size={13}
+                              style={{ color: "var(--muted)", flexShrink: 0 }}
+                            />
+                          );
                         else if (
                           note.frontmatter.type === "Item" ||
                           note.frontmatter.type === "Artifact"
                         )
-                          icon = <span>⚔️</span>;
-                        else if (
-                          note.frontmatter.type === "AUDIO"
-                        )
-                          icon = <span>🎵</span>;
-                        else if (
-                          note.frontmatter.type === "IMAGE"
-                        )
-                          icon = <span>🖼️</span>;
+                          icon = (
+                            <Swords
+                              size={13}
+                              style={{ color: "var(--muted)", flexShrink: 0 }}
+                            />
+                          );
+                        else if (note.frontmatter.type === "AUDIO")
+                          icon = (
+                            <AudioLines
+                              size={13}
+                              style={{ color: "var(--muted)", flexShrink: 0 }}
+                            />
+                          );
+                        else if (note.frontmatter.type === "IMAGE")
+                          icon = (
+                            <ImageIcon
+                              size={13}
+                              style={{ color: "var(--muted)", flexShrink: 0 }}
+                            />
+                          );
 
                         return (
                           <button

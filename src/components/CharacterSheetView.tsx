@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { RefreshCw, FileText } from "lucide-react";
 
 interface TemplateProperty {
   type: string;
@@ -140,7 +141,15 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
           disabled={isImporting}
           data-od-id="character-import-pdf-btn"
         >
-          {isImporting ? "🔄 Importing..." : "📄 Import from PDF"}
+          {isImporting ? (
+            <>
+              <RefreshCw size={12} /> Importing...
+            </>
+          ) : (
+            <>
+              <FileText size={12} /> Import from PDF
+            </>
+          )}
         </button>
         <input
           type="file"

@@ -325,7 +325,7 @@
   flex-shrink: 0;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.8;
+  stroke-width: 1.5;
 }
 
 .sidebar-footer {
@@ -388,7 +388,7 @@
   height: 12px;
   stroke: var(--muted);
   fill: none;
-  stroke-width: 2;
+  stroke-width: 1.5;
   flex-shrink: 0;
 }
 
@@ -768,7 +768,7 @@
   height: 14px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.8;
+  stroke-width: 1.5;
 }
 
 .meta-grid {

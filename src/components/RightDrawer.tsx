@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PenLine, Brain, Layers, Link2 } from "lucide-react";
+import { PenLine, Brain, Layers, Link2, Swords, Map, Image as ImageIcon } from "lucide-react";
 import {
   CampaignNote,
   DEFAULT_PROVENANCE_TAXONOMY,
@@ -792,7 +792,7 @@ const PluginButtons: React.FC<
                 type="button"
                 data-od-id="plugin-initiative-tracker"
               >
-                ⚔️ Initiative Tracker
+                <Swords size={12} /> Initiative Tracker
               </button>
             );
           }
@@ -811,7 +811,7 @@ const PluginButtons: React.FC<
                 type="button"
                 data-od-id="plugin-encounter-builder"
               >
-                🗺️ Encounter Builder
+                <Map size={12} /> Encounter Builder
               </button>
             );
           }
@@ -1182,7 +1182,8 @@ const AiTab: React.FC<RightDrawerProps> = ({
       <AiActionButton
         onClick={handleGenerateChatImage}
         disabled={!vaultPath || isGeneratingChatImage || !chatInput.trim()}
-        label={isGeneratingChatImage ? "..." : "🖼️"}
+        label={isGeneratingChatImage ? "..." : ""}
+        icon={<ImageIcon size={12} />}
         dataOdId="ai-chat-image"
       />
     </div>
@@ -1194,8 +1195,9 @@ const AiActionButton: React.FC<{
   onClick: () => void;
   disabled: boolean;
   label: string;
+  icon?: React.ReactNode;
   dataOdId: string;
-}> = ({ onClick, disabled, label, dataOdId }) => (
+}> = ({ onClick, disabled, label, icon, dataOdId }) => (
   <button
     className="btn btn-sm"
     style={{
@@ -1211,6 +1213,7 @@ const AiActionButton: React.FC<{
     type="button"
     data-od-id={dataOdId}
   >
+    {icon}
     {label}
   </button>
 );

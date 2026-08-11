@@ -7,6 +7,7 @@ import {
   Save,
   Map as MapIcon,
   EyeOff,
+  Eye,
   Ruler,
 } from "lucide-react";
 
@@ -390,9 +391,9 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect width="16" height="16" rx="3" fill="var(--surface)" stroke="var(--border)" />
+                  <rect width="16" height="16" rx="0" fill="var(--surface)" stroke="var(--border)" />
                   <text x="8" y="12" fontSize="10" textAnchor="middle" fill="var(--fg)">
-                    {f.hidden ? "👁" : "🙈"}
+                    {f.hidden ? <EyeOff size={10} /> : <Eye size={10} />}
                   </text>
                 </g>
                 <g
@@ -403,7 +404,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect width="16" height="16" rx="3" fill="var(--surface)" stroke="var(--border)" />
+                  <rect width="16" height="16" rx="0" fill="var(--surface)" stroke="var(--border)" />
                   <text x="8" y="12" fontSize="10" textAnchor="middle" fill="var(--danger)">
                     ✕
                   </text>

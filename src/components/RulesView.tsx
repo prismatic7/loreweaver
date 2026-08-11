@@ -9,6 +9,7 @@ import {
   PenLine,
   Plus,
   Trash2,
+  FolderOpen,
 } from "lucide-react";
 import { RuleEntry } from "../types";
 
@@ -243,7 +244,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           color: "var(--muted)",
                         }}
                       />
-                      <span style={{ fontSize: "13px" }}>📁</span>
+                      <FolderOpen size={13} />
                       <span
                         style={{
                           overflow: "hidden",

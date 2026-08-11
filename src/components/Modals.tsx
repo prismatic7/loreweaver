@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { Trash2 } from "lucide-react";
 
 export interface ContextMenuItem {
   x: number;
@@ -780,7 +781,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             gap: "6px",
           }}
         >
-          🗑️ {label}
+          <Trash2 size={12} /> {label}
         </button>
       </div>
     </div>
@@ -789,12 +790,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
 export interface DropdownItemProps {
   label: string;
+  icon?: React.ReactNode;
   onClick: () => void;
   danger?: boolean;
 }
 
 export const DropdownItem: React.FC<DropdownItemProps> = ({
   label,
+  icon,
   onClick,
   danger,
 }) => (
@@ -811,10 +814,13 @@ export const DropdownItem: React.FC<DropdownItemProps> = ({
       fontSize: "11px",
       textAlign: "left",
       cursor: "pointer",
-      display: "block",
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
       width: "100%",
     }}
   >
+    {icon}
     {label}
   </button>
 );

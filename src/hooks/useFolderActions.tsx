@@ -3,6 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { CampaignNote, RuleEntry } from "../types";
 import { AppView } from "../components/AppShell";
 import { DropdownItem } from "../components/Modals";
+import {
+  BookOpen,
+  FolderPlus,
+  FileText,
+  Palette,
+  AudioLines,
+  Image as ImageIcon,
+  Zap,
+  Swords,
+  Map,
+  Trash2,
+} from "lucide-react";
 
 interface FolderActionsDeps {
   setRules: React.Dispatch<React.SetStateAction<RuleEntry[]>>;
@@ -453,41 +465,49 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
           {isRulebook ? (
             <>
               <DropdownItem
-                label="📖 New Rule Page"
+                label="New Rule Page"
+                icon={<BookOpen size={12} />}
                 onClick={() => handleCreateItemInFolder(folderName, "note", true)}
               />
               <DropdownItem
-                label="📁 New Subfolder"
+                label="New Subfolder"
+                icon={<FolderPlus size={12} />}
                 onClick={() => handleCreateItemInFolder(folderName, "folder", true)}
               />
               <DropdownItem
-                label="📄 Import MD / PDF"
+                label="Import MD / PDF"
+                icon={<FileText size={12} />}
                 onClick={() => document.getElementById("srd-file-input")?.click()}
               />
             </>
           ) : (
             <>
               <DropdownItem
-                label="📄 New Note"
+                label="New Note"
+                icon={<FileText size={12} />}
                 onClick={() => handleCreateItemInFolder(folderName, "note", false)}
               />
               <DropdownItem
-                label="📁 New Subfolder"
+                label="New Subfolder"
+                icon={<FolderPlus size={12} />}
                 onClick={() => handleCreateItemInFolder(folderName, "folder", false)}
               />
             </>
           )}
 
           <DropdownItem
-            label="🎨 New Canvas Board"
+            label="New Canvas Board"
+            icon={<Palette size={12} />}
             onClick={() => handleCreateItemInFolder(folderName, "canvas", isRulebook)}
           />
           <DropdownItem
-            label="🎵 Audio Asset"
+            label="Audio Asset"
+            icon={<AudioLines size={12} />}
             onClick={() => handleCreateItemInFolder(folderName, "audio", isRulebook)}
           />
           <DropdownItem
-            label="🖼️ Image Asset"
+            label="Image Asset"
+            icon={<ImageIcon size={12} />}
             onClick={() => handleCreateItemInFolder(folderName, "image", isRulebook)}
           />
 
@@ -514,20 +534,23 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
               pluginsList.map((plugin) => (
                 <DropdownItem
                   key={plugin.id}
-                  label={`⚡ ${plugin.name || plugin.id}`}
+                  label={plugin.name || plugin.id}
+                  icon={<Zap size={12} />}
                   onClick={() => handleCreatePluginAsset(folderName, plugin, isRulebook)}
                 />
               ))
             ) : (
               <>
                 <DropdownItem
-                  label="⚔️ Stat Block / NPC"
+                  label="Stat Block / NPC"
+                  icon={<Swords size={12} />}
                   onClick={() =>
                     handleCreatePluginAsset(folderName, { id: "statblock-generator", name: "Stat Block / NPC" }, isRulebook)
                   }
                 />
                 <DropdownItem
-                  label="🗺️ Interactive Map"
+                  label="Interactive Map"
+                  icon={<Map size={12} />}
                   onClick={() =>
                     handleCreatePluginAsset(folderName, { id: "campaign-map", name: "Interactive Map" }, isRulebook)
                   }
@@ -544,7 +567,8 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
             }}
           >
             <DropdownItem
-              label="🗑️ Delete Folder"
+              label="Delete Folder"
+              icon={<Trash2 size={12} />}
               danger
               onClick={() => handleTrashFolder(folderName, isRulebook)}
             />

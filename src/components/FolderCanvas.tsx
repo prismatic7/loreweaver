@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye } from "lucide-react";
+import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye, Zap } from "lucide-react";
 
 /**
  * FolderCanvas Component
@@ -703,7 +703,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                   <span style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.05em", color: isCanvas ? "var(--accent)" : "var(--accent)", fontWeight: 700 }}>
-                    {isCanvas ? "🎨 Canvas" : String(note.frontmatter?.type || "Note")}
+                    {isCanvas ? "Canvas" : String(note.frontmatter?.type || "Note")}
                   </span>
                   <div style={{ display: "flex", gap: "4px" }}>
                     {!isCanvas && (
@@ -927,7 +927,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     setContextMenu(null);
                   }}
                 >
-                  ⚡ {action.label}
+                  <Zap size={12} /> {action.label}
                 </button>
               ))
             ) : (
