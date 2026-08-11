@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-07T12:30:00Z",
+  "title": "Design System: Loreweaver",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Terracotta Rust",
+        "canonical": "oklch(52% 0.10 28)",
+        "tonalRamp": [
+          "oklch(15% 0.10 28)",
+          "oklch(30% 0.10 28)",
+          "oklch(45% 0.10 28)",
+          "oklch(52% 0.10 28)",
+          "oklch(60% 0.10 28)",
+          "oklch(70% 0.10 28)",
+          "oklch(85% 0.10 28)",
+          "oklch(95% 0.05 28)"
+        ]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Warm Alabaster",
+        "canonical": "oklch(98% 0.004 95)",
+        "tonalRamp": [
+          "oklch(14% 0.012 70)",
+          "oklch(18% 0.014 70)",
+          "oklch(25% 0.014 70)",
+          "oklch(48% 0.012 70)",
+          "oklch(55% 0.012 70)",
+          "oklch(90% 0.006 95)",
+          "oklch(98% 0.004 95)",
+          "oklch(100% 0.002 95)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display Title",
+        "purpose": "Used for main campaign note headers and page titles."
+      },
+      "headline": {
+        "displayName": "Section Headline",
+        "purpose": "Used for H1 headings in Markdown note bodies."
+      },
+      "title": {
+        "displayName": "Sidebar & Panel Title",
+        "purpose": "Used for section labels, card headers, and toolbar titles."
+      },
+      "body": {
+        "displayName": "Body & Editor Text",
+        "purpose": "Used for paragraph content, editor text, and list descriptions."
+      },
+      "label": {
+        "displayName": "Monospace Metadata Label",
+        "purpose": "Used for tabs, tags, active states, and code blocks."
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating-overlay",
+        "value": "0 4px 12px rgba(0,0,0,0.15)",
+        "purpose": "Used only for context menus, autocomplete listings, and settings modals."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Default transitions for element hovers and tabs."
+      }
+    ],
+    "breakpoints": [],
+    "icons": {
+      "style": "wireframe",
+      "family": "lucide-react (stroke-based, fill=\"none\")",
+      "strokeWidth": 1.5,
+      "sizeScale": [
+        { "name": "inline", "value": 12, "purpose": "Toolbar buttons and small action labels." },
+        { "name": "tree", "value": 13, "purpose": "Folder and note-type icons in sidebar trees." },
+        { "name": "nav", "value": 16, "purpose": "Sidebar navigation items." },
+        { "name": "card", "value": 18, "purpose": "Provider cards and asset cards." }
+      ],
+      "color": "Inherit surrounding text colour (var(--fg) / var(--muted) for inactive). Never hard-code icon colours.",
+      "rules": [
+        "Never use emoji or platform glyphs as UI icons (they render as colour-filled and vary per platform).",
+        "Never use solid/filled icon styles (e.g. lucide fill=\"currentColor\" or Material filled) — wireframe/outline only.",
+        "No custom drawn SVG icons for chrome; if a glyph does not exist in lucide, pick the closest semantic stroke icon."
+      ]
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid primary action button with terracotta rust background and white text.",
+      "html": "<button class=\"ds-btn-primary\">SAVE NOTE</button>",
+      "css": ".ds-btn-primary { background: var(--accent, oklch(52% 0.10 28)); color: white; padding: 6px 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 510; border: none; border-radius: 0px; cursor: pointer; transition: background 0.15s ease; } .ds-btn-primary:hover { background: var(--accent-hover, oklch(45% 0.12 28)); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Standard outline button for default or neutral actions.",
+      "html": "<button class=\"ds-btn-secondary\">CANCEL</button>",
+      "css": ".ds-btn-secondary { background: transparent; color: var(--fg, oklch(20% 0.018 70)); padding: 6px 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 510; border: 1px solid var(--border, oklch(90% 0.006 95)); border-radius: 0px; cursor: pointer; transition: background 0.15s ease; } .ds-btn-secondary:hover { background: var(--border, oklch(90% 0.006 95)); }"
+    },
+    {
+      "name": "Card Container",
+      "kind": "card",
+      "description": "Flat card surface used to group details or items.",
+      "html": "<div class=\"ds-card\"><h4 class=\"ds-card-title\">Rulebook Metadata</h4><p class=\"ds-card-desc\">Campaign system loaded from plaintext SRD file.</p></div>",
+      "css": ".ds-card { background: var(--surface, oklch(100% 0.002 95)); border: 1px solid var(--border, oklch(90% 0.006 95)); padding: 16px; border-radius: 0px; box-shadow: none; } .ds-card-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 4px; } .ds-card-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: var(--muted); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "description": "Default rectangular text input field.",
+      "html": "<input type=\"text\" class=\"ds-input\" placeholder=\"Search campaign rules...\" />",
+      "css": ".ds-input { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: var(--fg); background: var(--bg, oklch(98% 0.004 95)); border: 1px solid var(--border, oklch(90% 0.006 95)); padding: 6px 10px; border-radius: 0px; outline: none; transition: border-color 0.15s ease; width: 100%; } .ds-input:focus { border-color: var(--accent, oklch(52% 0.10 28)); }"
+    },
+    {
+      "name": "Monospace Tab Button",
+      "kind": "nav",
+      "description": "Mono-spaced text button used in sidebars and inspectors.",
+      "html": "<button class=\"ds-tab-btn ds-active\">SCRATCHPAD</button>",
+      "css": ".ds-tab-btn { padding: 10px 12px; font-size: 11px; font-family: 'SF Mono', monospace; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; } .ds-tab-btn.ds-active { border-bottom-color: var(--accent); color: var(--fg); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Tactile Ledger",
+    "overview": "Loreweaver adopts a design system inspired by minimalist print layouts, academic documents, and high-quality physical notebooks. It rejects the floating, heavily shadowed interfaces of modern SaaS applications in favor of a flat, structured 'ink-on-paper' presentation. High contrast, precise layout grids, and clear typographical hierarchy ensure maximum legibility for Game Masters managing complex campaign information under low-latency or live play conditions.\n\nThe system is built on sharp, flat edges (0px border-radius), crisp border divisions (1px boundaries), and a dual-theme warm palette. The interface recedes to let the campaign contents—including handwritten notes and vector campaign map canvases—stand out as the primary visual focus.",
+    "keyCharacteristics": [
+      "Flat-by-default surfaces and components with sharp corners (0px border-radius).",
+      "Dual-theme color system using warm paper tones for light mode and deep carbon tones for dark mode.",
+      "Strong editorial feel using classic serif display typography paired with clean, readable system sans-serif body text.",
+      "Outlined component styling with highly restrained use of solid colors, reserving the rust accent for focal actions and states."
+    ],
+    "rules": [
+      {
+        "name": "The 10% Accent Rule",
+        "body": "The Terracotta Rust primary accent must never occupy more than 10% of any view's surface area. Accent rarity preserves its capability to guide the eye to interactive focus states.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Contrast Rule",
+        "body": "Interactive text must always contrast cleanly against the background. Do not use low-contrast grey on grey for important metadata.",
+        "section": "colors"
+      },
+      {
+        "name": "The Single Serif Rule",
+        "body": "Serif face uses are strictly reserved for Display titles and Markdown headings. All interface labels, menus, sidebar trees, and form elements must remain in sans-serif or monospace to prevent interface distraction.",
+        "section": "typography"
+      },
+      {
+        "name": "The Rest Restraint Rule",
+        "body": "No surface at rest may carry a shadow. Depth is communicated strictly by the 1px border lines (var(--border)) and contrasting panel background tones.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do align all layouts to sharp 0px corners, keeping borders strictly 1px solid lines.",
+      "Do reserve serif display faces strictly for main note title headers and H1/H2 markdown headings.",
+      "Do use the Terracotta Rust accent sparingly (≤10%) to highlight actionable items and active states.",
+      "Do support full dual-theme contrast ratios, ensuring text remains clean against warm paper/charcoal backdrops."
+    ],
+    "donts": [
+      "Don't use border-radius values (e.g., 4px, 8px, or rounded pill shapes) on buttons, cards, or input fields.",
+      "Don't apply box-shadows to standard cards, cards at rest, or sidebars.",
+      "Don't introduce bright color gradients or saturated neon background fills.",
+      "Don't use low-contrast grey on grey text for important secondary metadata."
+    ]
+  }
+}

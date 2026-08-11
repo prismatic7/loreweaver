@@ -1,0 +1,23 @@
+[
+  {
+    "id": "t1-35fef7",
+    "description": "Run frontend tests for Task 5.2",
+    "status": "killed",
+    "exitCode": 143,
+    "startedAt": 1786340286575
+  },
+  {
+    "id": "t2-03a631",
+    "description": "Backend cargo test on merged tree",
+    "status": "exited",
+    "exitCode": 0,
+    "startedAt": 1786341283412
+  },
+  {
+    "id": "t3-c78a08",
+    "description": "Frontend build/type-check on merged tree",
+    "status": "exited",
+    "exitCode": 0,
+    "startedAt": 1786341283431
+  }
+]
