@@ -21,7 +21,7 @@ design: `DESIGN_SKETCH_WORLDS.md` (committed `e28607a`).
 | 0 | Devising | Hermes + Chris | interactive | DESIGN_SKETCH_WORLDS.md | Chris signs off | ✅ |
 | 1 | Build | opencode | autonomous | worlds.rs, registries, theme override, Liminal, bundles, World Shelf | diff vs sketch | ✅ |
 | 2 | Drudge | zero | autonomous | boilerplate, coverage, docs | diff reviewed | ✅ |
-| 3 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
+| 3 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ✅ |
 
 ## Arc 2 handoff log
 ### Phase 2 — drudge (2026-08-11, Hermes — zero's run failed its contract)
@@ -58,6 +58,22 @@ design: `DESIGN_SKETCH_WORLDS.md` (committed `e28607a`).
   commands are ACL-exempt; only plugin commands (dialog) need capability
   entries. Do not "fix" the schema into breaking this.
 - **Next (phase 3 review):** Hermes + Chris review final diff vs whole arc.
+
+### Phase 3 — review (2026-08-11, Hermes + Chris)
+- **Verdict: PASS.** Gate verified all six signed-off decisions against code
+  (theme scope, zero-touch migration, `_liminal` naming/exclusion, zip+scaffold
+  bundles, file-first hot-reload registry, speculation in default taxonomy),
+  bible gating, no out-of-scope leakage, permission surface untouched
+  (`plugins.rs` not in diff; only `dialog:default` capability added), no debug
+  leftovers. Measured at HEAD: Vitest 52/52, Cargo 56/56 (`--skip
+  test_api_key_round_trip` keychain flake), build ✓.
+- **Post-merge verification (main):** `npm install --include=dev` was needed —
+  main's `node_modules` predated the new `plugin-dialog` dependency (stale-sync,
+  not a merge defect; no tracked files changed). After install: Vitest 52/52 ✓,
+  Cargo 56/56 ✓, tree clean.
+- **Merge:** `8b6c474` (`--no-ff`, phase history preserved). Branch
+  `task/world-objects` deleted; worktree removed per FLEET.md (disposable once
+  merged). Arc 2 complete: 11 commits, 32 files, +3196/−336.
 
 ### Phase 1 — build (2026-08-10, opencode autonomous)
 - **Delivered all 7 arc-2 deliverables, each mapped to a signed-off decision:**
