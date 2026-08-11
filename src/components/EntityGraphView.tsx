@@ -431,12 +431,16 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     return set;
   }, [edges]);
 
-  const isAdjacent = (id: string) =>
-    hoveredId !== null
-      ? adjacencySet.has(`${hoveredId}|${id}`) || adjacencySet.has(`${id}|${hoveredId}`)
-      : selectedId !== null
-        ? adjacencySet.has(`${selectedId}|${id}`) || adjacencySet.has(`${id}|${selectedId}`)
-        : true;
+  const isAdjacent = (id: string) => {
+    const activeId = hoveredId ?? selectedId;
+    if (activeId === null) return true;
+    // The focus node itself never dims — otherwise hovering a node with no
+    // edges (empty adjacencySet) dims every node including the hovered one.
+    if (id === activeId) return true;
+    return (
+      adjacencySet.has(`${activeId}|${id}`) || adjacencySet.has(`${id}|${activeId}`)
+    );
+  };
 
   const isEdgeActive = (e: GraphEdge) =>
     hoveredId !== null

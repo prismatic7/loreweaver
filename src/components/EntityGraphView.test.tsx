@@ -260,4 +260,34 @@ describe("EntityGraphView", () => {
       expect(p.y).toBeLessThan(650);
     });
   });
+
+  it("keeps the hovered node lit while dimming non-adjacent nodes", () => {
+    // Regression: with no edges the adjacency set is empty, so hovering used
+    // to dim EVERY node — including the hovered one itself.
+    const notes = [
+      makeNote({ id: "n1", title: "Titus Crow" }),
+      makeNote({ id: "n2", title: "Elira" }),
+    ];
+    const { container } = render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
+    Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(canvas, "clientHeight", { configurable: true, value: 600 });
+
+    const nodeGroups = Array.from(
+      container.querySelectorAll('[data-od-id="entity-graph-canvas"] svg g'),
+    ).filter((g) => g.querySelector("circle"));
+
+    expect(nodeGroups.length).toBe(2);
+    const [first, second] = nodeGroups;
+    expect(first.getAttribute("opacity")).toBe("1");
+    expect(second.getAttribute("opacity")).toBe("1");
+
+    fireEvent.mouseEnter(first);
+    expect(first.getAttribute("opacity")).toBe("1");
+    expect(second.getAttribute("opacity")).toBe("0.35");
+
+    fireEvent.mouseLeave(first);
+    expect(first.getAttribute("opacity")).toBe("1");
+    expect(second.getAttribute("opacity")).toBe("1");
+  });
 });
