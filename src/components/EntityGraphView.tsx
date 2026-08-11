@@ -381,7 +381,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                   x2={to.x}
                   y2={to.y}
                   stroke={isSourceEdge ? SOURCE_COLOR : "var(--border)"}
-                  strokeWidth={isSourceEdge ? 1.5 : 1.5}
+                  strokeWidth={isSourceEdge ? 1 : 1}
                   strokeDasharray={isSourceEdge ? "4 3" : undefined}
                 />
                 <text
@@ -425,15 +425,15 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                     height={44}
                     rx={0}
                     fill={color}
-                    stroke={hoveredId === n.id ? "var(--fg)" : "var(--surface)"}
-                    strokeWidth={hoveredId === n.id ? "1.5" : "3"}
+                    stroke={hoveredId === n.id ? "var(--accent)" : "var(--surface)"}
+                    strokeWidth={hoveredId === n.id ? 2 : 2}
                   />
                 ) : (
                   <circle
-                    r={isSelected ? 30 : 26}
+                    r={isSelected ? 28 : 24}
                     fill={color}
-                    stroke={hoveredId === n.id ? "var(--fg)" : "var(--surface)"}
-                    strokeWidth={hoveredId === n.id ? "1.5" : "3"}
+                    stroke={hoveredId === n.id ? "var(--accent)" : "var(--surface)"}
+                    strokeWidth={hoveredId === n.id ? 2 : 2}
                   />
                 )}
                 <text
@@ -446,8 +446,8 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                   {n.label.charAt(0).toUpperCase()}
                 </text>
                 <text
-                  y="44"
-                  fontSize="10"
+                  y={isSelected ? 44 : 40}
+                  fontSize="11"
                   textAnchor="middle"
                   fill="var(--fg)"
                   fontWeight={600}
@@ -455,7 +455,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                   {n.label}
                 </text>
                 <text
-                  y="56"
+                  y="52"
                   fontSize="11"
                   textAnchor="middle"
                   fill="var(--muted)"

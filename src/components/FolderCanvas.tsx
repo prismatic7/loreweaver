@@ -706,7 +706,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                   userSelect: "none",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: isCanvas ? "var(--accent)" : "var(--muted)", fontWeight: 700 }}>
                     {isCanvas ? "Canvas" : String(note.frontmatter?.type || "Note")}
                   </span>
@@ -714,19 +714,19 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     {!isCanvas && (
                       <button
                         className="btn btn-sm"
-                        style={{ minWidth: 24, minHeight: 24, padding: "2px 5px", fontSize: "10px" }}
+                        style={{ minWidth: 24, minHeight: 24, padding: "4px 8px", fontSize: "10px" }}
                         title="Connect Edge"
                         onClick={(e) => {
                           e.stopPropagation();
                           setConnectingFromId(note.id);
                         }}
                       >
-                        <LinkIcon size={10} />
+                        <LinkIcon size={12} />
                       </button>
                     )}
                     <button
                       className="btn btn-sm"
-                      style={{ minWidth: 24, minHeight: 24, padding: "2px 5px", fontSize: "10px" }}
+                      style={{ minWidth: 24, minHeight: 24, padding: "4px 8px", fontSize: "10px" }}
                       title={isCanvas ? "Drill Down Canvas" : "View Note"}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -737,7 +737,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                         }
                       }}
                     >
-                      <Eye size={10} />
+                      <Eye size={12} />
                     </button>
                   </div>
                 </div>
@@ -758,7 +758,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                           key={strTag}
                           style={{
                             fontSize: "11px",
-                            padding: "2px 6px",
+                            padding: "2px 8px",
                             borderRadius: 0,
                             background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
                             color: getRelationColor(k),
@@ -774,7 +774,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                         key={strTag}
                         style={{
                           fontSize: "11px",
-                          padding: "2px 6px",
+                          padding: "2px 8px",
                           borderRadius: 0,
                           background: strTag === "villain" ? "oklch(50% 0.14 25 / 0.15)" : "oklch(48% 0.012 70 / 0.15)",
                           color: strTag === "villain" ? "var(--danger)" : "var(--muted)",

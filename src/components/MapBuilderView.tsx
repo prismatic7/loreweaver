@@ -485,7 +485,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 onMouseDown={(e) => handleTokenMouseDown(e, t.id, t.x, t.y)}
                 style={{ cursor: "grab" }}
               >
-                <circle r="18" fill={t.color} stroke={selectedTokenId === t.id ? "var(--accent)" : "var(--surface)"} strokeWidth={selectedTokenId === t.id ? "3" : "2"} />
+                <circle r="16" fill={t.color} stroke={selectedTokenId === t.id ? "var(--accent)" : "var(--surface)"} strokeWidth={selectedTokenId === t.id ? "2" : "2"} />
                 <text
                   y="4"
                   fontSize="12"
@@ -496,7 +496,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   {t.label.charAt(0).toUpperCase()}
                 </text>
                 <text
-                  y="34"
+                  y="32"
                   fontSize="10"
                   textAnchor="middle"
                   fill="var(--fg)"
@@ -504,7 +504,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   {t.label}
                 </text>
                 <g
-                  transform="translate(14, -14)"
+                  transform="translate(12, -12)"
                   role="button"
                   aria-label="Delete token"
                   onClick={(e) => {
@@ -513,7 +513,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <circle r="12" fill="var(--surface)" stroke="var(--border)" />
+                  <rect width="24" height="24" x="-12" y="-12" rx="0" fill="var(--surface)" stroke="var(--border)" />
                   <text x="0" y="4" fontSize="11" textAnchor="middle" fill="var(--danger)">
                     ✕
                   </text>
