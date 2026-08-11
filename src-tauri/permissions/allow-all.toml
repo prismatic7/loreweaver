@@ -39,6 +39,27 @@ commands = { allow = [
   "open_vault_dialog",
   "load_vault_settings",
   "save_vault_settings",
+  "transcribe_speech",
+  "reindex_vault",
+  "convert_pdf_to_markdown",
+  "save_session_memory",
+  "list_session_memory",
+  "delete_session_memory",
+  "summarize_session",
+  "list_sources",
+  "save_source",
+  "delete_source",
+  "get_source",
+  "capture_note",
+  "clip_webpage",
+  "get_world_manifest",
+  "list_worlds",
+  "create_world",
+  "export_world",
+  "import_world",
+  "list_liminal_notes",
+  "claim_liminal_note",
+  "make_world_from_liminal",
 ] }
 
 [[permission]]
@@ -225,3 +246,108 @@ commands = { allow = ["load_vault_settings"] }
 identifier = "allow-save-vault-settings"
 description = "Allows the save_vault_settings command to be invoked by the frontend"
 commands = { allow = ["save_vault_settings"] }
+
+[[permission]]
+identifier = "allow-transcribe-speech"
+description = "Allows the transcribe_speech command to be invoked by the frontend"
+commands = { allow = ["transcribe_speech"] }
+
+[[permission]]
+identifier = "allow-reindex-vault"
+description = "Allows the reindex_vault command to be invoked by the frontend"
+commands = { allow = ["reindex_vault"] }
+
+[[permission]]
+identifier = "allow-convert-pdf-to-markdown"
+description = "Allows the convert_pdf_to_markdown command to be invoked by the frontend"
+commands = { allow = ["convert_pdf_to_markdown"] }
+
+[[permission]]
+identifier = "allow-save-session-memory"
+description = "Allows the save_session_memory command to be invoked by the frontend"
+commands = { allow = ["save_session_memory"] }
+
+[[permission]]
+identifier = "allow-list-session-memory"
+description = "Allows the list_session_memory command to be invoked by the frontend"
+commands = { allow = ["list_session_memory"] }
+
+[[permission]]
+identifier = "allow-delete-session-memory"
+description = "Allows the delete_session_memory command to be invoked by the frontend"
+commands = { allow = ["delete_session_memory"] }
+
+[[permission]]
+identifier = "allow-summarize-session"
+description = "Allows the summarize_session command to be invoked by the frontend"
+commands = { allow = ["summarize_session"] }
+
+[[permission]]
+identifier = "allow-list-sources"
+description = "Allows the list_sources command to be invoked by the frontend"
+commands = { allow = ["list_sources"] }
+
+[[permission]]
+identifier = "allow-save-source"
+description = "Allows the save_source command to be invoked by the frontend"
+commands = { allow = ["save_source"] }
+
+[[permission]]
+identifier = "allow-delete-source"
+description = "Allows the delete_source command to be invoked by the frontend"
+commands = { allow = ["delete_source"] }
+
+[[permission]]
+identifier = "allow-get-source"
+description = "Allows the get_source command to be invoked by the frontend"
+commands = { allow = ["get_source"] }
+
+[[permission]]
+identifier = "allow-capture-note"
+description = "Allows the capture_note command to be invoked by the frontend"
+commands = { allow = ["capture_note"] }
+
+[[permission]]
+identifier = "allow-clip-webpage"
+description = "Allows the clip_webpage command to be invoked by the frontend"
+commands = { allow = ["clip_webpage"] }
+
+[[permission]]
+identifier = "allow-get-world-manifest"
+description = "Allows the get_world_manifest command to be invoked by the frontend"
+commands = { allow = ["get_world_manifest"] }
+
+[[permission]]
+identifier = "allow-list-worlds"
+description = "Allows the list_worlds command to be invoked by the frontend"
+commands = { allow = ["list_worlds"] }
+
+[[permission]]
+identifier = "allow-create-world"
+description = "Allows the create_world command to be invoked by the frontend"
+commands = { allow = ["create_world"] }
+
+[[permission]]
+identifier = "allow-export-world"
+description = "Allows the export_world command to be invoked by the frontend"
+commands = { allow = ["export_world"] }
+
+[[permission]]
+identifier = "allow-import-world"
+description = "Allows the import_world command to be invoked by the frontend"
+commands = { allow = ["import_world"] }
+
+[[permission]]
+identifier = "allow-list-liminal-notes"
+description = "Allows the list_liminal_notes command to be invoked by the frontend"
+commands = { allow = ["list_liminal_notes"] }
+
+[[permission]]
+identifier = "allow-claim-liminal-note"
+description = "Allows the claim_liminal_note command to be invoked by the frontend"
+commands = { allow = ["claim_liminal_note"] }
+
+[[permission]]
+identifier = "allow-make-world-from-liminal"
+description = "Allows the make_world_from_liminal command to be invoked by the frontend"
+commands = { allow = ["make_world_from_liminal"] }

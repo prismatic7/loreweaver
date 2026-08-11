@@ -60,6 +60,7 @@ pub fn generate_image(
     model: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    allow_local: bool,
     agent: &Agent,
 ) -> Result<String, String> {
     let clean_prompt = if style.trim().is_empty() {
@@ -81,7 +82,7 @@ pub fn generate_image(
                 .unwrap_or("https://api.openai.com")
                 .trim()
                 .trim_end_matches('/');
-            crate::validate_provider_url(base, false)?;
+            crate::validate_provider_url(base, allow_local)?;
             if base.is_empty() {
                 return Err("Image provider base URL is required".to_string());
             }
@@ -94,9 +95,7 @@ pub fn generate_image(
                 "response_format": "b64_json"
             });
 
-            let mut request = agent
-                .post(&url)
-                .set("Content-Type", "application/json");
+            let mut request = agent.post(&url).set("Content-Type", "application/json");
             if let Some(key) = api_key {
                 if !key.trim().is_empty() {
                     request = request.set("Authorization", &format!("Bearer {}", key.trim()));
@@ -113,7 +112,9 @@ pub fn generate_image(
             let image_bytes = image_bytes_from_response(response_json)?;
             Ok(image_data_url_from_bytes(&image_bytes))
         }
-        "stability" => generate_stability_image(prompt, style, image_model, api_key, base_url, agent),
+        "stability" => {
+            generate_stability_image(prompt, style, image_model, api_key, base_url, agent)
+        }
         other => Err(format!("Unsupported image provider: {}", other)),
     }
 }

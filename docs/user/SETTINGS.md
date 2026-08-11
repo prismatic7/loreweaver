@@ -7,19 +7,23 @@ This document provides a reference for configuring application directories, data
 ## 1. Application Directories
 
 Loreweaver stores local indexes, embedding models, and third-party plugins in your system's standard Application Support folder:
+
 - **macOS:** `/Users/<username>/Library/Application Support/com.chronicle.loreweaver/`
 - **Windows:** `C:\Users\<username>\AppData\Roaming\com.chronicle.loreweaver\`
 - **Linux:** `/home/<username>/.local/share/com.chronicle.loreweaver/`
 
 ### Primary Contents:
-* `loreweaver.db`: SQLite database containing notes index, rulebooks, and settings.
-* `models/all-MiniLM-L6-v2/`: Local ONNX model and tokenizer files.
-* `plugins/`: Active Javascript plugins folder.
+
+- `loreweaver.db`: SQLite database containing notes index, rulebooks, and settings.
+- `models/all-MiniLM-L6-v2/`: Local ONNX model and tokenizer files.
+- `plugins/`: Active Javascript plugins folder.
 
 ---
 
 ## 2. Campaign Vault Management
+
 The active campaign folder is configured in the **Manage Vaults** settings drawer.
+
 - **Vault Location:** Any directory on your hard drive can serve as a vault.
 - **Vault Switching:** Selecting a new vault updates the app path context, restarts the directory watcher thread, and re-indexes SQLite. Note directories do not bleed between vaults.
 
@@ -30,20 +34,24 @@ The active campaign folder is configured in the **Manage Vaults** settings drawe
 AI settings are managed under their respective provider tabs:
 
 ### Ollama (Local)
+
 - **API Endpoint:** Default `http://localhost:11434`.
 - **Model Name:** The model identifier pulled in Ollama (e.g. `llama3`, `mistral`, `phi3`).
 
 ### OpenAI / OpenAI-Compatible (Cloud/Local)
+
 - **API Key:** Your developer API key (or dummy key for local API gateways).
 - **Base URL:** Default `https://api.openai.com`. You can redirect this to local gateways like LocalAI, LM Studio, or vLLM.
 - **Model Name:** Default `gpt-4o`.
 
 ### Google Gemini (Cloud)
+
 - **API Key:** Gemini API key.
 - **Base URL:** Default `https://generativelanguage.googleapis.com`.
 - **Model Name:** Default `gemini-1.5-flash` or `gemini-1.5-pro`.
 
 ### Anthropic (Cloud)
+
 - **API Key:** Anthropic API key.
 - **Base URL:** Default `https://api.anthropic.com`.
 - **Model Name:** Default `claude-3-5-sonnet-20240620`.
@@ -55,10 +63,13 @@ AI settings are managed under their respective provider tabs:
 Loreweaver uses a hybrid search strategy that relies on 384-dimensional vector embeddings.
 
 ### Local Embeddings (Default)
+
 Runs local CPU/GPU inference using ONNX Runtime. The first search initializes a download of the `all-MiniLM-L6-v2` transformer package (~100MB). No api keys are required.
 
 ### Remote Embeddings
+
 You can route embeddings to remote APIs under the settings tab:
+
 - **OpenAI:** Uses `text-embedding-3-small` (configured to output 384 dimensions).
 - **Gemini:** Uses `text-embedding-004` (384 dimensions).
 
@@ -68,4 +79,18 @@ You can route embeddings to remote APIs under the settings tab:
 ---
 
 ## 5. Connection Diagnostics
+
 Click the **Test Connection** button next to your configured provider to run a test prompt. The diagnostic console will report HTTP statuses, API key validity, or local endpoint timeouts.
+
+---
+
+## 6. Allow Local / Private Providers
+
+Loreweaver includes an SSRF guard that rejects provider URLs pointing to private, loopback (e.g. `localhost`, `127.0.0.1`, `[::1]`), link-local, or multicast addresses. This prevents a malicious prompt or plugin from using the app's network stack to reach internal services.
+
+To support local AI backends, the **Allow Local / Private Providers** toggle (in the **Model & Service Integrations** panel of Settings) controls this guard:
+
+- **Enabled (default):** Loopback and private addresses are permitted, so local providers such as Ollama (`http://localhost:11434`), ComfyUI (`http://127.0.0.1:8188`), LM Studio, LocalAI, or vLLM work out of the box.
+- **Disabled:** Only public cloud endpoints are allowed. Connection tests and provider calls to local/private URLs will fail with a "Private/localhost provider URLs are not allowed" error.
+
+This setting applies to the connection test (`test_provider_connection`) and all provider calls (chat, image, and speech generation). Toggle it off if you only use cloud providers and want stricter network isolation.

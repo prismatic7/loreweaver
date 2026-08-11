@@ -1,6 +1,10 @@
-import React, { useState } from "react";
-import { UseFormRegister, UseFormHandleSubmit, FieldErrors } from "react-hook-form";
 import { invoke } from "@tauri-apps/api/core";
+import React, { useState } from "react";
+import {
+    FieldErrors,
+    UseFormHandleSubmit,
+    UseFormRegister,
+} from "react-hook-form";
 
 export interface SettingsViewProps {
   register: UseFormRegister<any>;
@@ -43,7 +47,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     string[] | null
   >(null);
   const [testConnectionError, setTestConnectionError] = useState<string | null>(
-    null,
+    null
   );
   const [isReindexing, setIsReindexing] = useState(false);
 
@@ -56,7 +60,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const onProviderSelect = (
     tab: "llm" | "embed" | "image" | "tts" | "stt",
-    providerId: string,
+    providerId: string
   ) => {
     const providerField = `${tab}_provider`;
     const baseUrlField = `${tab}_base_url`;
@@ -117,7 +121,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         } else {
           setTestConnectionResult([]);
           setTestConnectionError(
-            "Connection succeeded, but no models were returned by the provider.",
+            "Connection succeeded, but no models were returned by the provider."
           );
         }
       })
@@ -325,9 +329,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 margin: "4px 0 0 0",
               }}
             >
-              Configure your local and cloud AI providers for writing,
-              search, art, and voice.
+              Configure your local and cloud AI providers for writing, search,
+              art, and voice.
             </p>
+          </div>
+
+          {/* Allow Local Providers Toggle */}
+          <div
+            className="settings-item"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              padding: "12px 14px",
+              background: "var(--bg)",
+            }}
+          >
+            <div>
+              <div
+                className="settings-label"
+                style={{ fontSize: "13px", fontWeight: 500 }}
+              >
+                Allow Local / Private Providers
+              </div>
+              <div
+                className="settings-desc"
+                style={{ fontSize: "11px", color: "var(--muted)" }}
+              >
+                Enable connections to localhost / LAN addresses (Ollama,
+                ComfyUI, etc.). Disable to only allow public cloud endpoints.
+              </div>
+            </div>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                cursor: "pointer",
+                fontSize: "11px",
+              }}
+            >
+              <input
+                type="checkbox"
+                {...register("allow_local_providers")}
+                data-od-id="settings-allow-local-providers"
+              />
+              {watch("allow_local_providers") ? "Enabled" : "Disabled"}
+            </label>
           </div>
 
           {/* Type Tabs */}
@@ -377,22 +427,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       activeConfigTab === tab.id
                         ? "1px solid var(--accent)"
                         : "1px solid var(--border)",
-                    color:
-                      activeConfigTab === tab.id
-                        ? "#fff"
-                        : "var(--fg)",
+                    color: activeConfigTab === tab.id ? "#fff" : "var(--fg)",
                     cursor: "pointer",
                     fontWeight: 500,
                     fontSize: "11px",
                   }}
                   onClick={() => {
                     setActiveConfigTab(
-                      tab.id as
-                        | "llm"
-                        | "embed"
-                        | "image"
-                        | "tts"
-                        | "stt",
+                      tab.id as "llm" | "embed" | "image" | "tts" | "stt"
                     );
                     setTestConnectionResult(null);
                     setTestConnectionError(null);
@@ -423,8 +465,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fill, minmax(160px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
                 gap: "10px",
               }}
             >
@@ -448,7 +489,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       },
                       { id: "ollama", name: "Ollama (Local)", logo: "🦙" },
                       { id: "openai", name: "OpenAI (Cloud)", logo: "🟢" },
-                      { id: "gemini", name: "Google Gemini (Cloud)", logo: "🔵" },
+                      {
+                        id: "gemini",
+                        name: "Google Gemini (Cloud)",
+                        logo: "🔵",
+                      },
                     ]
                   : activeConfigTab === "image"
                     ? [
@@ -494,7 +539,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           },
                         ]
               ).map((item) => {
-                const isSelected = watch(getFieldName(activeConfigTab, "provider")) === item.id;
+                const isSelected =
+                  watch(getFieldName(activeConfigTab, "provider")) === item.id;
                 return (
                   <div
                     key={item.id}
@@ -559,11 +605,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   lineHeight: "1.4",
                 }}
               >
-                <strong>DIMENSION COMPATIBILITY CAVEAT:</strong>{" "}
-                Modifying your embedding provider changes the dimension
-                length of generated vectors. After saving, run{" "}
-                <strong>Reindex</strong> on your vault to reindex all
-                notes.
+                <strong>DIMENSION COMPATIBILITY CAVEAT:</strong> Modifying your
+                embedding provider changes the dimension length of generated
+                vectors. After saving, run <strong>Reindex</strong> on your
+                vault to reindex all notes.
               </div>
               <button
                 className="btn"
@@ -646,54 +691,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         display: "block",
                       }}
                     >
-                      {errors[getFieldName(activeConfigTab, "model")]?.message as string}
+                      {
+                        errors[getFieldName(activeConfigTab, "model")]
+                          ?.message as string
+                      }
                     </span>
                   )}
                 </div>
               )}
 
-              {activeConfigTab !== "tts" &&
-                activeConfigTab !== "stt" && (
-                  <div style={{ flex: 2 }}>
-                    <label
+              {activeConfigTab !== "tts" && activeConfigTab !== "stt" && (
+                <div style={{ flex: 2 }}>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      fontWeight: 500,
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    API Endpoint URL
+                  </label>
+                  <input
+                    type="text"
+                    {...register(getFieldName(activeConfigTab, "base_url"))}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      fontSize: "12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4,
+                      color: "var(--fg)",
+                    }}
+                    placeholder="Provider base URL override if using proxy/local server"
+                  />
+                  {errors[getFieldName(activeConfigTab, "base_url")] && (
+                    <span
                       style={{
                         fontSize: "11px",
-                        color: "var(--muted)",
-                        fontWeight: 500,
+                        color: "var(--danger)",
+                        marginTop: "4px",
                         display: "block",
-                        marginBottom: "4px",
                       }}
                     >
-                      API Endpoint URL
-                    </label>
-                    <input
-                      type="text"
-                      {...register(getFieldName(activeConfigTab, "base_url"))}
-                      style={{
-                        width: "100%",
-                        padding: "8px 10px",
-                        fontSize: "12px",
-                        background: "var(--surface)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 4,
-                        color: "var(--fg)",
-                      }}
-                      placeholder="Provider base URL override if using proxy/local server"
-                    />
-                    {errors[getFieldName(activeConfigTab, "base_url")] && (
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "var(--danger)",
-                          marginTop: "4px",
-                          display: "block",
-                        }}
-                      >
-                        {errors[getFieldName(activeConfigTab, "base_url")]?.message as string}
-                      </span>
-                    )}
-                  </div>
-                )}
+                      {
+                        errors[getFieldName(activeConfigTab, "base_url")]
+                          ?.message as string
+                      }
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -772,8 +822,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     lineHeight: "1.4",
                   }}
                 >
-                  ❌ <strong>Connection Failed:</strong>{" "}
-                  {testConnectionError}
+                  ❌ <strong>Connection Failed:</strong> {testConnectionError}
                 </div>
               )}
 
@@ -787,8 +836,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       marginBottom: "6px",
                     }}
                   >
-                    ✅ Connected Successfully! Available Models (Click
-                    to select):
+                    ✅ Connected Successfully! Available Models (Click to
+                    select):
                   </div>
                   <div
                     style={{
@@ -811,7 +860,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           key={modelName}
                           onClick={() => {
-                            const field = getFieldName(activeConfigTab, "model");
+                            const field = getFieldName(
+                              activeConfigTab,
+                              "model"
+                            );
                             setValue(field, modelName, {
                               shouldDirty: true,
                             });

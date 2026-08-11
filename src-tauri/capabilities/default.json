@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "opener:default",
@@ -43,6 +45,27 @@
     "allow-save-vault-settings",
     "allow-load-canvas-file",
     "allow-save-canvas-file",
-    "allow-list-templates"
+    "allow-list-templates",
+    "allow-transcribe-speech",
+    "allow-reindex-vault",
+    "allow-convert-pdf-to-markdown",
+    "allow-save-session-memory",
+    "allow-list-session-memory",
+    "allow-delete-session-memory",
+    "allow-summarize-session",
+    "allow-list-sources",
+    "allow-save-source",
+    "allow-delete-source",
+    "allow-get-source",
+    "allow-capture-note",
+    "allow-clip-webpage",
+    "allow-get-world-manifest",
+    "allow-list-worlds",
+    "allow-create-world",
+    "allow-export-world",
+    "allow-import-world",
+    "allow-list-liminal-notes",
+    "allow-claim-liminal-note",
+    "allow-make-world-from-liminal"
   ]
 }

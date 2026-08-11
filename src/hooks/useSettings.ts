@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 export const settingsSchema = z.object({
+  allow_local_providers: z.boolean(),
   llm_provider: z.string().min(1, "Provider is required"),
   llm_model: z.string().min(1, "Model is required"),
   llm_api_key: z.string(),
@@ -37,6 +38,7 @@ export const settingsSchema = z.object({
 export type SettingsForm = z.infer<typeof settingsSchema>;
 
 export const DEFAULT_SETTINGS: SettingsForm = {
+  allow_local_providers: true,
   llm_provider: "ollama",
   llm_model: "llama3:8b",
   llm_api_key: "",
@@ -83,11 +85,13 @@ export function useSettings() {
       const settings = await invoke<Partial<SettingsForm>>("load_settings");
       if (settings) {
         reset({
+          allow_local_providers:
+            settings.allow_local_providers ??
+            DEFAULT_SETTINGS.allow_local_providers,
           llm_provider: settings.llm_provider || DEFAULT_SETTINGS.llm_provider,
           llm_model: settings.llm_model || DEFAULT_SETTINGS.llm_model,
           llm_api_key: settings.llm_api_key || "",
-          llm_base_url:
-            settings.llm_base_url || DEFAULT_SETTINGS.llm_base_url,
+          llm_base_url: settings.llm_base_url || DEFAULT_SETTINGS.llm_base_url,
 
           embed_provider:
             settings.embed_provider || DEFAULT_SETTINGS.embed_provider,
@@ -133,7 +137,7 @@ export function useSettings() {
         throw err;
       }
     },
-    [reset],
+    [reset]
   );
 
   const llmProvider = watch("llm_provider");

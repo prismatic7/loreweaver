@@ -28,7 +28,7 @@
 - API keys are stored in the OS keyring under `api-key-{provider_id}` (service `loreweaver`).
   The SQLite settings table only holds an opaque `keyring:{provider_id}` handle.
   For one release, legacy repeating-XOR obfuscated keys are still decrypted as a fallback if the keyring is unavailable or the stored value predates the keyring migration.
-- Provider `base_url` values are validated against SSRF rules; private/loopback URLs are blocked unless `allow_local_providers` is enabled in settings.
+- Provider `base_url` values are validated against SSRF rules; private/loopback URLs are blocked unless `allow_local_providers` is enabled in settings (defaults to `true` for local-first support of Ollama/ComfyUI).
 
 ## Plugins
 
