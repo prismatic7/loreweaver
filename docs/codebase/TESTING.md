@@ -18,6 +18,12 @@ Run all frontend test suites using:
 npm run test
 ```
 
+**14 Vitest suites / 52 tests** pass (measured 2026-08-11). Note: `npm run test`
+sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
+where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
+`env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
+load its production build (no `React.act`), breaking `@testing-library/react`.
+
 ### Coverage
 - [App.test.tsx](file:///Users/chris/Development/loreweaver/src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
 - [DashboardView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/DashboardView.test.tsx): Verifies rendering of campaign notes and rule entries.
@@ -27,6 +33,11 @@ npm run test
 - [FolderCanvas.test.tsx](file:///Users/chris/Development/loreweaver/src/components/FolderCanvas.test.tsx): Verifies folder canvas rendering and interactions.
 - [RulesView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/RulesView.test.tsx): Verifies rule list rendering and editing behavior.
 - [CampaignVaultView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/CampaignVaultView.test.tsx): Verifies campaign vault note rendering and interactions.
+- [EntityGraphView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/EntityGraphView.test.tsx): Verifies entity graph rendering and provenance filtering.
+- [RightDrawer.test.tsx](file:///Users/chris/Development/loreweaver/src/components/RightDrawer.test.tsx): Verifies drawer tabs, capture inbox actions, and chat wiring.
+- [WorldShelf.test.tsx](file:///Users/chris/Development/loreweaver/src/components/WorldShelf.test.tsx): Verifies world switcher, new-world flow, Liminal entry, export/import triggers.
+- [LiminalView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/LiminalView.test.tsx): Verifies the Liminal list, claim-into-world (with default-target fallback), birth-a-world, back navigation, and error state.
+- [types.test.ts](file:///Users/chris/Development/loreweaver/src/types.test.ts): Verifies type-level invariants.
 
 ---
 
@@ -44,7 +55,7 @@ cd src-tauri
 cargo test
 ```
 
-Currently **30 tests** pass.
+Currently **57 Rust tests** (56 pass; `test_api_key_round_trip` is excluded — it blocks indefinitely when the macOS Keychain is locked, a pre-existing flake). Measured 2026-08-11: 43 baseline + 10 webclip + 3 `list_liminal_notes` + 1 keychain round-trip. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
 
 ### Coverage
 - **Database (`db.rs`):** Validates CRUD queries for campaign notes, rulebooks, and settings.

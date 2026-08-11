@@ -1291,3 +1291,123 @@
     animation-duration: 0s !important;
   }
 }
+/* ── Liminal View ── */
+.liminal-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 24px 32px;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.liminal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.liminal-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.liminal-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.liminal-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.liminal-note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.liminal-note-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+}
+
+.liminal-note-info {
+  min-width: 0;
+}
+
+.liminal-note-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.liminal-note-path {
+  font-size: 12px;
+  opacity: 0.6;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.liminal-note-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.liminal-target-select {
+  max-width: 180px;
+  padding: 4px 8px;
+  font-size: 13px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+}
+
+.liminal-footer {
+  margin-top: 20px;
+  border-top: 1px solid var(--border-color, #333);
+  padding-top: 16px;
+}
+
+.liminal-birth {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.liminal-name-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+}
+
+.liminal-error {
+  margin: 8px 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #d97757;
+  border: 1px solid #d97757;
+  border-radius: 4px;
+}

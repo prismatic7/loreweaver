@@ -6,10 +6,11 @@ Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it
 
 ## Doc precedence (read before making claims about the codebase)
 
-1. **DESIGN_SKETCH.md** — the signed-off design for the FATE of Cthulhu campaign build
-2. **DESIGN.md** — the design north star ("The Tactile Ledger")
-3. **PRODUCT.md** — product intent
-4. **docs/codebase/*** — current code reality (source of truth for what exists)
+1. **DESIGN_SKETCH_WORLDS.md** — the signed-off design for the World Objects build (arc 2); supersedes DESIGN_SKETCH.md where they conflict
+2. **DESIGN_SKETCH.md** — the signed-off design for the FATE of Cthulhu campaign build (arc 1)
+3. **DESIGN.md** — the design north star ("The Tactile Ledger")
+4. **PRODUCT.md** — product intent
+5. **docs/codebase/*** — current code reality (source of truth for what exists)
 
 ## Reference Docs (read before making claims about the codebase)
 
@@ -21,7 +22,7 @@ Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it
 | [docs/codebase/CONVENTIONS.md](docs/codebase/CONVENTIONS.md)   | Naming, command patterns, data shapes                                               |
 | [docs/codebase/INTEGRATIONS.md](docs/codebase/INTEGRATIONS.md) | Filesystem, SQLite, search/embeddings, AI providers, plugins                        |
 | [docs/codebase/CONCERNS.md](docs/codebase/CONCERNS.md)         | Known risk areas — read before touching plugins or search                           |
-| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (10 Vitest suites / 32 tests + 43 Rust tests; `npm run test` and `cargo test` are real verification paths) |
+| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (14 Vitest suites / 52 tests + 57 Rust tests (56 pass, 1 keychain flake skipped); `npm run test` and `cargo test` from `src-tauri/` are real verification paths) |
 
 Keep these docs current: if you change architecture, conventions, or a risk area meaningfully, update the relevant file in the same change.
 
@@ -41,7 +42,7 @@ npm run build         # vite build; also the de-facto TypeScript type-check gate
 npm run tauri dev     # full app dev loop (Rust + frontend)
 ```
 
-- Tests exist: 10 Vitest suites / 32 tests (`npm run test`) and 43 Rust tests (`cargo test`). Both are real verification paths — run them before claiming work passes.
+- Tests exist: 14 Vitest suites / 52 tests (`npm run test`) and 57 Rust tests (`cargo test` from `src-tauri/`, 56 pass + 1 keychain flake skipped via `--skip test_api_key_round_trip`). Both are real verification paths — run them before claiming work passes.
 - Cargo/rustc may not be available in every terminal environment here; if `cargo check` isn't runnable, say so rather than assuming the Rust side compiles.
 
 ## Cross-Cutting Conventions

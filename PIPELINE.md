@@ -19,11 +19,79 @@ design: `DESIGN_SKETCH_WORLDS.md` (committed `e28607a`).
 | # | Phase | Harness | Mode | Output | Gate | Status |
 |---|-------|---------|------|--------|------|--------|
 | 0 | Devising | Hermes + Chris | interactive | DESIGN_SKETCH_WORLDS.md | Chris signs off | ✅ |
-| 1 | Build | opencode | autonomous | worlds.rs, registries, theme override, Liminal, bundles, World Shelf | diff vs sketch | ⏳ |
-| 2 | Drudge | zero | autonomous | boilerplate, coverage, docs | diff reviewed | ⬜ |
+| 1 | Build | opencode | autonomous | worlds.rs, registries, theme override, Liminal, bundles, World Shelf | diff vs sketch | ✅ |
+| 2 | Drudge | zero | autonomous | boilerplate, coverage, docs | diff reviewed | ✅ |
 | 3 | Review | Hermes + Chris | interactive | final diff vs whole arc | Chris approves merge | ⬜ |
 
 ## Arc 2 handoff log
+### Phase 2 — drudge (2026-08-11, Hermes — zero's run failed its contract)
+- **Zero's run (2026-08-11 overnight) failed:** exit 0 but zero commits; left
+  a corrupted `LiminalView.tsx` (Korean identifier, syntax errors, invented
+  non-existent `get_liminal_notes` command) and truncated PIPELINE.md (234→8
+  lines). Both cleaned up; drudge completed manually by Hermes (arc 1 precedent).
+- **Liminal view UI** (`LiminalView.tsx`): full-screen dedicated view wired to
+  the World Shelf's Liminal entry (replaces the arc-2 placeholder alert).
+  Lists `_liminal/Captures/*.md`, per-note claim-into-world (select + Claim;
+  default target = first world, fixed after test caught UI/backend mismatch),
+  and birth-a-new-world. Opened via `liminalOpen` state in `App.tsx`; shadows
+  all other views + right drawer while open. Committed `b8e082b`.
+- **Backend gap filled:** added `list_liminal_notes` (read-only) — the drudge
+  contract allowed additive commands; implemented as pure
+  `list_liminal_notes_impl` helper + thin Tauri wrapper (unit-testable).
+  Register + `tauri_plugin_dialog::init()` in builder. Commit `77e7371`.
+- **Native file dialogs** via `tauri-plugin-dialog` (the ONLY permitted dep):
+  export → native save (default `WorldName.zip`); import → native open filtered
+  to `.zip`; `dialog:default` capability added; hidden file-input removed from
+  WorldShelf; `onImportWorld` now takes no args. Commit `4f08542`.
+- **Coverage:** `LiminalView.test.tsx` (5 tests: empty, claim, birth, back,
+  error) + Rust `liminal_tests` (3: empty, parse+sorted, skip non-markdown).
+- **Docs (commit `a663dc0`):** TESTING.md + AGENTS.md counts are REAL measured
+  numbers — 14 Vitest suites / 52 tests, 57 Rust tests (56 pass;
+  `test_api_key_round_trip` blocks indefinitely on a locked macOS Keychain —
+  pre-existing flake; run with `--skip`). ARCHITECTURE.md: Liminal view UI,
+  `list_liminal_notes`, native-dialog sections.
+- **Verification:** `npm run test` 52/52 ✓ (from committed state, `NODE_ENV=test`
+  set by script). `cargo test -- --skip test_api_key_round_trip` 56/56 ✓.
+  `npm run build` ✓. Worktree clean except untracked `.opencode/` (by design).
+- **ACL note (harvest for fleet):** custom app commands (worlds, liminal,
+  bundles) are NOT in `desktop-schema.json` permissions and work because app
+  commands are ACL-exempt; only plugin commands (dialog) need capability
+  entries. Do not "fix" the schema into breaking this.
+- **Next (phase 3 review):** Hermes + Chris review final diff vs whole arc.
+
+### Phase 1 — build (2026-08-10, opencode autonomous)
+- **Delivered all 7 arc-2 deliverables, each mapped to a signed-off decision:**
+  1. **`world.json` schema v1 + loader** (`worlds.rs`): load/validate with
+     fallback chain (manifest → defaults); `ensure_manifest` auto-generates a
+     default manifest on first launch (additive, never overwrites). Defaults:
+     5 legacy note types + 4-entry provenance taxonomy (canon/history/
+     invention/**speculation** — the Provisional ships for all worlds).
+  2. **Note-type registry**: graph, canvas, metadata UI read the world's
+     `note_types` (fallback to defaults → legacy 5 still render).
+  3. **Provenance override**: `speculation` in the default taxonomy
+     everywhere; per-world taxonomy respected in sources UI + graph filter.
+  4. **Theme override**: world → global → defaults; accent + palette + serif
+     toggle only (signed-off decision 1); 10% accent + restraint preserved.
+  5. **The Liminal** (`campaigns/_liminal/`): captures land there
+     (`capture_note target:liminal`); `claim_liminal_note` + 
+     `make_world_from_liminal` birth action.
+  6. **Zip bundles** (`bundles.rs`): export/import (zip-slip guarded) +
+     folder scaffold (structure, no content) — round-trip verified.
+  7. **World Shelf UI** (`WorldShelf.tsx`): switcher with identity, new
+     world (scaffold choice), Liminal entry, export/import.
+- **Bible gating**: `agent.rs` reads the manifest `bible` flag; skips
+  conditioning when false, always-on when true/default.
+- **Verification:** `cargo test` 54 ✓ (43 + 10 new), `npm run test` 47 ✓
+  (32 + 15 new), `npm run build` ✓. Cargo 1.97.1 available and used.
+- **Docs:** AGENTS.md precedence (DESIGN_SKETCH_WORLDS.md above
+  DESIGN_SKETCH.md); ARCHITECTURE.md World Objects section.
+- **Commits:** `8789626` (backend), `afc0215` (frontend), `0ac6dc3` (docs).
+- **Known gaps (out of scope, future phases):** dedicated Liminal view is a
+  placeholder alert (claim/route UI not built); export uses a text prompt for
+  destination (no native file dialog); voice bank, versioned history, live
+  STT, graph layout + Thread, era-hopping all remain future phases.
+- **Next: phase 2 drudge** — boilerplate, coverage, docs, obvious fills.
+
 ### Phase 0 — devising (2026-08-10)
 - Chris's priority order: **3 (ownership) → 4 (many worlds) → 2 (QoL) → 1
   (imaginative space)**. Domains 3+4 collapse into one system: the World

@@ -9,7 +9,7 @@ import {
   Trash2,
   Copy,
 } from "lucide-react";
-import { CampaignNote } from "../types";
+import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../types";
 
 export interface TemplateProperty {
   type: "number" | "boolean" | "string";
@@ -72,6 +72,8 @@ export interface CampaignVaultViewProps {
   setActiveView: (view: "dashboard" | "vault" | "rules" | "ai" | "settings" | "canvas" | "trash") => void;
   onSelectNoteFromCanvas: (noteId: string) => void;
   onSelectCanvas: (canvasPath: string) => void;
+  /** World provenance taxonomy; falls back to DEFAULT_PROVENANCE_TAXONOMY. */
+  provenanceTaxonomy?: ProvenanceType[];
 }
 
 /**
@@ -122,6 +124,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   setActiveView,
   onSelectNoteFromCanvas,
   onSelectCanvas,
+  provenanceTaxonomy = DEFAULT_PROVENANCE_TAXONOMY,
 }) => {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
 
@@ -817,9 +820,11 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               }}
                             >
                               <option value="">— none —</option>
-                              <option value="canon">canon</option>
-                              <option value="history">history</option>
-                              <option value="invention">invention</option>
+                              {provenanceTaxonomy.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label.toLowerCase()}
+                                </option>
+                              ))}
                               <option value="custom">custom</option>
                             </select>
                           </div>

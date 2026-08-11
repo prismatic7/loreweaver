@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CampaignNote, SourceEntry } from "../types";
+import {
+  CampaignNote,
+  DEFAULT_NOTE_TYPES,
+  DEFAULT_PROVENANCE_TAXONOMY,
+  NoteType,
+  ProvenanceType,
+  SourceEntry,
+} from "../types";
 
 /**
  * EntityGraphView
@@ -29,17 +36,13 @@ interface GraphEdge {
 interface EntityGraphViewProps {
   notes: CampaignNote[];
   onOpenNote: (noteId: string) => void;
+  /** World note types; falls back to DEFAULT_NOTE_TYPES for legacy vaults. */
+  noteTypes?: NoteType[];
+  /** World provenance taxonomy; falls back to DEFAULT_PROVENANCE_TAXONOMY. */
+  provenanceTaxonomy?: ProvenanceType[];
 }
 
-type ProvenanceFilter = "all" | "canon" | "history" | "invention";
-
-const TYPE_COLORS: Record<string, string> = {
-  npc: "oklch(60% 0.22 340)",
-  location: "oklch(65% 0.2 260)",
-  faction: "oklch(60% 0.15 80)",
-  item: "oklch(70% 0.18 140)",
-  event: "oklch(75% 0.15 320)",
-};
+type ProvenanceFilter = string; // "all" | any provenance id from the taxonomy
 
 const SOURCE_COLOR = "oklch(70% 0.12 45)";
 
@@ -59,10 +62,25 @@ const normalize = (str: string) =>
 export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
   notes,
   onOpenNote,
+  noteTypes = DEFAULT_NOTE_TYPES,
+  provenanceTaxonomy = DEFAULT_PROVENANCE_TAXONOMY,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceEntry[]>([]);
   const [filter, setFilter] = useState<ProvenanceFilter>("all");
+
+  const typeColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    noteTypes.forEach((t) => {
+      map[t.id] = t.color;
+    });
+    return map;
+  }, [noteTypes]);
+
+  const entityTypeIds = useMemo(
+    () => new Set(noteTypes.map((t) => t.id)),
+    [noteTypes],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +107,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     // Build entity nodes from notes that have a meaningful `type`.
     const entityNotes = filteredNotes.filter((n) => {
       const type = String(n.frontmatter?.type || "").toLowerCase();
-      return ["npc", "location", "faction", "item", "event"].includes(type);
+      return entityTypeIds.has(type);
     });
 
     const nodeMap = new Map<string, GraphNode>();
@@ -187,7 +205,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     });
 
     return { nodes: Array.from(nodeMap.values()), edges: edgeList };
-  }, [notes, sources, filter]);
+  }, [notes, sources, filter, entityTypeIds]);
 
   if (nodes.length === 0) {
     return (
@@ -211,9 +229,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
 
   const filterOptions: Array<{ value: ProvenanceFilter; label: string }> = [
     { value: "all", label: "All" },
-    { value: "canon", label: "Canon" },
-    { value: "history", label: "History" },
-    { value: "invention", label: "Invention" },
+    ...provenanceTaxonomy.map((p) => ({ value: p.id, label: p.label })),
   ];
 
   return (
@@ -299,7 +315,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
             const isSource = n.kind === "source";
             const color = isSource
               ? SOURCE_COLOR
-              : TYPE_COLORS[n.type] || "oklch(60% 0.15 180)";
+              : typeColors[n.type] || "oklch(60% 0.15 180)";
             const isSelected = selectedId === n.id;
             return (
               <g

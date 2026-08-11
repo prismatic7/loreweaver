@@ -49,7 +49,76 @@ export interface WebClip {
 }
 
 /** The canonical provenance source types offered in the UI. */
-export const SOURCE_TYPES = ["canon", "history", "invention"] as const;
+export const SOURCE_TYPES = [
+  "canon",
+  "history",
+  "invention",
+  "speculation",
+] as const;
+
+/**
+ * A note type declared by a world's manifest. Replaces the hardcoded five
+ * legacy types in the graph/canvas/metadata UI. Falls back to
+ * DEFAULT_NOTE_TYPES for legacy vaults.
+ */
+export interface NoteType {
+  id: string;
+  label: string;
+  color: string;
+}
+
+/** A provenance state declared by a world's manifest. */
+export interface ProvenanceType {
+  id: string;
+  label: string;
+}
+
+/** Per-world theme overrides resolved on top of the global Ledger tokens. */
+export interface WorldTheme {
+  palette?: string;
+  accent?: string;
+  serif?: boolean;
+}
+
+/** The world object: a folder (`campaigns/<world>/`) with a `world.json`. */
+export interface WorldManifest {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  theme: WorldTheme;
+  note_types: NoteType[];
+  provenance_taxonomy: ProvenanceType[];
+  bible: boolean;
+  created: string;
+}
+
+/** Lightweight world listing for the World Shelf (excludes `_liminal`). */
+export interface WorldInfo {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  path: string;
+  last_opened: string | null;
+}
+
+/** Default note types — the legacy five, used when a world declares none. */
+export const DEFAULT_NOTE_TYPES: NoteType[] = [
+  { id: "npc", label: "Person", color: "oklch(60% 0.22 340)" },
+  { id: "location", label: "Place", color: "oklch(65% 0.2 260)" },
+  { id: "faction", label: "Org", color: "oklch(60% 0.15 80)" },
+  { id: "item", label: "Object", color: "oklch(70% 0.18 140)" },
+  { id: "event", label: "Beat", color: "oklch(75% 0.15 320)" },
+];
+
+/** Default provenance taxonomy — includes `speculation` (the Provisional). */
+export const DEFAULT_PROVENANCE_TAXONOMY: ProvenanceType[] = [
+  { id: "canon", label: "Canon" },
+  { id: "history", label: "History" },
+  { id: "invention", label: "Invention" },
+  { id: "speculation", label: "Speculative" },
+];
 
 /** Frontmatter keys that carry provenance metadata on a note. */
 export const PROVENANCE_KEYS = [

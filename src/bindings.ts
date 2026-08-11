@@ -31,6 +31,13 @@ export type CampaignNote = {
 	content: string,
 };
 
+/**  A single note-type registry entry declared by a world's manifest. */
+export type NoteType = {
+	id: string,
+	label: string,
+	color: string,
+};
+
 /**
  *  PluginInfo mirrors the runtime type in `plugins.rs` so it can be exported to TypeScript.
  *  It is kept minimal because Specta only needs the public shape.
@@ -43,6 +50,12 @@ export type PluginInfo = {
 	permissions: string[],
 	script_content: string,
 	active: boolean,
+};
+
+/**  A single provenance-taxonomy entry declared by a world's manifest. */
+export type ProvenanceType = {
+	id: string,
+	label: string,
 };
 
 export type RuleEntry = {
@@ -105,5 +118,38 @@ export type WebClip = {
 	url: string,
 	markdown: string,
 	fetched_at: string,
+};
+
+/**  Lightweight identity for the World Shelf (switcher) UI. */
+export type WorldInfo = {
+	id: string,
+	name: string,
+	description: string,
+	icon: string,
+	path: string,
+	last_opened: string | null,
+};
+
+/**
+ *  The world object's manifest (`world.json`). Declares a world's identity,
+ *  theme, note-type registry, provenance taxonomy, and bible conditioning flag.
+ */
+export type WorldManifest = {
+	id: string,
+	name: string,
+	description: string,
+	icon: string,
+	theme: WorldTheme,
+	note_types: NoteType[],
+	provenance_taxonomy: ProvenanceType[],
+	bible: boolean,
+	created: string,
+};
+
+/**  Per-world theme overrides layered on top of the global Ledger tokens. */
+export type WorldTheme = {
+	palette: string | null,
+	accent: string | null,
+	serif: boolean | null,
 };
 

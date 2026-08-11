@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:default",
     "allow-greet",
     "allow-load-notes",
     "allow-load-trash-notes",
