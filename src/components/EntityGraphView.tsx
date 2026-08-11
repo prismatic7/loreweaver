@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Maximize2, Network } from "lucide-react";
+import { Maximize2, Network, X } from "lucide-react";
 import {
   CampaignNote,
   DEFAULT_NOTE_TYPES,
@@ -208,6 +208,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceEntry[]>([]);
   const [filter, setFilter] = useState<ProvenanceFilter>("all");
+  const [filterNotice, setFilterNotice] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -226,6 +227,24 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     () => new Set(noteTypes.map((t) => t.id)),
     [noteTypes],
   );
+
+  // No dead-end states: if a provenance filter is selected but matches zero
+  // notes, fall back to "all" and explain. Kept before any early return so
+  // the hook is called unconditionally.
+  useEffect(() => {
+    if (filter === "all") return;
+    const count = notes.filter(
+      (n) => String(n.frontmatter?.source_type || "").toLowerCase() === filter,
+    ).length;
+    if (count === 0) {
+      setFilterNotice(
+        `No notes matched the ${filter} provenance filter, so the graph fell back to showing all notes.`,
+      );
+      setFilter("all");
+    } else {
+      setFilterNotice(null);
+    }
+  }, [filter, notes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -465,54 +484,26 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
   };
 
   if (nodes.length === 0) {
-    // Distinguish "no notes match the active provenance filter" from
-    // "no entity-typed notes exist at all". With a provenance filter active
-    // and zero matching notes, the previous message wrongly told users to
-    // add entity-typed notes when the real cause was the source_type gate.
-    const provenanceMatches =
+    // Provenance filter auto-falls back to "all" so the graph can never be
+    // stranded in a dead-end empty state. The notice explains what happened;
+    // the "no entity-typed notes at all" guidance remains for filter="all".
+    const message =
       filter === "all"
-        ? notes.length
-        : notes.filter(
-            (n) =>
-              String(n.frontmatter?.source_type || "").toLowerCase() ===
-              filter,
-          ).length;
-    const filterEmpty = filter !== "all" && provenanceMatches === 0;
+        ? "No entities found. Add notes with a frontmatter type of npc, location, faction, item, or event to see them here."
+        : filterNotice ?? `No notes matched the ${filter} provenance filter, so the graph fell back to showing all notes.`;
 
     return (
       <div
         className="view-container"
         data-od-id="entity-graph-view"
-        style={{ padding: "40px 32px" }}
+        style={{ padding: "40px 32px", flexDirection: "column" }}
       >
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
           Entity Graph
         </h2>
-        {filterEmpty ? (
-          <>
-            <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
-              No notes match the{" "}
-              <strong style={{ color: "var(--fg)" }}>{filter}</strong>{" "}
-              provenance filter. Notes only appear here once they have a{" "}
-              <code>source_type</code> frontmatter value matching the filter.
-            </p>
-            <button
-              className="btn btn-sm"
-              onClick={() => setFilter("all")}
-              style={{ marginTop: "12px" }}
-              data-od-id="graph-filter-reset"
-            >
-              Show all notes
-            </button>
-          </>
-        ) : (
-          <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
-            No entities found. Add notes with a frontmatter{" "}
-            <code>type</code> of <code>npc</code>, <code>location</code>,{" "}
-            <code>faction</code>, <code>item</code>, or <code>event</code> to
-            see them here.
-          </p>
-        )}
+        <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
+          {message}
+        </p>
       </div>
     );
   }
@@ -526,7 +517,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     <div
       className="view-container"
       data-od-id="entity-graph-view"
-      style={{ padding: 0, overflow: "hidden" }}
+      style={{ padding: 0, overflow: "hidden", flexDirection: "column" }}
     >
       <div
         style={{
@@ -587,6 +578,40 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
           </button>
         </div>
       </div>
+      {filterNotice && (
+        <div
+          data-od-id="graph-filter-notice"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "6px 16px",
+            fontSize: "11px",
+            color: "var(--fg)",
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <span style={{ flex: 1 }}>{filterNotice}</span>
+          <button
+            onClick={() => setFilterNotice(null)}
+            title="Dismiss"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 20,
+              height: 20,
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--muted)",
+            }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
       <div
         ref={containerRef}
         data-od-id="entity-graph-canvas"

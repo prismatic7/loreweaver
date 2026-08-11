@@ -60,6 +60,15 @@ describe("EntityGraphView", () => {
     expect(screen.getByText("Entity & Relationship Graph")).toBeTruthy();
     // Node count badge: 2 nodes · 0 relationships
     expect(screen.getByText(/2 nodes/)).toBeTruthy();
+    // The actual SVG circles must render, not just the badge. Guards against
+    // "badge says 2 but nothing is drawn" regressions.
+    const { container } = render(
+      <EntityGraphView notes={notes} onOpenNote={vi.fn()} />,
+    );
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]');
+    expect(canvas).toBeTruthy();
+    const circles = canvas!.querySelectorAll("circle");
+    expect(circles.length).toBe(2);
   });
 
   it("filters notes by provenance when a filter button is clicked", () => {
@@ -93,7 +102,7 @@ describe("EntityGraphView", () => {
     expect(screen.getByText(/3 nodes/)).toBeTruthy();
   });
 
-  it("shows filter-empty state (not entity guidance) when provenance filter matches zero notes", () => {
+  it("auto-falls back to all notes when a provenance filter matches nothing", () => {
     const notes = [
       makeNote({ id: "n1", title: "Titus Crow", frontmatter: { type: "npc" } }),
       makeNote({
@@ -106,19 +115,18 @@ describe("EntityGraphView", () => {
     // Default: all notes, both entities render.
     expect(screen.getByText(/2 nodes/)).toBeTruthy();
 
-    // Click a provenance filter no note carries → filter-empty state, not the
-    // "add entity notes" guidance. (getByText matches direct text nodes only,
-    // so the phrase inside <strong>/<code> is not part of the match.)
+    // Click a provenance filter no note carries → the graph must NOT dead-end
+    // in an empty state: it falls back to "all" and shows a notice.
     fireEvent.click(screen.getByText("Canon"));
-    expect(screen.getByText(/No notes match the/i)).toBeTruthy();
-    expect(screen.queryByText(/No entities found/)).toBeNull();
-    expect(
-      screen.queryByText(/add notes with a frontmatter/i),
-    ).toBeNull();
-
-    // Reset button returns to the full graph.
-    fireEvent.click(screen.getByText("Show all notes"));
+    expect(screen.getByText(/fell back to showing all notes/i)).toBeTruthy();
     expect(screen.getByText(/2 nodes/)).toBeTruthy();
+    expect(screen.queryByText(/No entities found/)).toBeNull();
+
+    // The "All" tab is active again after the fallback.
+    const allTab = screen.getByText("All");
+    expect(
+      (allTab.closest("button") as HTMLButtonElement).style.borderBottom,
+    ).toContain("var(--accent)");
   });
 
   it("shows source nodes when notes reference a listed source", async () => {
