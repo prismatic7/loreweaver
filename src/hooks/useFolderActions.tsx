@@ -85,9 +85,12 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
   } | null>(null);
   const assetFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleNewFolder = useCallback(async () => {
+  const handleNewFolder = useCallback(async (parentFolder?: string) => {
+    const cleanParent = parentFolder && parentFolder !== "Root" ? parentFolder.replace(/\/+$/, "") : "";
+    const defaultName = cleanParent ? `${cleanParent}/` : "";
     const folderName = await showPrompt(
       "Enter new folder name (e.g. Worldbuilding/Cities or Factions):",
+      defaultName,
     );
     if (!folderName) return;
     const cleanFolderName = folderName.trim().replace(/\/+$/, "");
@@ -157,7 +160,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
         await handleNewNote(cleanFolder || "Worldbuilding");
         setActiveView("vault");
       } else if (type === "folder") {
-        await handleNewFolder();
+        await handleNewFolder(cleanFolder);
       } else if (type === "canvas") {
         const cleanTitle = `New Canvas ${timestamp.toString().slice(-4)}`;
         const canvasPath = `${prefix}${cleanTitle}.canvas`;
