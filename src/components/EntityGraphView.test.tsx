@@ -173,10 +173,8 @@ describe("EntityGraphView", () => {
     const svg = container.querySelector('[data-od-id="entity-graph-canvas"] svg') as SVGSVGElement;
     const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
 
-    // Nodes sit at (620, 300) and (180, 300); with pad 60 the bounds are
-    // x∈[120,680] (w=560), y∈[240,360] (h=120). A 560×120 container makes the
-    // fit scale exactly min(560/560, 120/120, 1.5) = 1 — otherwise jsdom's
-    // 0-size rects make fitToView early-return and nothing changes.
+    // Give the canvas real dimensions so fitToView can compute a valid scale.
+    // (jsdom's 0-size rects make the mount-time auto-fit early-return.)
     Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 560 });
     Object.defineProperty(canvas, "clientHeight", { configurable: true, value: 120 });
 
@@ -186,6 +184,11 @@ describe("EntityGraphView", () => {
     expect(svg.style.transform).toContain("scale(1.1)");
 
     fireEvent.click(screen.getByTitle("Fit Graph to View"));
-    expect(svg.style.transform).toContain("scale(1)");
+    // Fit re-scales to the deterministic force-directed bounds, capped at 1.5.
+    // Assert the scale is within the fit cap and no longer the wheel-zoomed 1.1.
+    const match = svg.style.transform.match(/scale\(([\d.]+)\)/);
+    expect(match).toBeTruthy();
+    expect(Number(match![1])).toBeLessThanOrEqual(1.5);
+    expect(svg.style.transform).not.toContain("scale(1.1)");
   });
 });

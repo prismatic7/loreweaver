@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Plus,
@@ -8,6 +8,7 @@ import {
   Map as MapIcon,
   EyeOff,
   Ruler,
+  Maximize2,
 } from "lucide-react";
 
 /**
@@ -234,6 +235,81 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     setRulerDistance(null);
   };
 
+  // Wheel zoom with zoom-to-cursor. Reciprocal factors (1.1 / 1/1.1) so
+  // zooming in then out returns to exactly 100%.
+  const handleWheel = (e: React.WheelEvent) => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+    setZoom((z) => {
+      const newZoom = Math.min(4.0, Math.max(0.25, z * factor));
+      const actualFactor = newZoom / z;
+      setPan((p) => ({
+        x: mousePos.x - (mousePos.x - p.x) * actualFactor,
+        y: mousePos.y - (mousePos.y - p.y) * actualFactor,
+      }));
+      return newZoom;
+    });
+  };
+
+  // Fit all tokens + fog regions into the viewport.
+  const fitToView = () => {
+    const el = canvasRef.current;
+    if (!el || !el.clientWidth || !el.clientHeight) return;
+    const pad = 60;
+    const allX = [
+      ...tokens.map((t) => t.x),
+      ...fog.map((f) => f.x),
+    ];
+    const allY = [
+      ...tokens.map((t) => t.y),
+      ...fog.map((f) => f.y),
+    ];
+    if (allX.length === 0) {
+      setZoom(1);
+      setPan({ x: 40, y: 40 });
+      return;
+    }
+    const minX = Math.min(...allX) - pad;
+    const maxX = Math.max(...allX) + pad;
+    const minY = Math.min(...allY) - pad;
+    const maxY = Math.max(...allY) + pad;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const s = Math.min(el.clientWidth / w, el.clientHeight / h, 1.5);
+    const z = Math.max(0.25, s);
+    setZoom(z);
+    setPan({
+      x: (el.clientWidth - w * z) / 2 - minX * z,
+      y: (el.clientHeight - h * z) / 2 - minY * z,
+    });
+  };
+
+  // Token label collision: ids of tokens within 50px of another token.
+  // Their labels fade unless selected (the selected label lifts above the
+  // circle with a background rect instead).
+  const collidedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (let i = 0; i < tokens.length; i++) {
+      for (let j = i + 1; j < tokens.length; j++) {
+        const a = tokens[i];
+        const b = tokens[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 50) {
+          ids.add(a.id);
+          ids.add(b.id);
+        }
+      }
+    }
+    return ids;
+  }, [tokens]);
+
+  const truncateLabel = (label: string) =>
+    label.length > 12 ? `${label.slice(0, 12)}…` : label;
+
   return (
     <div
       style={{
@@ -268,22 +344,30 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           <button
             className="btn btn-sm"
-            onClick={() => setZoom((z) => Math.min(z + 0.15, 2.5))}
+            onClick={() => setZoom((z) => Math.min(z + 0.1, 4.0))}
             title="Zoom In"
             data-od-id="map-zoom-in-btn"
           >
             <ZoomIn size={12} />
           </button>
-          <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+          <span style={{ fontSize: "11px", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
             {Math.round(zoom * 100)}%
           </span>
           <button
             className="btn btn-sm"
-            onClick={() => setZoom((z) => Math.max(z - 0.15, 0.25))}
+            onClick={() => setZoom((z) => Math.max(z - 0.1, 0.25))}
             title="Zoom Out"
             data-od-id="map-zoom-out-btn"
           >
             <ZoomOut size={12} />
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={fitToView}
+            title="Fit Map to View"
+            data-od-id="map-fit-btn"
+          >
+            <Maximize2 size={12} />
           </button>
           <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button
@@ -329,6 +413,33 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         </div>
       </div>
 
+      {/* Empty state */}
+      {tokens.length === 0 && fog.length === 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: "44px 0 0 0",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            background: "var(--bg)",
+            zIndex: 5,
+            pointerEvents: "none",
+          }}
+        >
+          <MapIcon size={32} style={{ color: "var(--muted)" }} />
+          <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--fg)" }}>
+            Empty map
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--muted)", maxWidth: 360, textAlign: "center" }}>
+            Add tokens to mark characters and landmarks, or fog-of-war regions
+            to hide areas from players. Use the ruler to measure distances.
+          </div>
+        </div>
+      )}
+
       {/* Main Canvas Space */}
       <div
         ref={canvasRef}
@@ -338,6 +449,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onClick={handleCanvasClick}
+        onWheel={handleWheel}
         style={{
           flex: 1,
           overflow: "hidden",
@@ -362,8 +474,27 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 <path
                   d="M 40 0 L 0 0 0 40"
                   fill="none"
-                  stroke="var(--border)"
+                  stroke="var(--grid-line)"
                   strokeWidth="1"
+                />
+              </pattern>
+              {/* Hatching for hidden fog — distinguishes "intentionally hidden"
+                  from "just dark". */}
+              <pattern
+                id="fog-hatch"
+                width="8"
+                height="8"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <line
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="8"
+                  stroke="var(--surface)"
+                  strokeWidth="1"
+                  opacity="0.35"
                 />
               </pattern>
             </defs>
@@ -388,6 +519,16 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   strokeWidth="1"
                   strokeDasharray="4 4"
                 />
+                {f.hidden && (
+                  <rect
+                    x={f.x}
+                    y={f.y}
+                    width={f.width}
+                    height={f.height}
+                    fill="url(#fog-hatch)"
+                    pointerEvents="none"
+                  />
+                )}
                 <text
                   x={f.x + 6}
                   y={f.y + 14}
@@ -435,10 +576,15 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect width="24" height="24" rx="0" fill="var(--surface)" stroke="var(--border)" />
-                  <text x="12" y="16" fontSize="11" textAnchor="middle" fill="var(--danger)">
-                    ✕
-                  </text>
+                  <rect width="24" height="24" rx="0" fill="var(--surface)" stroke="var(--danger)" strokeWidth="1" />
+                  <g transform="translate(12, 12)">
+                    <g transform="scale(0.5)">
+                      <g fill="none" stroke="var(--danger)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                      </g>
+                    </g>
+                  </g>
                 </g>
               </g>
             ))}
@@ -451,7 +597,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 x2={rulerPoints[1].x}
                 y2={rulerPoints[1].y}
                 stroke="var(--accent)"
-                strokeWidth="2"
+                strokeWidth="1.5"
                 strokeDasharray="6 4"
               />
             )}
@@ -460,66 +606,126 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 key={i}
                 cx={p.x}
                 cy={p.y}
-                r="4"
-                fill="var(--accent)"
+                r="3"
+                fill="var(--surface)"
+                stroke="var(--accent)"
+                strokeWidth="1.5"
               />
             ))}
             {rulerDistance !== null && (
-              <text
-                x={(rulerPoints[0].x + rulerPoints[1].x) / 2}
-                y={(rulerPoints[0].y + rulerPoints[1].y) / 2 - 8}
-                fontSize="12"
-                fontWeight="bold"
-                fill="var(--accent)"
-                textAnchor="middle"
-              >
-                {rulerDistance} units
-              </text>
+              <g>
+                <rect
+                  x={(rulerPoints[0].x + rulerPoints[1].x) / 2 - 34}
+                  y={(rulerPoints[0].y + rulerPoints[1].y) / 2 - 20}
+                  width="68"
+                  height="18"
+                  rx="0"
+                  fill="var(--surface)"
+                  stroke="var(--border)"
+                  strokeWidth="0.5"
+                />
+                <text
+                  x={(rulerPoints[0].x + rulerPoints[1].x) / 2}
+                  y={(rulerPoints[0].y + rulerPoints[1].y) / 2 - 7}
+                  fontSize="11"
+                  fontFamily="var(--font-mono)"
+                  fontWeight="600"
+                  fill="var(--accent)"
+                  textAnchor="middle"
+                >
+                  {rulerDistance} units
+                </text>
+              </g>
             )}
 
             {/* Tokens */}
-            {tokens.map((t) => (
-              <g
-                key={t.id}
-                transform={`translate(${t.x}, ${t.y})`}
-                onMouseDown={(e) => handleTokenMouseDown(e, t.id, t.x, t.y)}
-                style={{ cursor: "grab" }}
-              >
-                <circle r="16" fill={t.color} stroke={selectedTokenId === t.id ? "var(--accent)" : "var(--surface)"} strokeWidth={selectedTokenId === t.id ? "2" : "2"} />
-                <text
-                  y="4"
-                  fontSize="12"
-                  textAnchor="middle"
-                  fill="#fff"
-                  fontWeight="bold"
-                >
-                  {t.label.charAt(0).toUpperCase()}
-                </text>
-                <text
-                  y="32"
-                  fontSize="10"
-                  textAnchor="middle"
-                  fill="var(--fg)"
-                >
-                  {t.label}
-                </text>
+            {tokens.map((t) => {
+              const isSelected = selectedTokenId === t.id;
+              const collided = collidedIds.has(t.id);
+              const label = truncateLabel(t.label);
+              return (
                 <g
-                  transform="translate(12, -12)"
-                  role="button"
-                  aria-label="Delete token"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeToken(t.id);
-                  }}
-                  style={{ cursor: "pointer" }}
+                  key={t.id}
+                  transform={`translate(${t.x}, ${t.y})`}
+                  onMouseDown={(e) => handleTokenMouseDown(e, t.id, t.x, t.y)}
+                  style={{ cursor: "grab" }}
                 >
-                  <rect width="24" height="24" x="-12" y="-12" rx="0" fill="var(--surface)" stroke="var(--border)" />
-                  <text x="0" y="4" fontSize="11" textAnchor="middle" fill="var(--danger)">
-                    ✕
+                  {/* Selection halo ring */}
+                  {isSelected && (
+                    <circle
+                      r="22"
+                      fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="1"
+                      opacity="0.4"
+                    />
+                  )}
+                  <circle r="16" fill={t.color} stroke={isSelected ? "var(--accent)" : "var(--surface)"} strokeWidth="2" />
+                  <text
+                    y="4"
+                    fontSize="12"
+                    textAnchor="middle"
+                    fill="#fff"
+                    fontWeight="bold"
+                  >
+                    {t.label.charAt(0).toUpperCase()}
                   </text>
+                  {isSelected ? (
+                    <g>
+                      <rect
+                        x={-34}
+                        y={-34}
+                        width="68"
+                        height="18"
+                        rx="0"
+                        fill="var(--surface)"
+                        stroke="var(--border)"
+                        strokeWidth="0.5"
+                      />
+                      <text
+                        y="-21"
+                        fontSize="10"
+                        textAnchor="middle"
+                        fill="var(--fg)"
+                        fontWeight="600"
+                      >
+                        {label}
+                      </text>
+                    </g>
+                  ) : (
+                    <text
+                      y="32"
+                      fontSize="10"
+                      textAnchor="middle"
+                      fill="var(--fg)"
+                      opacity={collided ? 0.25 : 1}
+                    >
+                      {label}
+                    </text>
+                  )}
+                  <g
+                    transform="translate(12, -12)"
+                    role="button"
+                    aria-label="Delete token"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeToken(t.id);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <rect width="24" height="24" x="-12" y="-12" rx="0" fill="var(--surface)" stroke="var(--danger)" strokeWidth="1" />
+                    <g transform="translate(0, 0)">
+                      <g transform="scale(0.5)">
+                        <g fill="none" stroke="var(--danger)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 6 6 18" />
+                          <path d="m6 6 12 12" />
+                        </g>
+                      </g>
+                    </g>
+                  </g>
                 </g>
-              </g>
-            ))}
+              );
+            })}
           </g>
         </svg>
 

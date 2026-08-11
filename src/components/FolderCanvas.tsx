@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye, Zap } from "lucide-react";
+import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye, Zap, Maximize2 } from "lucide-react";
 
 /**
  * FolderCanvas Component
@@ -168,6 +168,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [connectingFromId, setConnectingFromId] = useState<string | null>(null);
@@ -416,6 +417,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.target === canvasRef.current || (e.target as HTMLElement).tagName === "svg") {
       setIsPanning(true);
+      setSelectedNodeId(null);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
     }
   };
@@ -444,8 +446,63 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
     setDraggingNodeId(null);
   };
 
+  // Wheel zoom with zoom-to-cursor. Reciprocal factors (1.1 / 1/1.1) so
+  // zooming in then out returns to exactly 100%.
+  const handleWheel = (e: React.WheelEvent) => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+    setZoom((z) => {
+      const newZoom = Math.min(3.0, Math.max(0.25, z * factor));
+      const actualFactor = newZoom / z;
+      setPan((p) => ({
+        x: mousePos.x - (mousePos.x - p.x) * actualFactor,
+        y: mousePos.y - (mousePos.y - p.y) * actualFactor,
+      }));
+      return newZoom;
+    });
+  };
+
+  // Fit all nodes + containers into the viewport.
+  const fitToView = () => {
+    const el = canvasRef.current;
+    if (!el || !el.clientWidth || !el.clientHeight) return;
+    const pad = 60;
+    const allX = [
+      ...nodes.map((n) => n.x),
+      ...containers.map((c) => c.x),
+      ...dynamicContainers.map((c) => c.x),
+    ];
+    const allY = [
+      ...nodes.map((n) => n.y),
+      ...containers.map((c) => c.y),
+      ...dynamicContainers.map((c) => c.y),
+    ];
+    if (allX.length === 0) {
+      setZoom(1);
+      setPan({ x: 40, y: 40 });
+      return;
+    }
+    const minX = Math.min(...allX) - pad;
+    const maxX = Math.max(...allX) + 220 + pad;
+    const minY = Math.min(...allY) - pad;
+    const maxY = Math.max(...allY) + 160 + pad;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const s = Math.min(el.clientWidth / w, el.clientHeight / h, 1.5);
+    const z = Math.max(0.25, s);
+    setZoom(z);
+    setPan({
+      x: (el.clientWidth - w * z) / 2 - minX * z,
+      y: (el.clientHeight - h * z) / 2 - minY * z,
+    });
+  };
+
   const handleNodeMouseDown = (e: React.MouseEvent, nodeId: string, nodeX: number, nodeY: number) => {
     e.stopPropagation();
+    setSelectedNodeId(nodeId);
     if (connectingFromId) {
       if (connectingFromId !== nodeId) {
         const newEdge: EdgeConnection = {
@@ -496,12 +553,15 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2.5))} title="Zoom In" data-od-id="canvas-zoom-in-btn">
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.1, 3.0))} title="Zoom In" data-od-id="canvas-zoom-in-btn">
             <ZoomIn size={12} />
           </button>
-          <span style={{ fontSize: "11px", color: "var(--muted)" }}>{Math.round(zoom * 100)}%</span>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.25))} title="Zoom Out" data-od-id="canvas-zoom-out-btn">
+          <span style={{ fontSize: "11px", color: "var(--muted)", fontFamily: "var(--font-mono)" }}>{Math.round(zoom * 100)}%</span>
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.1, 0.25))} title="Zoom Out" data-od-id="canvas-zoom-out-btn">
             <ZoomOut size={12} />
+          </button>
+          <button className="btn btn-sm" onClick={fitToView} title="Fit Canvas to View" data-od-id="canvas-fit-btn">
+            <Maximize2 size={12} />
           </button>
           <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button className="btn btn-sm" onClick={addContainerBox} title="Add Container / Boundary Box" data-od-id="canvas-add-container-btn">
@@ -514,12 +574,40 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
         </div>
       </div>
 
+      {/* Empty state */}
+      {folderNotes.length === 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: "44px 0 0 0",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            background: "var(--bg)",
+            zIndex: 5,
+          }}
+        >
+          <Layers size={32} style={{ color: "var(--muted)" }} />
+          <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--fg)" }}>
+            No notes in this folder
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--muted)", maxWidth: 360, textAlign: "center" }}>
+            Add notes to {currentFolder ? `"${currentFolder}"` : "the vault root"} to see them
+            arranged on this canvas. Notes with wiki-links or frontmatter
+            relationships will be connected automatically.
+          </div>
+        </div>
+      )}
+
       {/* Main Canvas Space */}
       <div
         ref={canvasRef}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onWheel={handleWheel}
         style={{
           flex: 1,
           width: "100%",
@@ -527,7 +615,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           position: "relative",
           cursor: isPanning ? "grabbing" : "grab",
           overflow: "hidden",
-          backgroundImage: "radial-gradient(var(--muted) 1px, transparent 1px)",
+          backgroundImage: "radial-gradient(var(--grid-dot) 1.5px, transparent 1.5px)",
           backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
           backgroundPosition: `${pan.x}px ${pan.y}px`,
         }}
@@ -620,7 +708,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                   width: box.width,
                   height: box.height,
                   background: box.color,
-                  border: isDynamic ? `2px dashed ${borderColor}` : "2px dashed var(--accent)",
+                  border: isDynamic ? `1px dashed ${borderColor}` : "1px dashed var(--accent)",
                   borderRadius: 0,
                   padding: "8px",
                   pointerEvents: "none",
@@ -696,15 +784,18 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     ? "2px solid var(--accent)" 
                     : isCanvas 
                       ? "1px solid var(--accent)" 
-                      : draggingNodeId === note.id
-                        ? "1px solid var(--accent)"
-                        : "1px solid var(--border)",
+                      : selectedNodeId === note.id
+                        ? "2px solid var(--accent)"
+                        : draggingNodeId === note.id
+                          ? "1px solid var(--accent)"
+                          : "1px solid var(--border)",
                   borderRadius: 0,
                   padding: "12px",
                   cursor: isCanvas ? "pointer" : "grab",
                   opacity: draggingNodeId === note.id ? 0.85 : 1,
                   userSelect: "none",
                 }}
+                className={connectingFromId === note.id ? "connecting-pulse" : undefined}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: isCanvas ? "var(--accent)" : "var(--muted)", fontWeight: 700 }}>
