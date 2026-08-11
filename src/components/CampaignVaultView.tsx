@@ -194,7 +194,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 gap: "4px",
                 fontSize: "11px",
                 cursor: "pointer",
-                borderRadius: "4px",
+                borderRadius: 0,
               }}
               title="Create a new note"
               data-od-id="vault-new-note-btn"
@@ -215,7 +215,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 cursor: "pointer",
                 background: "transparent",
                 border: "1px solid var(--border)",
-                borderRadius: "4px",
+                borderRadius: 0,
                 color: "var(--fg)",
               }}
               title="Create a new folder"
@@ -258,7 +258,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       justifyContent: "space-between",
                       width: "100%",
                       paddingRight: "8px",
-                      borderRadius: "4px",
+                      borderRadius: 0,
                     }}
                     className="folder-item-header"
                     data-od-id={`folder-header-${folderName}`}
@@ -535,7 +535,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       background: "var(--bg)",
                       color: "var(--fg)",
                       padding: "4px 10px",
-                      borderRadius: "4px",
+                      borderRadius: 0,
                       fontSize: "11px",
                       fontWeight: 600,
                       fontFamily: "var(--font-body)",
@@ -551,7 +551,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       display: "flex",
                       background: "var(--bg)",
                       border: "1px solid var(--border)",
-                      borderRadius: "6px",
+                      borderRadius: 0,
                       padding: "2px",
                     }}
                   >
@@ -573,7 +573,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           ? "var(--accent)"
                           : "var(--muted)",
                         padding: "4px 10px",
-                        borderRadius: "4px",
+                        borderRadius: 0,
                         fontSize: "11px",
                         fontWeight: 600,
                         fontFamily: "var(--font-body)",
@@ -596,7 +596,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           ? "var(--accent)"
                           : "var(--muted)",
                         padding: "4px 10px",
-                        borderRadius: "4px",
+                        borderRadius: 0,
                         fontSize: "11px",
                         fontWeight: 600,
                         fontFamily: "var(--font-body)",
@@ -617,7 +617,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       alignItems: "center",
                       gap: "4px",
                       padding: "4px 10px",
-                      borderRadius: "4px",
+                      borderRadius: 0,
                       fontSize: "11px",
                     }}
                     title="Trash this note"
@@ -658,7 +658,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       style={{
                         marginBottom: "20px",
                         border: "1px solid var(--border)",
-                        borderRadius: "4px",
+                        borderRadius: 0,
                         padding: "10px 14px",
                         background: "var(--surface)",
                       }}
@@ -715,7 +715,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               fontSize: "12px",
                               background: "var(--bg)",
                               border: "1px solid var(--border)",
-                              borderRadius: "4px",
+                              borderRadius: 0,
                               color: "var(--fg)",
                             }}
                           />
@@ -754,7 +754,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               fontSize: "12px",
                               background: "var(--bg)",
                               border: "1px solid var(--border)",
-                              borderRadius: "4px",
+                              borderRadius: 0,
                               color: "var(--fg)",
                             }}
                           />
@@ -815,7 +815,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                                 fontSize: "12px",
                                 background: "var(--bg)",
                                 border: "1px solid var(--border)",
-                                borderRadius: "4px",
+                                borderRadius: 0,
                                 color: "var(--fg)",
                               }}
                             >
@@ -870,7 +870,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                                   fontSize: "12px",
                                   background: "var(--bg)",
                                   border: "1px solid var(--border)",
-                                  borderRadius: "4px",
+                                  borderRadius: 0,
                                   color: "var(--fg)",
                                 }}
                               />
@@ -924,7 +924,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                                         fontSize: "12px",
                                         background: "var(--bg)",
                                         border: "1px solid var(--border)",
-                                        borderRadius: "4px",
+                                        borderRadius: 0,
                                         color: "var(--fg)",
                                       }}
                                     />
@@ -1009,7 +1009,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                                       fontSize: "12px",
                                       background: "var(--bg)",
                                       border: "1px solid var(--border)",
-                                      borderRadius: "4px",
+                                      borderRadius: 0,
                                       color: "var(--fg)",
                                     }}
                                   />
@@ -1059,7 +1059,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                                 fontSize: "12px",
                                 background: "var(--bg)",
                                 border: "1px solid var(--border)",
-                                borderRadius: "4px",
+                                borderRadius: 0,
                                 color: "var(--fg)",
                               }}
                             />
@@ -1080,7 +1080,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               alignItems: "center",
                               justifyContent: "center",
                               border: "1px solid var(--border)",
-                              borderRadius: "6px",
+                              borderRadius: 0,
                               background: "var(--surface)",
                               color: "var(--muted)",
                               fontSize: "13px",

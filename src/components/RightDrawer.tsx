@@ -217,7 +217,7 @@ const TabButton: React.FC<
       border: "none",
       color: tab === target ? "var(--accent)" : "var(--muted)",
       padding: "6px 8px",
-      borderRadius: "4px",
+      borderRadius: 0,
       cursor: "pointer",
       fontSize: "11px",
       fontWeight: 600,
@@ -330,7 +330,7 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
         width: "100%",
         background: "var(--bg)",
         border: "1px solid var(--border)",
-        borderRadius: "4px",
+        borderRadius: 0,
         color: "var(--fg)",
         fontFamily: "var(--font-body)",
         fontSize: "13px",
@@ -453,7 +453,7 @@ const CaptureInbox: React.FC<
           padding: "6px 8px",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: "4px",
+          borderRadius: 0,
           color: "var(--fg)",
           fontSize: "12px",
           outline: "none",
@@ -469,7 +469,7 @@ const CaptureInbox: React.FC<
           minHeight: "80px",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: "4px",
+          borderRadius: 0,
           color: "var(--fg)",
           fontFamily: "var(--font-body)",
           fontSize: "12px",
@@ -486,7 +486,7 @@ const CaptureInbox: React.FC<
           style={{
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "4px",
+            borderRadius: 0,
             color: "var(--fg)",
             fontSize: "11px",
             padding: "4px 6px",
@@ -522,7 +522,7 @@ const CaptureInbox: React.FC<
             padding: "6px 8px",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "4px",
+            borderRadius: 0,
             color: "var(--fg)",
             fontSize: "11px",
             outline: "none",
@@ -550,7 +550,7 @@ const CaptureInbox: React.FC<
             padding: "8px",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "4px",
+            borderRadius: 0,
             fontSize: "11px",
           }}
         >
@@ -595,7 +595,7 @@ const CaptureInbox: React.FC<
           marginTop: "8px",
           padding: "8px",
           border: `1px dashed ${isDragOver ? "var(--accent)" : "var(--border)"}`,
-          borderRadius: "4px",
+          borderRadius: 0,
           textAlign: "center",
           fontSize: "10px",
           color: "var(--muted)",
@@ -642,7 +642,7 @@ const DiceRoller: React.FC<
           padding: "6px 8px",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: "4px",
+          borderRadius: 0,
           color: "var(--fg)",
           fontSize: "12px",
           outline: "none",
@@ -659,7 +659,7 @@ const DiceRoller: React.FC<
           cursor: "pointer",
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "4px",
+          borderRadius: 0,
           color: "var(--fg)",
         }}
         onClick={() => rollDiceNotation(diceNotation)}
@@ -676,7 +676,7 @@ const DiceRoller: React.FC<
           maxHeight: "80px",
           overflowY: "auto",
           background: "var(--bg)",
-          borderRadius: "4px",
+          borderRadius: 0,
           padding: "6px",
           fontSize: "11px",
           color: "var(--accent)",
@@ -937,7 +937,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
             border: "1px solid var(--border)",
             padding: "4px 6px",
             fontSize: 10,
-            borderRadius: 4,
+            borderRadius: 0,
             color: "var(--fg)",
             cursor: "pointer",
           }}
@@ -968,7 +968,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
             padding: "10px",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: 0,
             fontSize: "11px",
             lineHeight: "1.5",
             maxHeight: "180px",
@@ -1003,7 +1003,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
               border: "1px solid var(--border)",
               padding: "4px 6px",
               fontSize: "11px",
-              borderRadius: 4,
+              borderRadius: 0,
               color: "var(--fg)",
             }}
             placeholder="Add a fact the Architect should remember..."
@@ -1041,7 +1041,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
                   padding: "4px 6px",
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
-                  borderRadius: "4px",
+                  borderRadius: 0,
                 }}
               >
                 <span style={{ flex: 1 }}>{fact.fact}</span>
@@ -1089,7 +1089,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
             minHeight: "48px",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "4px",
+            borderRadius: 0,
             padding: "6px",
             color: "var(--fg)",
             fontSize: "11px",
@@ -1108,7 +1108,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
               border: "1px solid var(--border)",
               padding: "4px 6px",
               fontSize: "11px",
-              borderRadius: 4,
+              borderRadius: 0,
               color: "var(--fg)",
             }}
           />
@@ -1146,7 +1146,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
             <img
               src={msg.imageUrl}
               alt="Generated"
-              style={{ maxWidth: "100%", marginTop: "8px", borderRadius: "4px" }}
+              style={{ maxWidth: "100%", marginTop: "8px", borderRadius: 0 }}
             />
           )}
         </div>
@@ -1169,7 +1169,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
           fontFamily: "var(--font-body)",
           fontSize: "12px",
           outline: "none",
-          borderRadius: 4,
+          borderRadius: 0,
           color: "var(--fg)",
         }}
         placeholder="Ask Architect..."
@@ -1269,7 +1269,7 @@ const AssetTab: React.FC<RightDrawerProps> = ({
           width: "100%",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: 4,
+          borderRadius: 0,
           color: "var(--fg)",
           fontFamily: "var(--font-body)",
         }}
@@ -1297,7 +1297,7 @@ const AssetTab: React.FC<RightDrawerProps> = ({
           padding: "6px 8px",
           background: "var(--bg)",
           border: "1px solid var(--border)",
-          borderRadius: 4,
+          borderRadius: 0,
           color: "var(--fg)",
           fontSize: "12px",
         }}
@@ -1329,7 +1329,7 @@ const AssetTab: React.FC<RightDrawerProps> = ({
       style={{
         marginTop: "12px",
         border: "1px solid var(--border)",
-        borderRadius: "6px",
+        borderRadius: 0,
         padding: "8px",
         minHeight: "150px",
         display: "flex",
@@ -1356,7 +1356,7 @@ const AssetTab: React.FC<RightDrawerProps> = ({
           style={{
             width: "100%",
             height: "auto",
-            borderRadius: "4px",
+            borderRadius: 0,
           }}
         />
       ) : (
@@ -1404,7 +1404,7 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
         minHeight: "80px",
         background: "var(--bg)",
         border: "1px solid var(--border)",
-        borderRadius: "4px",
+        borderRadius: 0,
         padding: "8px",
         color: "var(--fg)",
         fontSize: "12px",
@@ -1439,7 +1439,7 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
         style={{
           marginTop: "8px",
           border: "1px solid var(--border)",
-          borderRadius: "6px",
+          borderRadius: 0,
           padding: "8px",
           background: "var(--bg)",
         }}
@@ -1489,7 +1489,7 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
             padding: "8px",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: 0,
             fontSize: "12px",
             color: "var(--fg)",
             whiteSpace: "pre-wrap",

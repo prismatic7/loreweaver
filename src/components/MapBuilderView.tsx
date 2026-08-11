@@ -498,7 +498,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               left: "12px",
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "6px",
+              borderRadius: 0,
               padding: "6px 10px",
               fontSize: "11px",
               color: "var(--fg)",

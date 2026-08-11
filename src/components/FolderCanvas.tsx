@@ -453,7 +453,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           fromId: connectingFromId,
           toId: nodeId,
           label: "Contains",
-          color: "#4a5568",
+          color: "var(--muted)",
         };
         setEdges((prev) => [...prev, newEdge]);
       }
@@ -619,7 +619,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                   height: box.height,
                   background: box.color,
                   border: isDynamic ? `2px dashed ${borderColor}` : "2px dashed var(--accent)",
-                  borderRadius: "8px",
+                  borderRadius: 0,
                   padding: "8px",
                   pointerEvents: "none",
                   zIndex: 0,
@@ -634,7 +634,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     letterSpacing: "0.05em",
                     background: "var(--surface)",
                     padding: "2px 6px",
-                    borderRadius: "4px",
+                    borderRadius: 0,
                     border: "1px solid var(--border)",
                     position: "absolute",
                     top: "-10px",
@@ -695,8 +695,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     : isCanvas 
                       ? "1px solid var(--accent)" 
                       : "1px solid var(--border)",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                  borderRadius: 0,
                   padding: "12px",
                   cursor: isCanvas ? "pointer" : "grab",
                   userSelect: "none",
@@ -755,7 +754,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                           style={{
                             fontSize: "9px",
                             padding: "2px 6px",
-                            borderRadius: "10px",
+                            borderRadius: 0,
                             background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
                             color: getRelationColor(k),
                             fontWeight: 600,
@@ -771,7 +770,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                         style={{
                           fontSize: "9px",
                           padding: "2px 6px",
-                          borderRadius: "10px",
+                          borderRadius: 0,
                           background: strTag === "villain" ? "rgba(229, 62, 62, 0.2)" : "rgba(49, 130, 206, 0.2)",
                           color: strTag === "villain" ? "#fc8181" : "#63b3ed",
                           fontWeight: 600,
@@ -794,7 +793,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                         style={{
                           fontSize: "9px",
                           padding: "2px 6px",
-                          borderRadius: "10px",
+                          borderRadius: 0,
                           background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
                           color: getRelationColor(k),
                           fontWeight: 600,
@@ -813,7 +812,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
 
       {/* Edit Connection Label Dialog */}
       {selectedEdgeId && (
-        <div style={{ position: "absolute", bottom: 20, right: 20, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "8px", padding: "12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", zIndex: 100, width: 260 }}>
+        <div style={{ position: "absolute", bottom: 20, right: 20, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 0, padding: "12px", boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 100, width: 260 }}>
           {selectedEdgeId.startsWith("dynamic-") ? (
             <div>
               <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--fg)", marginBottom: "4px" }}>Dynamic Relationship</div>
@@ -821,7 +820,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               <button
                 className="btn btn-sm btn-secondary"
                 onClick={() => setSelectedEdgeId(null)}
-                style={{ width: "100%", padding: "6px 12px", fontSize: "12px", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", color: "var(--fg)", cursor: "pointer" }}
+                style={{ width: "100%", padding: "6px 12px", fontSize: "12px", background: "transparent", border: "1px solid var(--border)", borderRadius: 0, color: "var(--fg)", cursor: "pointer" }}
               >
                 Dismiss
               </button>
@@ -834,7 +833,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                 value={editingEdgeLabel}
                 onChange={(e) => setEditingEdgeLabel(e.target.value)}
                 placeholder="e.g. Contains, Member Of, Rival"
-                style={{ width: "100%", padding: "6px 8px", fontSize: "12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "4px", color: "var(--fg)", marginBottom: "8px" }}
+                style={{ width: "100%", padding: "6px 8px", fontSize: "12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 0, color: "var(--fg)", marginBottom: "8px" }}
               />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
                 <button
@@ -849,7 +848,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                 </button>
                 <button
                   className="btn btn-sm btn-primary"
-                  style={{ padding: "6px 12px", fontSize: "12px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                  style={{ padding: "6px 12px", fontSize: "12px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 0, cursor: "pointer" }}
                   onClick={() => {
                     setEdges((prev) => prev.map((e) => (e.id === selectedEdgeId ? { ...e, label: editingEdgeLabel } : e)));
                     setSelectedEdgeId(null);
@@ -881,8 +880,8 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               zIndex: 1000,
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              borderRadius: "8px",
-              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
+              borderRadius: 0,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: "6px",
               minWidth: "180px",
               display: "flex",
@@ -917,7 +916,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     textAlign: "left",
                     background: "transparent",
                     border: "none",
-                    borderRadius: "4px",
+                    borderRadius: 0,
                     cursor: "pointer",
                     color: "var(--fg)",
                   }}
@@ -950,9 +949,9 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
             zIndex: 1000,
             background: "var(--surface)",
             border: "1px solid var(--accent)",
-            borderRadius: "8px",
+            borderRadius: 0,
             padding: "12px 16px",
-            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
             maxWidth: "360px",
             color: "var(--fg)",
             fontSize: "13px",

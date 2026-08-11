@@ -20,7 +20,7 @@ const SettingsTabButton: React.FC<{
       border: "none",
       color: active ? "var(--accent)" : "var(--muted)",
       padding: "6px 8px",
-      borderRadius: "4px",
+      borderRadius: 0,
       fontSize: "11px",
       fontWeight: 600,
       cursor: "pointer",
@@ -94,7 +94,7 @@ export const SettingsRightPanel: React.FC<SettingsRightPanelProps> = ({
               color: "var(--fg)",
               background: "var(--bg)",
               border: "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: 0,
               padding: "8px",
             }}
           >

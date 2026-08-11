@@ -262,7 +262,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                   color:
                     filter === opt.value ? "var(--accent)" : "var(--muted)",
                   padding: "4px 10px",
-                  borderRadius: "4px",
+                  borderRadius: 0,
                   cursor: "pointer",
                   fontSize: "11px",
                   fontWeight: 600,

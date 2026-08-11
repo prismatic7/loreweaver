@@ -176,7 +176,7 @@ export const useMarkdownRender = (deps: UseMarkdownRenderDeps) => {
               alt={alt}
               title={title}
               className="markdown-image"
-              style={{ maxWidth: "100%", borderRadius: "4px" }}
+              style={{ maxWidth: "100%", borderRadius: 0 }}
             />
           );
         },
@@ -248,7 +248,7 @@ export const useMarkdownRender = (deps: UseMarkdownRenderDeps) => {
                 background: "var(--bg)",
                 border: "1px solid var(--border)",
                 padding: "2px 6px",
-                borderRadius: "3px",
+                borderRadius: 0,
                 fontFamily: "var(--font-mono)",
                 fontSize: "0.85em",
               }}

@@ -50,7 +50,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "8px",
+          borderRadius: 0,
           padding: "20px",
           maxWidth: "360px",
           width: "90%",
@@ -78,7 +78,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               border: "1px solid var(--border)",
               color: "var(--fg)",
               padding: "6px 12px",
-              borderRadius: "4px",
+              borderRadius: 0,
               cursor: "pointer",
               fontSize: "12px",
             }}
@@ -93,7 +93,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               border: "none",
               color: "#fff",
               padding: "6px 12px",
-              borderRadius: "4px",
+              borderRadius: 0,
               cursor: "pointer",
               fontSize: "12px",
             }}
@@ -155,7 +155,7 @@ export const PromptModal: React.FC<PromptModalProps> = ({
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "8px",
+          borderRadius: 0,
           padding: "20px",
           maxWidth: "360px",
           width: "90%",
@@ -178,7 +178,7 @@ export const PromptModal: React.FC<PromptModalProps> = ({
             fontSize: "13px",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "4px",
+            borderRadius: 0,
             color: "var(--fg)",
             outline: "none",
           }}
@@ -201,7 +201,7 @@ export const PromptModal: React.FC<PromptModalProps> = ({
               border: "1px solid var(--border)",
               color: "var(--fg)",
               padding: "6px 12px",
-              borderRadius: "4px",
+              borderRadius: 0,
               cursor: "pointer",
               fontSize: "12px",
             }}
@@ -216,7 +216,7 @@ export const PromptModal: React.FC<PromptModalProps> = ({
               border: "none",
               color: "#fff",
               padding: "6px 12px",
-              borderRadius: "4px",
+              borderRadius: 0,
               cursor: "pointer",
               fontSize: "12px",
               fontWeight: 600,
@@ -268,7 +268,7 @@ export const AlertModal: React.FC<AlertModalProps> = ({
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "8px",
+          borderRadius: 0,
           padding: "20px",
           maxWidth: "360px",
           width: "90%",
@@ -290,7 +290,7 @@ export const AlertModal: React.FC<AlertModalProps> = ({
               border: "none",
               color: "#fff",
               padding: "6px 12px",
-              borderRadius: "4px",
+              borderRadius: 0,
               cursor: "pointer",
               fontSize: "12px",
               fontWeight: 600,
@@ -344,7 +344,7 @@ export const IngestModal: React.FC<IngestModalProps> = ({
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "8px",
+          borderRadius: 0,
           padding: "20px",
           maxWidth: "400px",
           width: "90%",
@@ -394,7 +394,7 @@ export const IngestModal: React.FC<IngestModalProps> = ({
               border: "1px solid var(--border)",
               color: "var(--fg)",
               padding: "12px",
-              borderRadius: "6px",
+              borderRadius: 0,
               cursor: "pointer",
               textAlign: "left",
               fontSize: "12px",
@@ -419,7 +419,7 @@ export const IngestModal: React.FC<IngestModalProps> = ({
               border: "1px solid var(--border)",
               color: "var(--fg)",
               padding: "12px",
-              borderRadius: "6px",
+              borderRadius: 0,
               cursor: "pointer",
               textAlign: "left",
               fontSize: "12px",
@@ -523,7 +523,7 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
           background: "var(--surface)",
           border: "1px solid var(--border)",
           padding: 24,
-          borderRadius: 8,
+          borderRadius: 0,
           width: 400,
           display: "flex",
           flexDirection: "column",
@@ -544,7 +544,7 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
             fontSize: 13,
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: 4,
+            borderRadius: 0,
             color: "var(--fg)",
           }}
         />
@@ -556,7 +556,7 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
             fontSize: 13,
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: 4,
+            borderRadius: 0,
             color: "var(--fg)",
           }}
         >
@@ -575,7 +575,7 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
               fontSize: 13,
               background: "var(--bg)",
               border: "1px solid var(--border)",
-              borderRadius: 4,
+              borderRadius: 0,
               color: "var(--fg)",
             }}
           />
@@ -589,7 +589,7 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
             fontSize: 13,
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: 4,
+            borderRadius: 0,
             color: "var(--fg)",
           }}
         />
@@ -603,7 +603,7 @@ export const NewRuleModal: React.FC<NewRuleModalProps> = ({
             fontSize: 13,
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: 4,
+            borderRadius: 0,
             color: "var(--fg)",
           }}
         />
@@ -674,7 +674,7 @@ export const NewVaultModal: React.FC<NewVaultModalProps> = ({
           background: "var(--surface)",
           border: "1px solid var(--border)",
           padding: 24,
-          borderRadius: 8,
+          borderRadius: 0,
           width: 360,
           display: "flex",
           flexDirection: "column",
@@ -757,8 +757,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           left: menu.x,
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          borderRadius: "6px",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+          borderRadius: 0,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           padding: "4px 0",
           minWidth: "140px",
           display: "flex",

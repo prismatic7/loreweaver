@@ -155,7 +155,7 @@ export default function MarkdownEditor({
         width: "100%",
         height: "400px",
         border: "1px solid var(--border)",
-        borderRadius: "6px",
+        borderRadius: 0,
         overflow: "hidden",
       }}
     />

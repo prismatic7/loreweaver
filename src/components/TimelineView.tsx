@@ -133,7 +133,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                 textAlign: "left",
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
-                borderRadius: "6px",
+                borderRadius: 0,
                 padding: "12px 16px",
                 cursor: "pointer",
                 color: "var(--fg)",

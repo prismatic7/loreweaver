@@ -115,7 +115,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
             fontSize: "12px",
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: 4,
+            borderRadius: 0,
             color: "var(--fg)",
           }}
         >
@@ -132,7 +132,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
             padding: "8px 12px",
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: 4,
+            borderRadius: 0,
             cursor: "pointer",
             fontSize: "12px",
           }}
@@ -156,7 +156,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: 0,
             padding: "20px",
             maxWidth: "720px",
           }}
@@ -189,7 +189,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
                   fontSize: "12px",
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
-                  borderRadius: 4,
+                  borderRadius: 0,
                   color: "var(--fg)",
                 }}
               />

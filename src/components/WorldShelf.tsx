@@ -167,10 +167,10 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             zIndex: 20,
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: 0,
             padding: "12px",
             minWidth: "260px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           }}
         >
           <div style={{ fontSize: "12px", fontWeight: 700, marginBottom: "8px" }}>
@@ -186,7 +186,7 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
               padding: "6px 8px",
               background: "var(--bg)",
               border: "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: 0,
               color: "var(--fg)",
               fontSize: "12px",
               marginBottom: "8px",
@@ -200,7 +200,7 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
               padding: "6px 8px",
               background: "var(--bg)",
               border: "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: 0,
               color: "var(--fg)",
               fontSize: "12px",
               marginBottom: "8px",
@@ -242,10 +242,10 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             zIndex: 20,
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: 0,
             padding: "12px",
             minWidth: "260px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           }}
         >
           <div
@@ -270,7 +270,7 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
               padding: "6px 8px",
               background: "var(--bg)",
               border: "1px solid var(--border)",
-              borderRadius: "4px",
+              borderRadius: 0,
               color: "var(--fg)",
               fontSize: "12px",
               marginBottom: "8px",

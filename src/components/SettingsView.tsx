@@ -195,7 +195,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: 0,
             padding: "20px",
           }}
         >
@@ -247,7 +247,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 fontSize: 11,
                 background: "var(--bg)",
                 border: "1px solid var(--border)",
-                borderRadius: 4,
+                borderRadius: 0,
                 color: "var(--muted)",
               }}
             />
@@ -284,7 +284,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     fontSize: "10px",
                     padding: "2px 6px",
                     border: "1px solid var(--border)",
-                    borderRadius: "3px",
+                    borderRadius: 0,
                   }}
                 >
                   {p.name}
@@ -299,7 +299,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
-            borderRadius: "8px",
+            borderRadius: 0,
             padding: "24px",
             display: "flex",
             flexDirection: "column",
@@ -342,7 +342,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               justifyContent: "space-between",
               alignItems: "center",
               border: "1px solid var(--border)",
-              borderRadius: "6px",
+              borderRadius: 0,
               padding: "12px 14px",
               background: "var(--bg)",
             }}
@@ -418,7 +418,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     alignItems: "center",
                     gap: "6px",
                     padding: "8px 12px",
-                    borderRadius: "6px",
+                    borderRadius: 0,
                     background:
                       activeConfigTab === tab.id
                         ? "var(--accent)"
@@ -550,7 +550,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       alignItems: "center",
                       justifyContent: "center",
                       padding: "14px 10px",
-                      borderRadius: "8px",
+                      borderRadius: 0,
                       background: isSelected
                         ? "oklch(from var(--accent) l c h / 0.08)"
                         : "var(--bg)",
@@ -600,7 +600,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   border: "1px solid var(--warn)",
                   color: "var(--warn)",
                   padding: "10px 12px",
-                  borderRadius: "4px",
+                  borderRadius: 0,
                   fontSize: "11px",
                   lineHeight: "1.4",
                 }}
@@ -618,7 +618,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   padding: "8px 12px",
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
-                  borderRadius: "4px",
+                  borderRadius: 0,
                   cursor: "pointer",
                   fontSize: "12px",
                   fontWeight: 500,
@@ -640,7 +640,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               gap: "12px",
               background: "var(--bg)",
               border: "1px solid var(--border)",
-              borderRadius: "6px",
+              borderRadius: 0,
               padding: "16px",
             }}
           >
@@ -669,7 +669,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       fontSize: "12px",
                       background: "var(--surface)",
                       border: "1px solid var(--border)",
-                      borderRadius: 4,
+                      borderRadius: 0,
                       color: "var(--fg)",
                     }}
                     placeholder={
@@ -722,7 +722,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       fontSize: "12px",
                       background: "var(--surface)",
                       border: "1px solid var(--border)",
-                      borderRadius: 4,
+                      borderRadius: 0,
                       color: "var(--fg)",
                     }}
                     placeholder="Provider base URL override if using proxy/local server"
@@ -767,7 +767,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   fontSize: "12px",
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
-                  borderRadius: 4,
+                  borderRadius: 0,
                   color: "var(--fg)",
                 }}
                 placeholder="Enter API Key for cloud API verification"
@@ -790,7 +790,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   padding: "8px",
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
-                  borderRadius: "4px",
+                  borderRadius: 0,
                   cursor: "pointer",
                   fontSize: "12px",
                   fontWeight: 500,
@@ -817,7 +817,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     background: "oklch(65% 0.12 20 / 0.08)",
                     border: "1px solid var(--danger)",
                     color: "var(--danger)",
-                    borderRadius: "4px",
+                    borderRadius: 0,
                     fontSize: "11px",
                     lineHeight: "1.4",
                   }}
@@ -873,7 +873,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             padding: "3px 8px",
                             background: "var(--surface)",
                             border: "1px solid var(--border)",
-                            borderRadius: "12px",
+                            borderRadius: 0,
                             cursor: "pointer",
                             color: "var(--fg)",
                             transition: "all 0.1s",

@@ -145,7 +145,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                 fontSize: "11px",
                 background: "transparent",
                 border: "1px solid var(--border)",
-                borderRadius: "4px",
+                borderRadius: 0,
                 color: "var(--fg)",
               }}
               title="Create a new rulebook folder or subfolder"
@@ -190,7 +190,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       justifyContent: "space-between",
                       width: "100%",
                       paddingRight: "8px",
-                      borderRadius: "4px",
+                      borderRadius: 0,
                     }}
                     className="folder-item-header"
                     data-od-id={`rule-folder-header-${folderName}`}
@@ -364,7 +364,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
               marginTop: "20px",
               padding: "16px",
               border: "2px dashed var(--border)",
-              borderRadius: "4px",
+              borderRadius: 0,
               textAlign: "center",
               cursor: "pointer",
               background: "var(--bg)",
@@ -430,7 +430,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
                   padding: "2px",
-                  borderRadius: "6px",
+                  borderRadius: 0,
                 }}
               >
                 <button
@@ -444,7 +444,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       ? "var(--accent)"
                       : "var(--muted)",
                     padding: "4px 10px",
-                    borderRadius: "4px",
+                    borderRadius: 0,
                     fontSize: "11px",
                     fontWeight: 600,
                     fontFamily: "var(--font-body)",
@@ -468,7 +468,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                       ? "var(--accent)"
                       : "var(--muted)",
                     padding: "4px 10px",
-                    borderRadius: "4px",
+                    borderRadius: 0,
                     fontSize: "11px",
                     fontWeight: 600,
                     fontFamily: "var(--font-body)",
@@ -557,7 +557,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                   style={{
                     marginBottom: "20px",
                     border: "1px solid var(--border)",
-                    borderRadius: "4px",
+                    borderRadius: 0,
                     padding: "10px 14px",
                     background: "var(--surface)",
                   }}
@@ -612,7 +612,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           fontSize: "12px",
                           background: "var(--bg)",
                           border: "1px solid var(--border)",
-                          borderRadius: "4px",
+                          borderRadius: 0,
                           color: "var(--fg)",
                         }}
                       />
@@ -646,7 +646,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           fontSize: "12px",
                           background: "var(--bg)",
                           border: "1px solid var(--border)",
-                          borderRadius: "4px",
+                          borderRadius: 0,
                           color: "var(--fg)",
                         }}
                       />
@@ -680,7 +680,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           fontSize: "12px",
                           background: "var(--bg)",
                           border: "1px solid var(--border)",
-                          borderRadius: "4px",
+                          borderRadius: 0,
                           color: "var(--fg)",
                         }}
                       />
@@ -700,7 +700,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
                           alignItems: "center",
                           justifyContent: "center",
                           border: "1px solid var(--border)",
-                          borderRadius: "6px",
+                          borderRadius: 0,
                           background: "var(--surface)",
                           color: "var(--muted)",
                           fontSize: "13px",

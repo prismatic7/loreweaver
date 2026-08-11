@@ -64,7 +64,7 @@ export const AiView: React.FC<AiViewProps> = ({
                     style={{
                       maxWidth: "100%",
                       marginTop: "8px",
-                      borderRadius: "4px",
+                      borderRadius: 0,
                     }}
                   />
                 )}
@@ -88,7 +88,7 @@ export const AiView: React.FC<AiViewProps> = ({
                 fontFamily: "var(--font-body)",
                 fontSize: 13,
                 outline: "none",
-                borderRadius: 4,
+                borderRadius: 0,
                 color: "var(--fg)",
               }}
               placeholder="Ask the Campaign Architect..."
