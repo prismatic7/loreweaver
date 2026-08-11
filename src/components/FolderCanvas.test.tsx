@@ -1,10 +1,15 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FolderCanvas } from "./FolderCanvas";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => []),
 }));
+
+import { invoke } from "@tauri-apps/api/core";
+const mockInvoke = vi.mocked(invoke);
+
+const EMPTY_CANVAS = JSON.stringify({ nodes: [], edges: [], containers: [] });
 
 const mockNotes = [
   {
@@ -87,5 +92,67 @@ describe("FolderCanvas Component", () => {
     });
     fireEvent.doubleClick(canvasNode);
     expect(onSelectCanvas).toHaveBeenCalledWith("World/World.canvas");
+  });
+
+  describe("container boxes", () => {
+    beforeEach(() => {
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValue(EMPTY_CANVAS);
+    });
+
+    it("adds a container box that can be dragged", async () => {
+      const { container } = renderCanvas();
+      expect(await screen.findByText(/Canvas: World/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTitle("Add Container / Boundary Box"));
+      const boxDiv = container.querySelector('[aria-label="Delete Container"]')?.parentElement;
+      expect(boxDiv).toBeTruthy();
+      expect(boxDiv!.style.width).toBe("400px");
+      expect(boxDiv!.style.height).toBe("300px");
+
+      // Drag the box: mousedown on it, move, mouseup.
+      fireEvent.mouseDown(boxDiv!, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(boxDiv!, { clientX: 200, clientY: 150 });
+      fireEvent.mouseUp(boxDiv!);
+
+      // The box moved by the delta (100, 50) in canvas coords (zoom=1, pan=40,40).
+      // x: (200 - 40) - (100 - 40 - 80) = 160 - (-20) = 180
+      // y: (150 - 40) - (100 - 40 - 80) = 110 - (-20) = 130
+      expect(boxDiv!.style.left).toBe("180px");
+      expect(boxDiv!.style.top).toBe("130px");
+    });
+
+    it("resizes a container box from the bottom-right handle", async () => {
+      const { container } = renderCanvas();
+      expect(await screen.findByText(/Canvas: World/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTitle("Add Container / Boundary Box"));
+      const handle = container.querySelector('[aria-label="Resize Container"]') as HTMLElement;
+      expect(handle).toBeTruthy();
+
+      // Resize: mousedown on the handle, drag out, mouseup.
+      fireEvent.mouseDown(handle, { clientX: 480, clientY: 380 });
+      fireEvent.mouseMove(handle, { clientX: 600, clientY: 500 });
+      fireEvent.mouseUp(handle);
+
+      const boxDiv = handle.parentElement!;
+      // Handle starts at the box's right edge (canvas x = 80 + 400 = 480), so
+      // boxX = (480 - 40) - 400 = 40. At clientX=600: width = (600-40) - 40 = 520.
+      // Height: boxY = (380 - 40) - 300 = 40; at clientY=500: height = (500-40) - 40 = 420.
+      expect(boxDiv.style.width).toBe("520px");
+      expect(boxDiv.style.height).toBe("420px");
+    });
+
+    it("deletes a container box", async () => {
+      const { container } = renderCanvas();
+      expect(await screen.findByText(/Canvas: World/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTitle("Add Container / Boundary Box"));
+      const deleteBtn = container.querySelector('[aria-label="Delete Container"]') as HTMLElement;
+      expect(deleteBtn).toBeTruthy();
+
+      fireEvent.click(deleteBtn);
+      expect(container.querySelector('[aria-label="Delete Container"]')).toBeNull();
+    });
   });
 });

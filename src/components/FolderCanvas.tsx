@@ -171,6 +171,17 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // Container box drag + resize state. User-created boxes are interactive;
+  // dynamic boxes (derived from note positions) stay pointer-events:none.
+  const [draggingContainerId, setDraggingContainerId] = useState<string | null>(null);
+  const [resizingContainerId, setResizingContainerId] = useState<string | null>(null);
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
+  const [containerDragOffset, setContainerDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [resizeStart, setResizeStart] = useState<{
+    boxX: number;
+    boxY: number;
+  } | null>(null);
+
   const [connectingFromId, setConnectingFromId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [editingEdgeLabel, setEditingEdgeLabel] = useState<string>("");
@@ -438,12 +449,45 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           return n;
         })
       );
+    } else if (draggingContainerId) {
+      setContainers((prev) =>
+        prev.map((c) => {
+          if (c.id === draggingContainerId) {
+            return {
+              ...c,
+              x: (e.clientX - pan.x) / zoom - containerDragOffset.x,
+              y: (e.clientY - pan.y) / zoom - containerDragOffset.y,
+            };
+          }
+          return c;
+        })
+      );
+    } else if (resizingContainerId && resizeStart) {
+      setContainers((prev) =>
+        prev.map((c) => {
+          if (c.id === resizingContainerId) {
+            const newWidth = Math.max(
+              120,
+              (e.clientX - pan.x) / zoom - resizeStart.boxX,
+            );
+            const newHeight = Math.max(
+              80,
+              (e.clientY - pan.y) / zoom - resizeStart.boxY,
+            );
+            return { ...c, width: newWidth, height: newHeight };
+          }
+          return c;
+        })
+      );
     }
   };
 
   const handleMouseUp = () => {
     setIsPanning(false);
     setDraggingNodeId(null);
+    setDraggingContainerId(null);
+    setResizingContainerId(null);
+    setResizeStart(null);
   };
 
   // Wheel zoom with zoom-to-cursor. Reciprocal factors (1.1 / 1/1.1) so
@@ -535,6 +579,37 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
       color: "oklch(52% 0.10 28 / 0.15)",
     };
     setContainers((prev) => [...prev, newBox]);
+    setSelectedContainerId(newBox.id);
+  };
+
+  // Start dragging a user-created container box. Dynamic boxes (derived from
+  // note positions) are not draggable — they re-derive from node positions.
+  const handleContainerMouseDown = (
+    e: React.MouseEvent,
+    box: ContainerBox,
+  ) => {
+    e.stopPropagation();
+    setSelectedContainerId(box.id);
+    setDraggingContainerId(box.id);
+    setContainerDragOffset({
+      x: (e.clientX - pan.x) / zoom - box.x,
+      y: (e.clientY - pan.y) / zoom - box.y,
+    });
+  };
+
+  // Start resizing from the bottom-right handle. Same inverse-zoom math as
+  // node dragging so the handle stays under the cursor at any zoom level.
+  const handleResizeMouseDown = (
+    e: React.MouseEvent,
+    box: ContainerBox,
+  ) => {
+    e.stopPropagation();
+    setSelectedContainerId(box.id);
+    setResizingContainerId(box.id);
+    setResizeStart({
+      boxX: (e.clientX - pan.x) / zoom - box.width,
+      boxY: (e.clientY - pan.y) / zoom - box.height,
+    });
   };
 
   const getNodePos = (id: string) => {
@@ -698,9 +773,11 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
             const isDynamic = box.id.startsWith("dynamic-");
             const relationKey = isDynamic ? box.title.split(":")[0] : "";
             const borderColor = isDynamic ? getRelationColor(relationKey) : "var(--accent)";
+            const isSelected = selectedContainerId === box.id;
             return (
               <div
                 key={box.id}
+                onMouseDown={isDynamic ? undefined : (e) => handleContainerMouseDown(e, box)}
                 style={{
                   position: "absolute",
                   left: box.x,
@@ -708,11 +785,17 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                   width: box.width,
                   height: box.height,
                   background: box.color,
-                  border: isDynamic ? `1px dashed ${borderColor}` : "1px dashed var(--accent)",
+                  border: isDynamic
+                    ? `1px dashed ${borderColor}`
+                    : isSelected
+                      ? "1px solid var(--accent)"
+                      : "1px dashed var(--accent)",
                   borderRadius: 0,
                   padding: "8px",
-                  pointerEvents: "none",
+                  pointerEvents: isDynamic ? "none" : "auto",
+                  cursor: isDynamic ? "default" : "move",
                   zIndex: 0,
+                  userSelect: "none",
                 }}
               >
                 <span
@@ -733,6 +816,56 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                 >
                   {box.title}
                 </span>
+                {!isDynamic && (
+                  <>
+                    {/* Delete button — top-right, above the box */}
+                    <button
+                      className="btn btn-sm"
+                      title="Delete Container"
+                      aria-label="Delete Container"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setContainers((prev) => prev.filter((c) => c.id !== box.id));
+                        if (selectedContainerId === box.id) setSelectedContainerId(null);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: "-10px",
+                        right: "8px",
+                        minWidth: 24,
+                        minHeight: 24,
+                        padding: "4px",
+                        fontSize: "10px",
+                        color: "var(--danger)",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 0,
+                        cursor: "pointer",
+                        zIndex: 2,
+                      }}
+                    >
+                      ✕
+                    </button>
+                    {/* Resize handle — bottom-right corner */}
+                    <div
+                      onMouseDown={(e) => handleResizeMouseDown(e, box)}
+                      title="Resize Container"
+                      aria-label="Resize Container"
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        bottom: 0,
+                        width: 16,
+                        height: 16,
+                        cursor: "nwse-resize",
+                        background: "var(--accent)",
+                        opacity: isSelected ? 1 : 0.4,
+                        zIndex: 2,
+                      }}
+                    />
+                  </>
+                )}
               </div>
             );
           })}
