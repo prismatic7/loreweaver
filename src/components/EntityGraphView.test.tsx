@@ -227,4 +227,37 @@ describe("EntityGraphView", () => {
     expect(Number(match![1])).toBeLessThanOrEqual(1.5);
     expect(svg.style.transform).not.toContain("scale(1.1)");
   });
+
+  it("keeps small graphs inside the canvas (regression: nodes flew to clamp corners)", () => {
+    // With 2 nodes and no edges there is no attraction, so repulsion alone
+    // used to slam both nodes into the clamp bounds (-100/700, 900/-100) —
+    // off-screen at scale(1), i.e. a blank canvas with a correct badge.
+    const notes = [
+      makeNote({ id: "n1", title: "Titus Crow" }),
+      makeNote({ id: "n2", title: "Elira" }),
+    ];
+    const { container } = render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
+    Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(canvas, "clientHeight", { configurable: true, value: 600 });
+
+    const circles = container.querySelectorAll(
+      '[data-od-id="entity-graph-canvas"] svg circle',
+    );
+    expect(circles.length).toBe(2);
+
+    const positions = Array.from(circles).map((c) => {
+      const g = c.closest("g");
+      const m = g
+        ?.getAttribute("transform")
+        ?.match(/translate\((-?[\d.]+), (-?[\d.]+)\)/);
+      return { x: Number(m?.[1]), y: Number(m?.[2]) };
+    });
+    positions.forEach((p) => {
+      expect(p.x).toBeGreaterThan(-50);
+      expect(p.x).toBeLessThan(850);
+      expect(p.y).toBeGreaterThan(-50);
+      expect(p.y).toBeLessThan(650);
+    });
+  });
 });

@@ -88,8 +88,12 @@ function layoutGraph(
     pos.set(n.id, { x: rng() * W, y: rng() * H });
   });
 
-  // 3. Ideal edge length scales with node count
-  const k = 0.8 * Math.sqrt((W * H) / Math.max(N, 1));
+  // 3. Ideal edge length scales with node count, capped so small graphs
+  // (2–3 nodes) don't fly to the canvas corners: with no edges there is no
+  // attraction, so repulsion alone slams nodes into the clamp bounds and
+  // they end up off-screen at scale(1). Cap keeps the equilibrium separation
+  // inside the canvas (~500px for N=2).
+  const k = Math.min(0.8 * Math.sqrt((W * H) / Math.max(N, 1)), 100);
   const kSq = k * k;
 
   // 4. Adjacency list for attraction
@@ -443,6 +447,20 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
 
   useEffect(() => {
     fitToView();
+  }, [fitToView]);
+
+  // Re-fit when the container gets a real size. The mount-time fit can fire
+  // while the container is still 0-sized (or before layout settles), leaving
+  // the graph at scale(1) with nodes off-canvas. A ResizeObserver re-runs
+  // fit the moment the canvas has measurable dimensions.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) fitToView();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [fitToView]);
 
   const onWheel = (e: React.WheelEvent) => {
