@@ -332,6 +332,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
       {/* Main Canvas Space */}
       <div
         ref={canvasRef}
+        data-od-id="map-canvas"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -397,6 +398,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 </text>
                 <g
                   transform={`translate(${f.x + f.width - 20}, ${f.y + 4})`}
+                  role="button"
+                  aria-label="Toggle fog region"
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleFog(f.id);
@@ -424,6 +427,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 </g>
                 <g
                   transform={`translate(${f.x + f.width - 40}, ${f.y + 4})`}
+                  role="button"
+                  aria-label="Delete fog region"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeFog(f.id);
@@ -500,6 +505,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 </text>
                 <g
                   transform="translate(14, -14)"
+                  role="button"
+                  aria-label="Delete token"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeToken(t.id);

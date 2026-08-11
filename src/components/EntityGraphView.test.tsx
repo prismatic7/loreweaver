@@ -122,4 +122,70 @@ describe("EntityGraphView", () => {
     expect(screen.getByText(/1 node/)).toBeTruthy();
     expect(screen.queryByText("The Call of Cthulhu")).toBeNull();
   });
+
+  it("zooms with the mouse wheel", () => {
+    const notes = [makeNote({ id: "n1", title: "Titus Crow" })];
+    const { container } = render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
+    // NB: querySelector("svg") would match the toolbar's lucide icon first —
+    // scope to the canvas container for the graph SVG.
+    const svg = container.querySelector('[data-od-id="entity-graph-canvas"] svg') as SVGSVGElement;
+    // Reset to a known state after the auto-fit on mount
+    fireEvent.wheel(canvas, { deltaY: -100 });
+    expect(svg.style.transform).toContain("scale(1.1)");
+    fireEvent.wheel(canvas, { deltaY: 100 });
+    expect(svg.style.transform).toContain("scale(1)");
+  });
+
+  it("pans the graph by dragging the canvas background", () => {
+    const notes = [makeNote({ id: "n1", title: "Titus Crow" })];
+    const { container } = render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
+    const svg = container.querySelector('[data-od-id="entity-graph-canvas"] svg') as SVGSVGElement;
+
+    fireEvent.pointerDown(canvas, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { clientX: 150, clientY: 140 });
+    expect(svg.style.transform).toContain("translate(50px, 40px)");
+    fireEvent.pointerUp(canvas);
+  });
+
+  it("does not start panning when a node is clicked", () => {
+    const notes = [makeNote({ id: "n1", title: "Titus Crow" })];
+    const { container } = render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
+    const svg = container.querySelector('[data-od-id="entity-graph-canvas"] svg') as SVGSVGElement;
+
+    // Snapshot the transform after auto-fit, then attempt a node drag
+    const before = svg.style.transform;
+    const nodeG = svg.querySelector("g[style]")!;
+    fireEvent.pointerDown(nodeG, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { clientX: 160, clientY: 120 });
+    expect(svg.style.transform).toBe(before);
+    fireEvent.pointerUp(canvas);
+  });
+
+  it("fits the graph to the view when the fit button is clicked", () => {
+    const notes = [
+      makeNote({ id: "n1", title: "Titus Crow" }),
+      makeNote({ id: "n2", title: "Elira" }),
+    ];
+    const { container } = render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    const svg = container.querySelector('[data-od-id="entity-graph-canvas"] svg') as SVGSVGElement;
+    const canvas = container.querySelector('[data-od-id="entity-graph-canvas"]')!;
+
+    // Nodes sit at (620, 300) and (180, 300); with pad 60 the bounds are
+    // x∈[120,680] (w=560), y∈[240,360] (h=120). A 560×120 container makes the
+    // fit scale exactly min(560/560, 120/120, 1.5) = 1 — otherwise jsdom's
+    // 0-size rects make fitToView early-return and nothing changes.
+    Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 560 });
+    Object.defineProperty(canvas, "clientHeight", { configurable: true, value: 120 });
+
+    // Zoom in first — the auto-fit on mount already ran with 0-size (jsdom) and
+    // set nothing, so wheel-in leaves us at scale(1.1).
+    fireEvent.wheel(canvas, { deltaY: -100 });
+    expect(svg.style.transform).toContain("scale(1.1)");
+
+    fireEvent.click(screen.getByTitle("Fit Graph to View"));
+    expect(svg.style.transform).toContain("scale(1)");
+  });
 });

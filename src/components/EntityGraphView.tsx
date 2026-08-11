@@ -216,7 +216,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
 
   const fitToView = useCallback(() => {
     const el = containerRef.current;
-    if (!el || nodes.length === 0) return;
+    if (!el || nodes.length === 0 || !el.clientWidth || !el.clientHeight) return;
     const pad = 60;
     const xs = nodes.map((n) => n.x);
     const ys = nodes.map((n) => n.y);
@@ -241,7 +241,8 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
 
   const onWheel = (e: React.WheelEvent) => {
     if (nodes.length === 0) return;
-    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    // Reciprocal factors so zooming in then out returns to exactly 100% (1.1 × 1/1.1 = 1).
+    const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
     setZoom((z) => Math.min(2.5, Math.max(0.25, z * factor)));
   };
 
@@ -346,6 +347,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
       </div>
       <div
         ref={containerRef}
+        data-od-id="entity-graph-canvas"
         style={{ flex: 1, overflow: "hidden", position: "relative", cursor: isPanning ? "grabbing" : "grab" }}
         onWheel={onWheel}
         onPointerDown={onPointerDown}
