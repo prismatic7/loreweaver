@@ -465,6 +465,20 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
   };
 
   if (nodes.length === 0) {
+    // Distinguish "no notes match the active provenance filter" from
+    // "no entity-typed notes exist at all". With a provenance filter active
+    // and zero matching notes, the previous message wrongly told users to
+    // add entity-typed notes when the real cause was the source_type gate.
+    const provenanceMatches =
+      filter === "all"
+        ? notes.length
+        : notes.filter(
+            (n) =>
+              String(n.frontmatter?.source_type || "").toLowerCase() ===
+              filter,
+          ).length;
+    const filterEmpty = filter !== "all" && provenanceMatches === 0;
+
     return (
       <div
         className="view-container"
@@ -474,12 +488,31 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
           Entity Graph
         </h2>
-        <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
-          No entities found. Add notes with a frontmatter{" "}
-          <code>type</code> of <code>npc</code>, <code>location</code>,{" "}
-          <code>faction</code>, <code>item</code>, or <code>event</code> to see
-          them here.
-        </p>
+        {filterEmpty ? (
+          <>
+            <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
+              No notes match the{" "}
+              <strong style={{ color: "var(--fg)" }}>{filter}</strong>{" "}
+              provenance filter. Notes only appear here once they have a{" "}
+              <code>source_type</code> frontmatter value matching the filter.
+            </p>
+            <button
+              className="btn btn-sm"
+              onClick={() => setFilter("all")}
+              style={{ marginTop: "12px" }}
+              data-od-id="graph-filter-reset"
+            >
+              Show all notes
+            </button>
+          </>
+        ) : (
+          <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
+            No entities found. Add notes with a frontmatter{" "}
+            <code>type</code> of <code>npc</code>, <code>location</code>,{" "}
+            <code>faction</code>, <code>item</code>, or <code>event</code> to
+            see them here.
+          </p>
+        )}
       </div>
     );
   }

@@ -93,6 +93,34 @@ describe("EntityGraphView", () => {
     expect(screen.getByText(/3 nodes/)).toBeTruthy();
   });
 
+  it("shows filter-empty state (not entity guidance) when provenance filter matches zero notes", () => {
+    const notes = [
+      makeNote({ id: "n1", title: "Titus Crow", frontmatter: { type: "npc" } }),
+      makeNote({
+        id: "n2",
+        title: "Neft Daşları",
+        frontmatter: { type: "location" },
+      }),
+    ];
+    render(<EntityGraphView notes={notes} onOpenNote={vi.fn()} />);
+    // Default: all notes, both entities render.
+    expect(screen.getByText(/2 nodes/)).toBeTruthy();
+
+    // Click a provenance filter no note carries → filter-empty state, not the
+    // "add entity notes" guidance. (getByText matches direct text nodes only,
+    // so the phrase inside <strong>/<code> is not part of the match.)
+    fireEvent.click(screen.getByText("Canon"));
+    expect(screen.getByText(/No notes match the/i)).toBeTruthy();
+    expect(screen.queryByText(/No entities found/)).toBeNull();
+    expect(
+      screen.queryByText(/add notes with a frontmatter/i),
+    ).toBeNull();
+
+    // Reset button returns to the full graph.
+    fireEvent.click(screen.getByText("Show all notes"));
+    expect(screen.getByText(/2 nodes/)).toBeTruthy();
+  });
+
   it("shows source nodes when notes reference a listed source", async () => {
     const source = makeSource();
     mockInvoke.mockResolvedValue([source]);
