@@ -32,14 +32,14 @@ const extractWikiLinks = (text: string): string[] => {
 const getRelationColor = (key: string): string => {
   const k = key.toLowerCase().trim();
   const colors: Record<string, string> = {
-    location: "oklch(65% 0.2 260)", // Sleek Blue
-    owner: "oklch(60% 0.25 20)",    // Royal Crimson
-    room: "oklch(70% 0.18 140)",    // Soft Emerald Green
-    type: "oklch(75% 0.15 320)",    // Soft Purple
-    parent: "oklch(65% 0.15 80)",   // Ochre/Gold
-    npc: "oklch(60% 0.22 340)",     // Vibrant Magenta
+    location: "oklch(60% 0.10 28)",  // accent ramp L60
+    owner: "oklch(45% 0.12 28)",     // accent ramp L45 (--accent-hover)
+    room: "oklch(52% 0.10 28)",      // accent ramp L52 (--accent)
+    type: "oklch(70% 0.08 28)",      // accent ramp L70
+    parent: "oklch(48% 0.012 70)",   // neutral ramp L48 (--muted)
+    npc: "oklch(25% 0.012 70)",      // neutral ramp L25
   };
-  return colors[k] || "oklch(60% 0.15 180)"; // Fallback Teal
+  return colors[k] || "oklch(60% 0.10 28)"; // Fallback: accent L60
 };
 
 interface FrontmatterRelationship {
@@ -475,7 +475,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
       y: 80,
       width: 400,
       height: 300,
-      color: "rgba(66, 153, 225, 0.15)",
+      color: "oklch(52% 0.10 28 / 0.15)",
     };
     setContainers((prev) => [...prev, newBox]);
   };
@@ -488,26 +488,28 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", background: "var(--bg)", overflow: "hidden", position: "relative" }}>
       {/* Top Toolbar */}
-      <div style={{ height: "42px", borderBottom: "1px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", zIndex: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ height: "44px", borderBottom: "1px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           <Layers size={16} style={{ color: "var(--accent)" }} />
           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--fg)" }}>
             Canvas: {currentFolder ? currentFolder : "Vault Root"} ({folderNotes.length} Notes)
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2))} title="Zoom In" data-od-id="canvas-zoom-in-btn">
-            <ZoomIn size={13} />
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.min(z + 0.15, 2.5))} title="Zoom In" data-od-id="canvas-zoom-in-btn">
+            <ZoomIn size={12} />
           </button>
           <span style={{ fontSize: "11px", color: "var(--muted)" }}>{Math.round(zoom * 100)}%</span>
-          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))} title="Zoom Out" data-od-id="canvas-zoom-out-btn">
-            <ZoomOut size={13} />
+          <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(z - 0.15, 0.25))} title="Zoom Out" data-od-id="canvas-zoom-out-btn">
+            <ZoomOut size={12} />
           </button>
+          <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button className="btn btn-sm" onClick={addContainerBox} title="Add Container / Boundary Box" data-od-id="canvas-add-container-btn">
-            <Plus size={13} /> Add Container
+            <Plus size={12} /> Add Container
           </button>
+          <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button className="btn btn-sm btn-primary" onClick={saveCanvas} title="Save Canvas Layout" data-od-id="canvas-save-btn">
-            <Save size={13} /> Save Canvas
+            <Save size={12} /> Save Canvas
           </button>
         </div>
       </div>
@@ -525,7 +527,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
           position: "relative",
           cursor: isPanning ? "grabbing" : "grab",
           overflow: "hidden",
-          backgroundImage: "radial-gradient(var(--border) 1px, transparent 1px)",
+          backgroundImage: "radial-gradient(var(--muted) 1px, transparent 1px)",
           backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
           backgroundPosition: `${pan.x}px ${pan.y}px`,
         }}
@@ -577,7 +579,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     y={midY - 12}
                     width={edge.label.length * 8 + 20}
                     height={22}
-                    rx={4}
+                    rx={0}
                     fill="var(--surface)"
                     stroke="var(--border)"
                     strokeWidth="1"
@@ -627,7 +629,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               >
                 <span
                   style={{
-                    fontSize: "9px",
+                    fontSize: "11px",
                     fontWeight: 700,
                     color: isDynamic ? borderColor : "var(--accent)",
                     textTransform: "uppercase",
@@ -694,22 +696,25 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     ? "2px solid var(--accent)" 
                     : isCanvas 
                       ? "1px solid var(--accent)" 
-                      : "1px solid var(--border)",
+                      : draggingNodeId === note.id
+                        ? "1px solid var(--accent)"
+                        : "1px solid var(--border)",
                   borderRadius: 0,
                   padding: "12px",
                   cursor: isCanvas ? "pointer" : "grab",
+                  opacity: draggingNodeId === note.id ? 0.85 : 1,
                   userSelect: "none",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                  <span style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.05em", color: isCanvas ? "var(--accent)" : "var(--accent)", fontWeight: 700 }}>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: isCanvas ? "var(--accent)" : "var(--muted)", fontWeight: 700 }}>
                     {isCanvas ? "Canvas" : String(note.frontmatter?.type || "Note")}
                   </span>
                   <div style={{ display: "flex", gap: "4px" }}>
                     {!isCanvas && (
                       <button
                         className="btn btn-sm"
-                        style={{ padding: "2px 5px", fontSize: "10px" }}
+                        style={{ minWidth: 24, minHeight: 24, padding: "2px 5px", fontSize: "10px" }}
                         title="Connect Edge"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -721,7 +726,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     )}
                     <button
                       className="btn btn-sm"
-                      style={{ padding: "2px 5px", fontSize: "10px" }}
+                      style={{ minWidth: 24, minHeight: 24, padding: "2px 5px", fontSize: "10px" }}
                       title={isCanvas ? "Drill Down Canvas" : "View Note"}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -738,7 +743,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                 </div>
 
                 <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--fg)", marginBottom: "4px" }}>{note.title}</div>
-                <div style={{ fontSize: "11px", color: "var(--muted)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginBottom: "8px" }}>
+                <div style={{ fontSize: "12px", color: "var(--fg)", opacity: 0.6, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginBottom: "8px" }}>
                   {note.content.replace(/#+/g, "").trim()}
                 </div>
 
@@ -752,7 +757,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                         <span
                           key={strTag}
                           style={{
-                            fontSize: "9px",
+                            fontSize: "11px",
                             padding: "2px 6px",
                             borderRadius: 0,
                             background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
@@ -768,11 +773,11 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                       <span
                         key={strTag}
                         style={{
-                          fontSize: "9px",
+                          fontSize: "11px",
                           padding: "2px 6px",
                           borderRadius: 0,
-                          background: strTag === "villain" ? "rgba(229, 62, 62, 0.2)" : "rgba(49, 130, 206, 0.2)",
-                          color: strTag === "villain" ? "#fc8181" : "#63b3ed",
+                          background: strTag === "villain" ? "oklch(50% 0.14 25 / 0.15)" : "oklch(48% 0.012 70 / 0.15)",
+                          color: strTag === "villain" ? "var(--danger)" : "var(--muted)",
                           fontWeight: 600,
                         }}
                       >
@@ -791,7 +796,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                       <span
                         key={k}
                         style={{
-                          fontSize: "9px",
+                          fontSize: "11px",
                           padding: "2px 6px",
                           borderRadius: 0,
                           background: getRelationColor(k).replace("oklch", "oklch").replace(")", " / 0.15)"),
@@ -948,7 +953,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
             right: "24px",
             zIndex: 1000,
             background: "var(--surface)",
-            border: "1px solid var(--accent)",
+            border: "1px solid var(--border)",
             borderRadius: 0,
             padding: "12px 16px",
             boxShadow: "0 4px 12px rgba(0,0,0,0.15)",

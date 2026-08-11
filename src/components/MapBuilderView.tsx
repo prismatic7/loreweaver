@@ -7,7 +7,6 @@ import {
   Save,
   Map as MapIcon,
   EyeOff,
-  Eye,
   Ruler,
 } from "lucide-react";
 
@@ -55,12 +54,12 @@ interface MapBuilderViewProps {
 }
 
 const TOKEN_COLORS = [
-  "oklch(60% 0.25 20)", // red
-  "oklch(60% 0.2 260)", // blue
-  "oklch(60% 0.2 140)", // green
-  "oklch(60% 0.2 320)", // purple
-  "oklch(60% 0.15 80)", // gold
-  "oklch(60% 0.15 180)", // teal
+  "oklch(45% 0.12 28)", // accent ramp L45 (--accent-hover)
+  "oklch(52% 0.10 28)", // accent ramp L52 (--accent)
+  "oklch(60% 0.10 28)", // accent ramp L60
+  "oklch(70% 0.08 28)", // accent ramp L70
+  "oklch(50% 0.14 25)", // --danger (hostile tokens)
+  "oklch(65% 0.12 85)", // --warn (neutral tokens)
 ];
 
 export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
@@ -79,6 +78,10 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   const [rulerMode, setRulerMode] = useState(false);
   const [rulerPoints, setRulerPoints] = useState<{ x: number; y: number }[]>([]);
   const [rulerDistance, setRulerDistance] = useState<number | null>(null);
+  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  const [namingToken, setNamingToken] = useState(false);
+  const [tokenName, setTokenName] = useState("");
+  const tokenNameRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const loadMap = useCallback(() => {
@@ -116,8 +119,13 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   };
 
   const addToken = () => {
-    const label = prompt("Token label:", "Token");
-    if (!label) return;
+    setTokenName("");
+    setNamingToken(true);
+  };
+
+  const commitTokenName = () => {
+    const label = tokenName.trim() || "Token";
+    setNamingToken(false);
     const color = TOKEN_COLORS[tokens.length % TOKEN_COLORS.length];
     setTokens((prev) => [
       ...prev,
@@ -195,6 +203,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   ) => {
     e.stopPropagation();
     setDraggingTokenId(tokenId);
+    setSelectedTokenId(tokenId);
     setDragOffset({
       x: (e.clientX - pan.x) / zoom - tx,
       y: (e.clientY - pan.y) / zoom - ty,
@@ -202,6 +211,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   };
 
   const handleCanvasClick = (e: React.MouseEvent) => {
+    setSelectedTokenId(null);
     if (!rulerMode) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -239,7 +249,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
       {/* Top Toolbar */}
       <div
         style={{
-          height: "42px",
+          height: "44px",
           borderBottom: "1px solid var(--border)",
           background: "var(--surface)",
           display: "flex",
@@ -249,39 +259,40 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
           zIndex: 10,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           <MapIcon size={16} style={{ color: "var(--accent)" }} />
           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--fg)" }}>
             Map Builder ({tokens.length} tokens, {fog.length} fog regions)
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           <button
             className="btn btn-sm"
-            onClick={() => setZoom((z) => Math.min(z + 0.15, 2))}
+            onClick={() => setZoom((z) => Math.min(z + 0.15, 2.5))}
             title="Zoom In"
             data-od-id="map-zoom-in-btn"
           >
-            <ZoomIn size={13} />
+            <ZoomIn size={12} />
           </button>
           <span style={{ fontSize: "11px", color: "var(--muted)" }}>
             {Math.round(zoom * 100)}%
           </span>
           <button
             className="btn btn-sm"
-            onClick={() => setZoom((z) => Math.max(z - 0.15, 0.4))}
+            onClick={() => setZoom((z) => Math.max(z - 0.15, 0.25))}
             title="Zoom Out"
             data-od-id="map-zoom-out-btn"
           >
-            <ZoomOut size={13} />
+            <ZoomOut size={12} />
           </button>
+          <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button
             className="btn btn-sm"
             onClick={addToken}
             title="Add Token"
             data-od-id="map-add-token-btn"
           >
-            <Plus size={13} /> Token
+            <Plus size={12} /> Token
           </button>
           <button
             className="btn btn-sm"
@@ -289,7 +300,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             title="Add Fog-of-War Region"
             data-od-id="map-add-fog-btn"
           >
-            <EyeOff size={13} /> Fog
+            <EyeOff size={12} /> Fog
           </button>
           <button
             className="btn btn-sm"
@@ -304,15 +315,16 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               color: rulerMode ? "#fff" : "var(--fg)",
             }}
           >
-            <Ruler size={13} /> Ruler
+            <Ruler size={12} /> Ruler
           </button>
+          <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button
             className="btn btn-sm btn-primary"
             onClick={saveMap}
             title="Save Map"
             data-od-id="map-save-btn"
           >
-            <Save size={13} /> Save Map
+            <Save size={12} /> Save Map
           </button>
         </div>
       </div>
@@ -350,7 +362,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   d="M 40 0 L 0 0 0 40"
                   fill="none"
                   stroke="var(--border)"
-                  strokeWidth="0.5"
+                  strokeWidth="1"
                 />
               </pattern>
             </defs>
@@ -370,7 +382,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   y={f.y}
                   width={f.width}
                   height={f.height}
-                  fill={f.hidden ? "rgba(0,0,0,0.75)" : "rgba(0,0,0,0.05)"}
+                  fill={f.hidden ? "oklch(14% 0.012 70 / 0.75)" : "oklch(48% 0.012 70 / 0.08)"}
                   stroke="var(--border)"
                   strokeWidth="1"
                   strokeDasharray="4 4"
@@ -379,7 +391,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   x={f.x + 6}
                   y={f.y + 14}
                   fontSize="10"
-                  fill="var(--muted)"
+                  fill={f.hidden ? "var(--surface)" : "var(--muted)"}
                 >
                   {f.hidden ? "Fog (hidden)" : "Revealed"}
                 </text>
@@ -391,10 +403,24 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect width="16" height="16" rx="0" fill="var(--surface)" stroke="var(--border)" />
-                  <text x="8" y="12" fontSize="10" textAnchor="middle" fill="var(--fg)">
-                    {f.hidden ? <EyeOff size={10} /> : <Eye size={10} />}
-                  </text>
+                  <rect width="24" height="24" rx="0" fill="var(--surface)" stroke="var(--border)" />
+                  <g transform="translate(12, 12)">
+                    <g transform="scale(0.5)">
+                      {f.hidden ? (
+                        <g fill="none" stroke="var(--fg)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+                          <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+                          <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+                          <path d="m2 2 20 20" />
+                        </g>
+                      ) : (
+                        <g fill="none" stroke="var(--fg)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </g>
+                      )}
+                    </g>
+                  </g>
                 </g>
                 <g
                   transform={`translate(${f.x + f.width - 40}, ${f.y + 4})`}
@@ -404,8 +430,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect width="16" height="16" rx="0" fill="var(--surface)" stroke="var(--border)" />
-                  <text x="8" y="12" fontSize="10" textAnchor="middle" fill="var(--danger)">
+                  <rect width="24" height="24" rx="0" fill="var(--surface)" stroke="var(--border)" />
+                  <text x="12" y="16" fontSize="11" textAnchor="middle" fill="var(--danger)">
                     ✕
                   </text>
                 </g>
@@ -454,7 +480,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 onMouseDown={(e) => handleTokenMouseDown(e, t.id, t.x, t.y)}
                 style={{ cursor: "grab" }}
               >
-                <circle r="18" fill={t.color} stroke="var(--surface)" strokeWidth="2" />
+                <circle r="18" fill={t.color} stroke={selectedTokenId === t.id ? "var(--accent)" : "var(--surface)"} strokeWidth={selectedTokenId === t.id ? "3" : "2"} />
                 <text
                   y="4"
                   fontSize="12"
@@ -480,8 +506,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  <circle r="8" fill="var(--surface)" stroke="var(--border)" />
-                  <text x="0" y="3" fontSize="9" textAnchor="middle" fill="var(--danger)">
+                  <circle r="12" fill="var(--surface)" stroke="var(--border)" />
+                  <text x="0" y="4" fontSize="11" textAnchor="middle" fill="var(--danger)">
                     ✕
                   </text>
                 </g>
@@ -524,6 +550,63 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             >
               Clear
             </button>
+          </div>
+        )}
+
+        {/* Token naming overlay */}
+        {namingToken && (
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 20,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              padding: "16px",
+              width: 280,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--fg)", marginBottom: "8px" }}>
+              New Token
+            </div>
+            <input
+              ref={tokenNameRef}
+              autoFocus
+              value={tokenName}
+              onChange={(e) => setTokenName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitTokenName();
+                if (e.key === "Escape") setNamingToken(false);
+              }}
+              placeholder="Token label"
+              style={{
+                width: "100%",
+                padding: "6px 8px",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                fontSize: "13px",
+                outline: "none",
+                marginBottom: "8px",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => setNamingToken(false)}
+              >
+                Cancel
+              </button>
+              <button className="btn btn-sm btn-primary" onClick={commitTokenName}>
+                Add Token
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Maximize2 } from "lucide-react";
 import {
   CampaignNote,
   DEFAULT_NOTE_TYPES,
@@ -44,7 +45,7 @@ interface EntityGraphViewProps {
 
 type ProvenanceFilter = string; // "all" | any provenance id from the taxonomy
 
-const SOURCE_COLOR = "oklch(70% 0.12 45)";
+const SOURCE_COLOR = "oklch(60% 0.10 28)";
 
 const extractWikiLinks = (text: string): string[] => {
   const links: string[] = [];
@@ -66,8 +67,14 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
   provenanceTaxonomy = DEFAULT_PROVENANCE_TAXONOMY,
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceEntry[]>([]);
   const [filter, setFilter] = useState<ProvenanceFilter>("all");
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
   const typeColors = useMemo(() => {
     const map: Record<string, string> = {};
@@ -207,6 +214,55 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     return { nodes: Array.from(nodeMap.values()), edges: edgeList };
   }, [notes, sources, filter, entityTypeIds]);
 
+  const fitToView = useCallback(() => {
+    const el = containerRef.current;
+    if (!el || nodes.length === 0) return;
+    const pad = 60;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs) - pad;
+    const maxX = Math.max(...xs) + pad;
+    const minY = Math.min(...ys) - pad;
+    const maxY = Math.max(...ys) + pad;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    const s = Math.min(el.clientWidth / w, el.clientHeight / h, 1.5);
+    const z = Math.max(0.25, s);
+    setZoom(z);
+    setPan({
+      x: (el.clientWidth - w * z) / 2 - minX * z,
+      y: (el.clientHeight - h * z) / 2 - minY * z,
+    });
+  }, [nodes]);
+
+  useEffect(() => {
+    fitToView();
+  }, [fitToView]);
+
+  const onWheel = (e: React.WheelEvent) => {
+    if (nodes.length === 0) return;
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom((z) => Math.min(2.5, Math.max(0.25, z * factor)));
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if ((e.target as Element).closest("g")) return; // nodes/edges handle their own pointer events
+    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+    setIsPanning(true);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+  };
+
+  const onPointerUp = () => {
+    dragRef.current = null;
+    setIsPanning(false);
+  };
+
   if (nodes.length === 0) {
     return (
       <div
@@ -240,7 +296,8 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
     >
       <div
         style={{
-          padding: "16px 24px",
+          height: "44px",
+          padding: "0 16px",
           borderBottom: "1px solid var(--border)",
           display: "flex",
           alignItems: "center",
@@ -248,7 +305,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
           gap: "16px",
         }}
       >
-        <span className="panel-title">Entity &amp; Relationship Graph</span>
+        <span className="panel-title" style={{ marginBottom: 0 }}>Entity &amp; Relationship Graph</span>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{ display: "flex", gap: "4px" }}>
             {filterOptions.map((opt) => (
@@ -256,11 +313,12 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                 key={opt.value}
                 onClick={() => setFilter(opt.value)}
                 style={{
-                  background:
-                    filter === opt.value ? "var(--border)" : "transparent",
+                  background: "transparent",
                   border: "1px solid var(--border)",
+                  borderBottom:
+                    filter === opt.value ? "2px solid var(--accent)" : "1px solid var(--border)",
                   color:
-                    filter === opt.value ? "var(--accent)" : "var(--muted)",
+                    filter === opt.value ? "var(--fg)" : "var(--muted)",
                   padding: "4px 10px",
                   borderRadius: 0,
                   cursor: "pointer",
@@ -276,10 +334,37 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
           <span style={{ fontSize: "11px", color: "var(--muted)" }}>
             {nodes.length} nodes · {edges.length} relationships
           </span>
+          <button
+            className="btn btn-sm"
+            onClick={fitToView}
+            title="Fit Graph to View"
+            data-od-id="graph-fit-btn"
+          >
+            <Maximize2 size={12} />
+          </button>
         </div>
       </div>
-      <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-        <svg width="100%" height="100%" style={{ minWidth: 800, minHeight: 600 }}>
+      <div
+        ref={containerRef}
+        style={{ flex: 1, overflow: "hidden", position: "relative", cursor: isPanning ? "grabbing" : "grab" }}
+        onWheel={onWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+      >
+        <svg
+          width="100%"
+          height="100%"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "0 0",
+            fontFamily: "var(--font-body)",
+          }}
+        >
           {/* Edges */}
           {edges.map((e, i) => {
             const from = nodes.find((n) => n.id === e.from);
@@ -300,8 +385,9 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                 <text
                   x={(from.x + to.x) / 2}
                   y={(from.y + to.y) / 2 - 6}
-                  fontSize="9"
-                  fill="var(--muted)"
+                  fontSize="10"
+                  fill="var(--fg)"
+                  opacity={0.65}
                   textAnchor="middle"
                 >
                   {e.label}
@@ -315,7 +401,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
             const isSource = n.kind === "source";
             const color = isSource
               ? SOURCE_COLOR
-              : typeColors[n.type] || "oklch(60% 0.15 180)";
+              : typeColors[n.type] || "var(--muted)";
             const isSelected = selectedId === n.id;
             return (
               <g
@@ -325,6 +411,8 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                   setSelectedId(n.id);
                   if (!isSource) onOpenNote(n.id);
                 }}
+                onMouseEnter={() => setHoveredId(n.id)}
+                onMouseLeave={() => setHoveredId(null)}
                 style={{ cursor: isSource ? "default" : "pointer" }}
               >
                 {isSource ? (
@@ -333,17 +421,17 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                     y={-22}
                     width={44}
                     height={44}
-                    rx={6}
+                    rx={0}
                     fill={color}
-                    stroke="var(--surface)"
-                    strokeWidth="3"
+                    stroke={hoveredId === n.id ? "var(--fg)" : "var(--surface)"}
+                    strokeWidth={hoveredId === n.id ? "1.5" : "3"}
                   />
                 ) : (
                   <circle
                     r={isSelected ? 30 : 26}
                     fill={color}
-                    stroke="var(--surface)"
-                    strokeWidth="3"
+                    stroke={hoveredId === n.id ? "var(--fg)" : "var(--surface)"}
+                    strokeWidth={hoveredId === n.id ? "1.5" : "3"}
                   />
                 )}
                 <text
@@ -366,7 +454,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
                 </text>
                 <text
                   y="56"
-                  fontSize="9"
+                  fontSize="11"
                   textAnchor="middle"
                   fill="var(--muted)"
                 >
