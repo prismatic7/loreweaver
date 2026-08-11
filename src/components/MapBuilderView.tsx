@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import {
   Plus,
   ZoomIn,
@@ -9,6 +9,15 @@ import {
   EyeOff,
   Ruler,
   Maximize2,
+  Image as ImageIcon,
+  X as XIcon,
+  Grid3x3,
+  PenLine,
+  Type,
+  Eraser,
+  Circle as CircleIcon,
+  Square as SquareIcon,
+  Star as StarIcon,
 } from "lucide-react";
 
 /**
@@ -20,10 +29,19 @@ import {
  *   - Tokens: draggable markers (PCs, NPCs, monsters, landmarks).
  *   - Fog-of-war regions: rectangles that can be toggled hidden/shown.
  *   - Distance ruler: click two points to measure a distance.
+ *   - Image background: any map image imported from the vault.
+ *   - Drawings: freehand polylines + text annotations (spell effects,
+ *     temporary boundaries), cleared with one click for the end-of-encounter
+ *     wipe.
+ *   - Token palette: re-drop the same marker type without re-adding.
  *
  * State is scoped to the active vault via the existing `save_canvas_file` /
- * `load_canvas_file` commands (relPath is vault-relative).
+ * `load_canvas_file` commands (relPath is vault-relative). Background images
+ * are stored in the `_assets/` directory co-located with the map file via
+ * `save_note_asset`.
  */
+
+type TokenShape = "circle" | "square" | "star";
 
 interface MapToken {
   id: string;
@@ -31,6 +49,7 @@ interface MapToken {
   x: number;
   y: number;
   color: string;
+  shape?: TokenShape;
 }
 
 interface FogRegion {
@@ -42,10 +61,38 @@ interface FogRegion {
   hidden: boolean;
 }
 
+interface MapBackground {
+  relPath: string;
+  width: number;
+  height: number;
+}
+
+interface MapLine {
+  id: string;
+  points: { x: number; y: number }[];
+  color: string;
+  strokeWidth: number;
+}
+
+interface MapAnnotation {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+}
+
+interface MapDrawings {
+  lines: MapLine[];
+  annotations: MapAnnotation[];
+}
+
 interface MapData {
   type: "map";
   tokens: MapToken[];
   fog: FogRegion[];
+  background?: MapBackground | null;
+  drawings?: MapDrawings;
 }
 
 interface MapBuilderViewProps {
@@ -53,6 +100,8 @@ interface MapBuilderViewProps {
   mapRelPath: string;
   alert: (message: string) => void;
 }
+
+type CanvasMode = "none" | "ruler" | "draw" | "annotate";
 
 const TOKEN_COLORS = [
   "oklch(45% 0.12 28)", // accent ramp L45 (--accent-hover)
@@ -63,6 +112,32 @@ const TOKEN_COLORS = [
   "oklch(65% 0.12 85)", // --warn (neutral tokens)
 ];
 
+const TOKEN_SHAPES: TokenShape[] = ["circle", "square", "star"];
+
+const STAR_OUTER = 16;
+const STAR_INNER = 7;
+
+// 5-point star polygon points centred on (0,0), point up.
+const starPoints = (outer: number, inner: number): string => {
+  const pts: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = (Math.PI / 5) * i - Math.PI / 2;
+    pts.push(`${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`);
+  }
+  return pts.join(" ");
+};
+
+const resolveAssetUrl = (vaultPath: string, mapRelPath: string, relPath: string): string => {
+  const dir = mapRelPath.includes("/") ? mapRelPath.slice(0, mapRelPath.lastIndexOf("/")) : "";
+  const separator = dir ? "/" : "";
+  try {
+    return convertFileSrc(`${vaultPath}${separator}${dir}/${relPath.replace(/^\.\//, "")}`);
+  } catch {
+    return `${vaultPath}${separator}${dir}/${relPath.replace(/^\.\//, "")}`;
+  }
+};
+
 export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   vaultPath,
   mapRelPath,
@@ -70,20 +145,31 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
 }) => {
   const [tokens, setTokens] = useState<MapToken[]>([]);
   const [fog, setFog] = useState<FogRegion[]>([]);
+  const [background, setBackground] = useState<MapBackground | null>(null);
+  const [drawings, setDrawings] = useState<MapDrawings>({ lines: [], annotations: [] });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 40, y: 40 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [draggingTokenId, setDraggingTokenId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [rulerMode, setRulerMode] = useState(false);
+  const [mode, setMode] = useState<CanvasMode>("none");
   const [rulerPoints, setRulerPoints] = useState<{ x: number; y: number }[]>([]);
   const [rulerDistance, setRulerDistance] = useState<number | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   const [namingToken, setNamingToken] = useState(false);
   const [tokenName, setTokenName] = useState("");
+  const [tokenShape, setTokenShape] = useState<TokenShape>("circle");
+  const [currentLine, setCurrentLine] = useState<{ x: number; y: number }[]>([]);
+  const [placingAnnotation, setPlacingAnnotation] = useState<{ x: number; y: number } | null>(null);
+  const [annotationText, setAnnotationText] = useState("");
+  const [showGrid, setShowGrid] = useState(true);
   const tokenNameRef = useRef<HTMLInputElement>(null);
+  const annotationRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
+
+  const rulerMode = mode === "ruler";
 
   const loadMap = useCallback(() => {
     invoke<string>("load_canvas_file", { relPath: mapRelPath })
@@ -101,6 +187,10 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         }
         setTokens(data.tokens || []);
         setFog(data.fog || []);
+        setBackground(data.background || null);
+        setDrawings(
+          data.drawings || { lines: [], annotations: [] },
+        );
       })
       .catch((err) => console.error("Error loading map file:", err));
   }, [mapRelPath]);
@@ -110,7 +200,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   }, [loadMap, vaultPath]);
 
   const saveMap = () => {
-    const data: MapData = { type: "map", tokens, fog };
+    const data: MapData = { type: "map", tokens, fog, background, drawings };
     invoke("save_canvas_file", {
       relPath: mapRelPath,
       content: JSON.stringify(data, null, 2),
@@ -121,6 +211,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
 
   const addToken = () => {
     setTokenName("");
+    setTokenShape("circle");
     setNamingToken(true);
   };
 
@@ -130,7 +221,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     const color = TOKEN_COLORS[tokens.length % TOKEN_COLORS.length];
     setTokens((prev) => [
       ...prev,
-      { id: `token-${Date.now()}`, label, x: 120, y: 120, color },
+      { id: `token-${Date.now()}`, label, x: 120, y: 120, color, shape: tokenShape },
     ]);
   };
 
@@ -211,28 +302,147 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     });
   };
 
+  const canvasToWorld = (e: React.MouseEvent): { x: number; y: number } | null => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      x: (e.clientX - rect.left - pan.x) / zoom,
+      y: (e.clientY - rect.top - pan.y) / zoom,
+    };
+  };
+
   const handleCanvasClick = (e: React.MouseEvent) => {
     setSelectedTokenId(null);
-    if (!rulerMode) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = (e.clientX - rect.left - pan.x) / zoom;
-    const y = (e.clientY - rect.top - pan.y) / zoom;
-    setRulerPoints((prev) => {
-      const next = [...prev, { x, y }];
-      if (next.length === 2) {
-        const dx = next[1].x - next[0].x;
-        const dy = next[1].y - next[0].y;
-        setRulerDistance(Math.round(Math.sqrt(dx * dx + dy * dy)));
+    const pt = canvasToWorld(e);
+    if (!pt) return;
+
+    if (mode === "ruler") {
+      setRulerPoints((prev) => {
+        const next = [...prev, pt];
+        if (next.length === 2) {
+          const dx = next[1].x - next[0].x;
+          const dy = next[1].y - next[0].y;
+          setRulerDistance(Math.round(Math.sqrt(dx * dx + dy * dy)));
+          return next;
+        }
         return next;
-      }
-      return next;
-    });
+      });
+    } else if (mode === "draw") {
+      setCurrentLine((prev) => [...prev, pt]);
+    } else if (mode === "annotate") {
+      setPlacingAnnotation(pt);
+      setAnnotationText("");
+      setTimeout(() => annotationRef.current?.focus(), 0);
+    }
   };
 
   const clearRuler = () => {
     setRulerPoints([]);
     setRulerDistance(null);
+  };
+
+  const finishLine = () => {
+    if (currentLine.length < 2) {
+      setCurrentLine([]);
+      return;
+    }
+    setDrawings((prev) => ({
+      ...prev,
+      lines: [
+        ...prev.lines,
+        {
+          id: `line-${Date.now()}`,
+          points: currentLine,
+          color: "var(--accent)",
+          strokeWidth: 2,
+        },
+      ],
+    }));
+    setCurrentLine([]);
+  };
+
+  const cancelLine = () => {
+    setCurrentLine([]);
+  };
+
+  const commitAnnotation = () => {
+    if (placingAnnotation && annotationText.trim()) {
+      setDrawings((prev) => ({
+        ...prev,
+        annotations: [
+          ...prev.annotations,
+          {
+            id: `annotation-${Date.now()}`,
+            x: placingAnnotation.x,
+            y: placingAnnotation.y,
+            text: annotationText.trim(),
+            color: "var(--accent)",
+          },
+        ],
+      }));
+    }
+    setPlacingAnnotation(null);
+    setAnnotationText("");
+  };
+
+  const clearDrawings = () => {
+    setDrawings({ lines: [], annotations: [] });
+    setCurrentLine([]);
+    setPlacingAnnotation(null);
+  };
+
+  const handleBackgroundSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+      const base64Data = dataUrl.split(",")[1] || "";
+
+      try {
+        const assetRelPath = await invoke<string>("save_note_asset", {
+          notePath: mapRelPath,
+          filename: file.name,
+          base64Data,
+        });
+
+        // Measure natural dimensions for the SVG coordinate space.
+        const img = new Image();
+        img.onload = () => {
+          setBackground({
+            relPath: assetRelPath,
+            width: img.naturalWidth || 800,
+            height: img.naturalHeight || 600,
+          });
+          alert("Background image added.");
+        };
+        img.onerror = () => {
+          setBackground({ relPath: assetRelPath, width: 800, height: 600 });
+          alert("Background image added (dimensions unknown).");
+        };
+        img.src = dataUrl;
+      } catch (err) {
+        alert("Failed to import background image: " + err);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeBackground = () => {
+    setBackground(null);
+  };
+
+  const toggleMode = (next: CanvasMode) => {
+    setMode((prev) => {
+      const newMode = prev === next ? "none" : next;
+      if (newMode !== "ruler") clearRuler();
+      if (newMode !== "draw") cancelLine();
+      if (newMode !== "annotate") setPlacingAnnotation(null);
+      return newMode;
+    });
   };
 
   // Wheel zoom with zoom-to-cursor. Reciprocal factors (1.1 / 1/1.1) so
@@ -254,7 +464,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     });
   };
 
-  // Fit all tokens + fog regions into the viewport.
+  // Fit all tokens + fog regions + background into the viewport.
   const fitToView = () => {
     const el = canvasRef.current;
     if (!el || !el.clientWidth || !el.clientHeight) return;
@@ -262,10 +472,12 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     const allX = [
       ...tokens.map((t) => t.x),
       ...fog.map((f) => f.x),
+      ...(background ? [0, background.width] : []),
     ];
     const allY = [
       ...tokens.map((t) => t.y),
       ...fog.map((f) => f.y),
+      ...(background ? [0, background.height] : []),
     ];
     if (allX.length === 0) {
       setZoom(1);
@@ -309,6 +521,53 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
 
   const truncateLabel = (label: string) =>
     label.length > 12 ? `${label.slice(0, 12)}…` : label;
+
+  // Token palette: distinct (label, shape, color) combos, most recent first,
+  // capped at 8. Clicking a palette item drops another copy of that marker.
+  const paletteItems = useMemo(() => {
+    const seen = new Map<string, MapToken>();
+    for (const t of tokens) {
+      const key = `${t.label}|${t.shape || "circle"}|${t.color}`;
+      if (!seen.has(key)) seen.set(key, t);
+    }
+    return Array.from(seen.values()).slice(0, 8);
+  }, [tokens]);
+
+  const addFromPalette = (item: MapToken) => {
+    const offset = (paletteItems.length % 8) * 16;
+    setTokens((prev) => [
+      ...prev,
+      {
+        id: `token-${Date.now()}`,
+        label: item.label,
+        x: 120 + offset,
+        y: 120 + offset,
+        color: item.color,
+        shape: item.shape || "circle",
+      },
+    ]);
+  };
+
+  const renderTokenShape = (t: MapToken, isSelected: boolean) => {
+    const common = {
+      fill: t.color,
+      stroke: isSelected ? "var(--accent)" : "var(--surface)",
+      strokeWidth: 2,
+    };
+    switch (t.shape || "circle") {
+      case "square":
+        return <rect x={-16} y={-16} width={32} height={32} rx={0} {...common} />;
+      case "star":
+        return <polygon points={starPoints(STAR_OUTER, STAR_INNER)} {...common} />;
+      case "circle":
+      default:
+        return <circle r={16} {...common} />;
+    }
+  };
+
+  const bgUrl = background
+    ? resolveAssetUrl(vaultPath, mapRelPath, background.relPath)
+    : null;
 
   return (
     <div
@@ -369,6 +628,69 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
           >
             <Maximize2 size={12} />
           </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowGrid((g) => !g)}
+            title={showGrid ? "Hide Grid" : "Show Grid"}
+            data-od-id="map-grid-toggle-btn"
+            style={{
+              background: showGrid ? "var(--accent)" : "var(--surface)",
+              color: showGrid ? "#fff" : "var(--fg)",
+            }}
+          >
+            <Grid3x3 size={12} />
+          </button>
+          <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
+          <button
+            className="btn btn-sm"
+            onClick={() => backgroundInputRef.current?.click()}
+            title="Import Background Image"
+            data-od-id="map-bg-btn"
+          >
+            <ImageIcon size={12} /> BG
+          </button>
+          {background && (
+            <button
+              className="btn btn-sm"
+              onClick={removeBackground}
+              title="Remove Background"
+              data-od-id="map-bg-remove-btn"
+            >
+              <XIcon size={12} />
+            </button>
+          )}
+          <button
+            className="btn btn-sm"
+            onClick={() => toggleMode("draw")}
+            title="Draw Lines"
+            data-od-id="map-draw-btn"
+            style={{
+              background: mode === "draw" ? "var(--accent)" : "var(--surface)",
+              color: mode === "draw" ? "#fff" : "var(--fg)",
+            }}
+          >
+            <PenLine size={12} />
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => toggleMode("annotate")}
+            title="Add Text Annotation"
+            data-od-id="map-annotate-btn"
+            style={{
+              background: mode === "annotate" ? "var(--accent)" : "var(--surface)",
+              color: mode === "annotate" ? "#fff" : "var(--fg)",
+            }}
+          >
+            <Type size={12} />
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={clearDrawings}
+            title="Clear Drawings"
+            data-od-id="map-clear-drawings-btn"
+          >
+            <Eraser size={12} />
+          </button>
           <span style={{ width: 1, height: 24, background: "var(--border)", margin: "0 8px" }} />
           <button
             className="btn btn-sm"
@@ -388,10 +710,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
           </button>
           <button
             className="btn btn-sm"
-            onClick={() => {
-              setRulerMode((r) => !r);
-              clearRuler();
-            }}
+            onClick={() => toggleMode("ruler")}
             title="Toggle Distance Ruler"
             data-od-id="map-ruler-btn"
             style={{
@@ -414,7 +733,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
       </div>
 
       {/* Empty state */}
-      {tokens.length === 0 && fog.length === 0 && (
+      {tokens.length === 0 && fog.length === 0 && !background && drawings.lines.length === 0 && drawings.annotations.length === 0 && (
         <div
           style={{
             position: "absolute",
@@ -434,8 +753,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             Empty map
           </div>
           <div style={{ fontSize: "12px", color: "var(--muted)", maxWidth: 360, textAlign: "center" }}>
-            Add tokens to mark characters and landmarks, or fog-of-war regions
-            to hide areas from players. Use the ruler to measure distances.
+            Import a background image, add tokens to mark characters and
+            landmarks, or fog-of-war regions to hide areas from players.
           </div>
         </div>
       )}
@@ -454,7 +773,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
           flex: 1,
           overflow: "hidden",
           position: "relative",
-          cursor: isPanning ? "grabbing" : rulerMode ? "crosshair" : "default",
+          cursor: isPanning ? "grabbing" : rulerMode ? "crosshair" : mode === "draw" ? "crosshair" : mode === "annotate" ? "crosshair" : "default",
         }}
       >
         <svg
@@ -463,23 +782,50 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
           style={{ position: "absolute", top: 0, left: 0 }}
         >
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+            {/* Background image (under grid + fog + tokens) */}
+            {bgUrl && background && (
+              <image
+                href={bgUrl}
+                x={0}
+                y={0}
+                width={background.width}
+                height={background.height}
+                preserveAspectRatio="xMidYMid meet"
+                data-od-id="map-background"
+              />
+            )}
+
             {/* Grid */}
-            <defs>
-              <pattern
-                id="map-grid"
-                width="40"
-                height="40"
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d="M 40 0 L 0 0 0 40"
-                  fill="none"
-                  stroke="var(--grid-line)"
-                  strokeWidth="1"
+            {showGrid && (
+              <>
+                <defs>
+                  <pattern
+                    id="map-grid"
+                    width="40"
+                    height="40"
+                    patternUnits="userSpaceOnUse"
+                  >
+                    <path
+                      d="M 40 0 L 0 0 0 40"
+                      fill="none"
+                      stroke="var(--grid-line)"
+                      strokeWidth="1"
+                    />
+                  </pattern>
+                </defs>
+                <rect
+                  x="-2000"
+                  y="-2000"
+                  width="4000"
+                  height="4000"
+                  fill="url(#map-grid)"
                 />
-              </pattern>
-              {/* Hatching for hidden fog — distinguishes "intentionally hidden"
-                  from "just dark". */}
+              </>
+            )}
+
+            {/* Hatching for hidden fog — distinguishes "intentionally hidden"
+                from "just dark". */}
+            <defs>
               <pattern
                 id="fog-hatch"
                 width="8"
@@ -498,13 +844,6 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 />
               </pattern>
             </defs>
-            <rect
-              x="-2000"
-              y="-2000"
-              width="4000"
-              height="4000"
-              fill="url(#map-grid)"
-            />
 
             {/* Fog regions (drawn first, under tokens) */}
             {fog.map((f) => (
@@ -589,6 +928,53 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               </g>
             ))}
 
+            {/* Saved drawing lines */}
+            {drawings.lines.map((line) => (
+              <polyline
+                key={line.id}
+                points={line.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="none"
+                stroke={line.color}
+                strokeWidth={line.strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.9}
+              />
+            ))}
+
+            {/* In-progress draw line */}
+            {currentLine.length > 0 && (
+              <polyline
+                points={currentLine.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="6 4"
+              />
+            )}
+
+            {/* Saved annotations */}
+            {drawings.annotations.map((a) => (
+              <g key={a.id}>
+                <circle cx={a.x} cy={a.y} r={3} fill={a.color} />
+                <text
+                  x={a.x + 8}
+                  y={a.y + 4}
+                  fontSize="12"
+                  fill={a.color}
+                  fontWeight={600}
+                  paintOrder="stroke"
+                  stroke="var(--surface)"
+                  strokeWidth={3}
+                  strokeLinejoin="round"
+                >
+                  {a.text}
+                </text>
+              </g>
+            ))}
+
             {/* Ruler line */}
             {rulerPoints.length === 2 && (
               <line
@@ -660,7 +1046,9 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                       opacity="0.4"
                     />
                   )}
-                  <circle r="16" fill={t.color} stroke={isSelected ? "var(--accent)" : "var(--surface)"} strokeWidth="2" />
+                  <g data-od-id={`map-token-shape-${t.shape || "circle"}`}>
+                    {renderTokenShape(t, isSelected)}
+                  </g>
                   <text
                     y="4"
                     fontSize="12"
@@ -729,13 +1117,63 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
           </g>
         </svg>
 
+        {/* Token palette */}
+        {paletteItems.length > 0 && (
+          <div
+            data-od-id="map-palette"
+            style={{
+              position: "absolute",
+              bottom: "12px",
+              left: "12px",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              padding: "6px",
+              display: "flex",
+              gap: "6px",
+              alignItems: "center",
+              zIndex: 5,
+            }}
+          >
+            <span style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Palette
+            </span>
+            {paletteItems.map((item, idx) => (
+              <button
+                key={`${item.label}-${idx}`}
+                className="btn btn-sm"
+                title={`Add ${item.label}`}
+                data-od-id={`map-palette-${item.label}`}
+                onClick={() => addFromPalette(item)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "2px 6px",
+                }}
+              >
+                <svg width="12" height="12" viewBox="-16 -16 32 32">
+                  {item.shape === "square" ? (
+                    <rect x={-16} y={-16} width={32} height={32} rx={0} fill={item.color} />
+                  ) : item.shape === "star" ? (
+                    <polygon points={starPoints(16, 7)} fill={item.color} />
+                  ) : (
+                    <circle r={16} fill={item.color} />
+                  )}
+                </svg>
+                {truncateLabel(item.label)}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Ruler hint */}
         {rulerMode && (
           <div
             style={{
               position: "absolute",
               bottom: "12px",
-              left: "12px",
+              right: "12px",
               background: "var(--surface)",
               border: "1px solid var(--border)",
               borderRadius: 0,
@@ -763,6 +1201,79 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             >
               Clear
             </button>
+          </div>
+        )}
+
+        {/* Draw hint */}
+        {mode === "draw" && (
+          <div
+            data-od-id="map-draw-hint"
+            style={{
+              position: "absolute",
+              bottom: "12px",
+              right: "12px",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              padding: "6px 10px",
+              fontSize: "11px",
+              color: "var(--fg)",
+              zIndex: 5,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            {currentLine.length === 0
+              ? "Click to place points..."
+              : `${currentLine.length} points`}
+            <button
+              onClick={finishLine}
+              disabled={currentLine.length < 2}
+              style={{
+                background: currentLine.length < 2 ? "transparent" : "var(--accent)",
+                border: "none",
+                color: currentLine.length < 2 ? "var(--muted)" : "#fff",
+                cursor: currentLine.length < 2 ? "default" : "pointer",
+                fontSize: "11px",
+                padding: "2px 6px",
+              }}
+            >
+              Finish
+            </button>
+            <button
+              onClick={cancelLine}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontSize: "11px",
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Annotate hint */}
+        {mode === "annotate" && (
+          <div
+            data-od-id="map-annotate-hint"
+            style={{
+              position: "absolute",
+              bottom: "12px",
+              right: "12px",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              padding: "6px 10px",
+              fontSize: "11px",
+              color: "var(--fg)",
+              zIndex: 5,
+            }}
+          >
+            Click the map to place an annotation.
           </div>
         )}
 
@@ -809,6 +1320,42 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 marginBottom: "8px",
               }}
             />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                marginBottom: "12px",
+              }}
+            >
+              <span style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Shape
+              </span>
+              {TOKEN_SHAPES.map((shape) => (
+                <button
+                  key={shape}
+                  className="btn btn-sm"
+                  title={`${shape.charAt(0).toUpperCase() + shape.slice(1)} token`}
+                  data-od-id={`map-token-shape-picker-${shape}`}
+                  onClick={() => setTokenShape(shape)}
+                  style={{
+                    background: tokenShape === shape ? "var(--accent)" : "var(--surface)",
+                    color: tokenShape === shape ? "#fff" : "var(--fg)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "2px 6px",
+                  }}
+                >
+                  {shape === "square" ? (
+                    <SquareIcon size={12} />
+                  ) : shape === "star" ? (
+                    <StarIcon size={12} />
+                  ) : (
+                    <CircleIcon size={12} />
+                  )}
+                </button>
+              ))}
+            </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
               <button
                 className="btn btn-sm"
@@ -822,7 +1369,75 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Annotation input overlay (positioned at the click point) */}
+        {placingAnnotation && (
+          <div
+            style={{
+              position: "absolute",
+              left: placingAnnotation.x * zoom + pan.x,
+              top: placingAnnotation.y * zoom + pan.y,
+              zIndex: 20,
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              padding: "8px",
+              width: 220,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              ref={annotationRef}
+              autoFocus
+              value={annotationText}
+              onChange={(e) => setAnnotationText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitAnnotation();
+                if (e.key === "Escape") {
+                  setPlacingAnnotation(null);
+                  setAnnotationText("");
+                }
+              }}
+              placeholder="Annotation text"
+              style={{
+                width: "100%",
+                padding: "4px 6px",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                fontSize: "12px",
+                outline: "none",
+                marginBottom: "6px",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  setPlacingAnnotation(null);
+                  setAnnotationText("");
+                }}
+              >
+                Cancel
+              </button>
+              <button className="btn btn-sm btn-primary" onClick={commitAnnotation}>
+                Add
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Hidden background file input */}
+      <input
+        type="file"
+        ref={backgroundInputRef}
+        style={{ display: "none" }}
+        accept="image/*"
+        onChange={handleBackgroundSelected}
+      />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MapBuilderView } from "./MapBuilderView";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -41,8 +41,8 @@ describe("MapBuilderView", () => {
 
   it("loads and renders saved tokens and fog regions", async () => {
     renderMap();
-    expect(await screen.findByText("Elira")).toBeInTheDocument();
-    expect(screen.getByText("Baron")).toBeInTheDocument();
+    expect((await screen.findAllByText("Elira")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Baron").length).toBeGreaterThan(0);
     expect(screen.getByText("Fog (hidden)")).toBeInTheDocument();
   });
 
@@ -59,7 +59,7 @@ describe("MapBuilderView", () => {
     const input = await screen.findByPlaceholderText("Token label");
     fireEvent.change(input, { target: { value: "Zarathustra" } });
     fireEvent.click(screen.getByText("Add Token"));
-    expect(screen.getByText("Zarathustra")).toBeInTheDocument();
+    expect(screen.getAllByText("Zarathustra").length).toBeGreaterThan(0);
     expect(screen.getByText(/3 tokens/)).toBeInTheDocument();
   });
 
@@ -67,8 +67,8 @@ describe("MapBuilderView", () => {
     renderMap();
     fireEvent.click(await screen.findByTitle("Add Token"));
     fireEvent.click(await screen.findByText("Add Token"));
-    // Two Token labels now: the toolbar button and the new token's label
-    expect(screen.getAllByText("Token")).toHaveLength(2);
+    // Token labels now: toolbar button, new token's label, and palette button
+    expect(screen.getAllByText("Token").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/3 tokens/)).toBeInTheDocument();
   });
 
@@ -117,13 +117,13 @@ describe("MapBuilderView", () => {
 
   it("selects a token on mousedown and deselects on canvas click", async () => {
     const { container } = renderMap();
-    const tokenGroup = (await screen.findByText("Elira")).closest("g")!;
+    const tokenGroup = (await screen.findAllByText("Elira"))[0].closest("g")!;
     expect(tokenGroup).not.toBeNull();
     fireEvent.mouseDown(tokenGroup);
     // Selecting is internal state; verify no crash and the token still renders
-    expect(screen.getByText("Elira")).toBeInTheDocument();
+    expect(screen.getAllByText("Elira").length).toBeGreaterThan(0);
     fireEvent.click(container.querySelector('[data-od-id="map-canvas"]')!);
-    expect(screen.getByText("Elira")).toBeInTheDocument();
+    expect(screen.getAllByText("Elira").length).toBeGreaterThan(0);
   });
 
   it("measures a distance with the ruler after two clicks", async () => {
@@ -147,7 +147,7 @@ describe("MapBuilderView", () => {
     mockInvoke.mockResolvedValueOnce(SAVED_MAP).mockResolvedValue(null);
     renderMap();
     // Wait for the async load to populate tokens before saving
-    await screen.findByText("Elira");
+    await screen.findAllByText("Elira");
     fireEvent.click(screen.getByTitle("Save Map"));
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith(
@@ -171,5 +171,185 @@ describe("MapBuilderView", () => {
     await waitFor(() => {
       expect(props.alert).toHaveBeenCalledWith(expect.stringContaining("Failed to save map"));
     });
+  });
+});
+
+describe("MapBuilder extended features", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "load_canvas_file") return Promise.resolve(SAVED_MAP);
+      if (cmd === "save_note_asset") return Promise.resolve("bg.png");
+      return Promise.resolve(null);
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const stubImageAndFileReader = () => {
+    class FakeFileReader {
+      onload: ((e: unknown) => void) | null = null;
+      readAsDataURL() {
+        this.onload?.({ target: { result: "data:image/png;base64,AAAA" } });
+      }
+    }
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      naturalWidth = 1024;
+      naturalHeight = 768;
+      set src(_v: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal("FileReader", FakeFileReader);
+    vi.stubGlobal("Image", FakeImage);
+  };
+
+  const mockCanvasRect = (container: HTMLElement) => {
+    const canvas = container.querySelector('[data-od-id="map-canvas"]')!;
+    Object.defineProperty(canvas, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 }),
+    });
+    return canvas;
+  };
+
+  it("imports a background image via the BG button and renders it", async () => {
+    stubImageAndFileReader();
+    const { container } = renderMap();
+    fireEvent.click(await screen.findByTitle("Import Background Image"));
+    const fileInput = container.querySelector('input[type="file"]')!;
+    const file = new File(["fake"], "castle.png", { type: "image/png" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-od-id="map-background"]'),
+      ).toBeInTheDocument();
+    });
+    const img = container.querySelector('[data-od-id="map-background"]');
+    expect(img).toHaveAttribute("width", "1024");
+    expect(img).toHaveAttribute("height", "768");
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "save_note_asset",
+      expect.objectContaining({ notePath: "Maps/Dungeon.map", filename: "castle.png" }),
+    );
+  });
+
+  it("removes the background with the remove button", async () => {
+    stubImageAndFileReader();
+    const { container } = renderMap();
+    fireEvent.click(await screen.findByTitle("Import Background Image"));
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(["fake"], "castle.png", { type: "image/png" })] },
+    });
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-od-id="map-background"]'),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle("Remove Background"));
+    expect(
+      container.querySelector('[data-od-id="map-background"]'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("draws a polyline and saves it with the map", async () => {
+    const { container } = renderMap();
+    const canvas = mockCanvasRect(container);
+    fireEvent.click(await screen.findByTitle("Draw Lines"));
+    fireEvent.click(canvas, { clientX: 100, clientY: 100 });
+    fireEvent.click(canvas, { clientX: 120, clientY: 110 });
+    fireEvent.click(canvas, { clientX: 140, clientY: 130 });
+    fireEvent.click(screen.getByText("Finish"));
+
+    fireEvent.click(screen.getByTitle("Save Map"));
+    await waitFor(() => {
+      const saveCall = mockInvoke.mock.calls.find(
+        (c) => c[0] === "save_canvas_file",
+      );
+      const content = saveCall?.[1] as { content?: string };
+      expect(content?.content).toContain('"lines"');
+      expect(content?.content).toContain('"points"');
+    });
+  });
+
+  it("clears drawings with the Clear Drawings button", async () => {
+    const { container } = renderMap();
+    const canvas = mockCanvasRect(container);
+    fireEvent.click(await screen.findByTitle("Draw Lines"));
+    fireEvent.click(canvas, { clientX: 100, clientY: 100 });
+    fireEvent.click(canvas, { clientX: 140, clientY: 130 });
+    fireEvent.click(screen.getByText("Finish"));
+    fireEvent.click(screen.getByTitle("Clear Drawings"));
+
+    fireEvent.click(screen.getByTitle("Save Map"));
+    await waitFor(() => {
+      const saveCall = mockInvoke.mock.calls.find(
+        (c) => c[0] === "save_canvas_file",
+      );
+      const content = saveCall?.[1] as { content?: string };
+      expect(content?.content).toContain('"lines": []');
+      expect(content?.content).toContain('"annotations": []');
+    });
+  });
+
+  it("adds a text annotation in annotate mode", async () => {
+    const { container } = renderMap();
+    const canvas = mockCanvasRect(container);
+    fireEvent.click(await screen.findByTitle("Add Text Annotation"));
+    fireEvent.click(canvas, { clientX: 100, clientY: 100 });
+    const input = await screen.findByPlaceholderText("Annotation text");
+    fireEvent.change(input, { target: { value: "Guard room" } });
+    fireEvent.click(screen.getByText("Add"));
+    expect(screen.getByText("Guard room")).toBeInTheDocument();
+  });
+
+  it("cancels an annotation with Escape", async () => {
+    const { container } = renderMap();
+    const canvas = mockCanvasRect(container);
+    fireEvent.click(await screen.findByTitle("Add Text Annotation"));
+    fireEvent.click(canvas, { clientX: 100, clientY: 100 });
+    const input = await screen.findByPlaceholderText("Annotation text");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByPlaceholderText("Annotation text")).not.toBeInTheDocument();
+  });
+
+  it("toggles the grid on and off", async () => {
+    const { container } = renderMap();
+    const gridRect = () => container.querySelector('rect[fill="url(#map-grid)"]');
+    expect(gridRect()).toBeInTheDocument();
+    fireEvent.click(await screen.findByTitle("Hide Grid"));
+    expect(gridRect()).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Show Grid"));
+    expect(gridRect()).toBeInTheDocument();
+  });
+
+  it("shows the token palette and drops a copy from it", async () => {
+    renderMap();
+    await screen.findAllByText("Elira");
+    const paletteElira = await screen.findByTitle("Add Elira");
+    fireEvent.click(paletteElira);
+    // Two Elira tokens now, plus the palette button label
+    expect(screen.getByText(/3 tokens/)).toBeInTheDocument();
+    expect(screen.getAllByText("Elira").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("creates a star-shaped token from the shape picker", async () => {
+    const { container } = renderMap();
+    fireEvent.click(await screen.findByTitle("Add Token"));
+    fireEvent.click(await screen.findByTitle("Star token"));
+    const input = await screen.findByPlaceholderText("Token label");
+    fireEvent.change(input, { target: { value: "Boss" } });
+    fireEvent.click(screen.getByText("Add Token"));
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-od-id="map-token-shape-star"]'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Boss").length).toBeGreaterThan(0);
   });
 });
