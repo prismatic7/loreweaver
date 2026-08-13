@@ -121,6 +121,17 @@ export function useNotes(vaultPath: string) {
     );
   }, [selectedNoteId, notes, editTitle, editContent, editFrontmatter, saveNote]);
 
+  // Debounced autosave: persist edits ~1500ms after the user stops typing.
+  // immediateSave() already no-ops when the note is unmodified, so this never
+  // issues spurious save_note invocations.
+  useEffect(() => {
+    if (!isEditingNote || !selectedNoteId) return;
+    const timer = setTimeout(() => {
+      immediateSave();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [isEditingNote, selectedNoteId, editTitle, editContent, editFrontmatter, immediateSave]);
+
   const trashNote = useCallback(
     async (notePath: string) => {
       const cleanPath = notePath.replace(/^\/+/, "");

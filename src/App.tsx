@@ -166,11 +166,52 @@ function App() {
     confirm,
   } = useDialogs();
 
+  // True when the current note has edits that have not yet been persisted.
+  // Mirrors the dirty check inside immediateSave() so the navigation guard and
+  // the autosave agree on what counts as "unsaved".
+  const hasUnsavedChanges = useMemo(() => {
+    if (!currentNote || !isEditingNote) return false;
+    const normalizedContent = normalizeCampaignMarkdown(editContent);
+    return (
+      editTitle !== currentNote.title ||
+      normalizedContent !== currentNote.content ||
+      JSON.stringify(editFrontmatter) !== JSON.stringify(currentNote.frontmatter)
+    );
+  }, [currentNote, isEditingNote, editTitle, editContent, editFrontmatter, normalizeCampaignMarkdown]);
+
+  // Navigation guard: warn before leaving a note with unsaved edits. The user
+  // can still confirm to discard and leave without saving.
+  const guardedSetActiveView = useCallback(
+    (view: AppView) => {
+      if (hasUnsavedChanges) {
+        confirm("You have unsaved changes. Leave without saving?", () => {
+          setActiveView(view);
+        });
+      } else {
+        setActiveView(view);
+      }
+    },
+    [hasUnsavedChanges, confirm, setActiveView],
+  );
+
+  const guardedSetSelectedNoteId = useCallback(
+    (id: string) => {
+      if (hasUnsavedChanges && id !== selectedNoteId) {
+        confirm("You have unsaved changes. Leave without saving?", () => {
+          setSelectedNoteId(id);
+        });
+      } else {
+        setSelectedNoteId(id);
+      }
+    },
+    [hasUnsavedChanges, selectedNoteId, confirm, setSelectedNoteId],
+  );
+
   const { renderMarkdown } = useMarkdownRender({
     notes,
     selectedNoteId,
     vaultPath,
-    setSelectedNoteId,
+    setSelectedNoteId: guardedSetSelectedNoteId,
     setIsEditingNote,
     saveNote,
   });
@@ -207,7 +248,7 @@ function App() {
     renderFolderDropdown,
   } = useFolderActions({
     setRules,
-    setSelectedNoteId,
+    setSelectedNoteId: guardedSetSelectedNoteId,
     setSelectedRuleId,
     setIsEditingNote,
     setIsEditingRule,
@@ -216,7 +257,7 @@ function App() {
     setEditFrontmatter,
     activeEditingNoteIdRef,
     setCurrentCanvasFolder,
-    setActiveView,
+    setActiveView: guardedSetActiveView,
     saveNote,
     handleNewNote,
     handleNewRule,
@@ -304,18 +345,18 @@ function App() {
       if (result.type === "note") {
         const matchedNote = notes.find((n) => n.path === result.path);
         if (matchedNote) {
-          setSelectedNoteId(matchedNote.id);
-          setActiveView("vault");
+          guardedSetSelectedNoteId(matchedNote.id);
+          guardedSetActiveView("vault");
         }
       } else {
         const rule = rules.find((r) => r.id === result.path);
         if (rule) {
           setSelectedRuleId(rule.id);
-          setActiveView("rules");
+          guardedSetActiveView("rules");
         }
       }
     },
-    [notes, rules, setSelectedNoteId, setSelectedRuleId],
+    [notes, rules, guardedSetSelectedNoteId, guardedSetActiveView, setSelectedRuleId],
   );
 
   const backlinks = useMemo(() => {
@@ -355,9 +396,9 @@ function App() {
     emptyTrash,
     deleteTrashedNote,
     normalizeCampaignMarkdown,
-    setSelectedNoteId,
+    setSelectedNoteId: guardedSetSelectedNoteId,
     setSelectedRuleId,
-    setActiveView,
+    setActiveView: guardedSetActiveView,
     setIsEditingNote,
     setCurrentCanvasFolder,
     confirm,
@@ -498,7 +539,7 @@ function App() {
   return (
     <AppShell
       activeView={activeView}
-      setActiveView={setActiveView}
+      setActiveView={guardedSetActiveView}
       theme={theme}
       setTheme={setTheme}
       vaultPath={vaultPath}
@@ -585,7 +626,7 @@ function App() {
             transcribedText={sessionTools.transcribedText}
             handleTranscribeAudio={sessionTools.handleTranscribeAudio}
             backlinks={backlinks}
-            setSelectedNoteId={setSelectedNoteId}
+            setSelectedNoteId={guardedSetSelectedNoteId}
             captureTitle={captureInbox.captureTitle}
             setCaptureTitle={captureInbox.setCaptureTitle}
             captureContent={captureInbox.captureContent}
@@ -619,8 +660,8 @@ function App() {
         <DashboardView
           notes={notes}
           rules={rules}
-          setActiveView={setActiveView}
-          setSelectedNoteId={setSelectedNoteId}
+          setActiveView={guardedSetActiveView}
+          setSelectedNoteId={guardedSetSelectedNoteId}
         />
       )}
 
@@ -631,7 +672,7 @@ function App() {
           collapsedFolders={collapsedFolders}
           setCollapsedFolders={setCollapsedFolders}
           selectedNoteId={selectedNoteId}
-          setSelectedNoteId={setSelectedNoteId}
+          setSelectedNoteId={guardedSetSelectedNoteId}
           currentNote={currentNote}
           isEditingNote={isEditingNote}
           setIsEditingNote={setIsEditingNote}
@@ -654,7 +695,7 @@ function App() {
           handleNormalizeVaultMarkdown={vaultActions.handleNormalizeVaultMarkdown}
           triggerImmediateSave={immediateSave}
           notes={notes}
-          setActiveView={setActiveView}
+          setActiveView={guardedSetActiveView}
           onSelectNoteFromCanvas={vaultActions.handleSelectNoteFromCanvas}
           onSelectCanvas={vaultActions.handleSelectCanvas}
           provenanceTaxonomy={provenanceTaxonomy}
@@ -716,8 +757,8 @@ function App() {
           vaultPath={vaultPath}
           alert={alert}
           onOpenNote={(noteId) => {
-            setSelectedNoteId(noteId);
-            setActiveView("vault");
+            guardedSetSelectedNoteId(noteId);
+            guardedSetActiveView("vault");
           }}
         />
       )}
@@ -736,8 +777,8 @@ function App() {
           noteTypes={noteTypes}
           provenanceTaxonomy={provenanceTaxonomy}
           onOpenNote={(noteId) => {
-            setSelectedNoteId(noteId);
-            setActiveView("vault");
+            guardedSetSelectedNoteId(noteId);
+            guardedSetActiveView("vault");
           }}
         />
       )}
@@ -746,8 +787,8 @@ function App() {
         <TimelineView
           notes={notes}
           onOpenNote={(noteId) => {
-            setSelectedNoteId(noteId);
-            setActiveView("vault");
+            guardedSetSelectedNoteId(noteId);
+            guardedSetActiveView("vault");
           }}
         />
       )}
@@ -794,7 +835,7 @@ function App() {
             setRules((prev: RuleEntry[]) => [...prev, newRule]);
             setSelectedRuleId(newId);
             setIsEditingRule(true);
-            setActiveView("rules");
+            guardedSetActiveView("rules");
           }
           setShowNewRuleModal(false);
         }}

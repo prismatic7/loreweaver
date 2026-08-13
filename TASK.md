@@ -1,55 +1,56 @@
-# TASK: feature-ideas-polish
+# TASK: autosave-navigation-guard
 
 ## Goal
-
-Produce a **feature-ideas and polish report** for the Loreweaver app: a
-prioritised list of new feature ideas and UI/UX polish opportunities, grounded
-in the actual design truth and the actual codebase. This is a devising run —
-the output is a written report, not code.
+Stop silent data loss when a GM edits a note and then navigates away or switches views without toggling Preview mode: add debounced autosave and a navigation guard.
 
 ## Scope
-
-- Read the design truth docs in this worktree:
-  - `PRODUCT.md` (product intent + brand commitments)
-  - `DESIGN.md` (design north star — "The Tactile Ledger")
-  - `DESIGN_SKETCH.md` (arc 1: FATE of Cthulhu campaign build)
-  - `DESIGN_SKETCH_WORLDS.md` (arc 2: World Objects build, supersedes where conflicting)
-  - `FEATURE_PROPOSAL.md`
-- Read the codebase reality docs in `docs/codebase/` (ARCHITECTURE, STACK,
-  STRUCTURE, CONVENTIONS, INTEGRATIONS, CONCERNS) so ideas match what exists.
-- Write the report to `FEATURE_IDEAS.md` in this worktree.
+Files the agent MAY touch:
+- `src/hooks/useNotes.ts`
+- `src/components/CampaignVaultView.tsx`
+- `src/App.tsx` (only the view-switching path — see Out of scope)
+- `src/hooks/` (only if a small new hook is genuinely cleaner; prefer in-file)
 
 ## Out of scope
-
-- NO code changes, NO commits of code
-- NO campaign content — design the instrument, never campaign content
-- NO implementation plans — ideas and polish suggestions only
-- Do NOT touch anything outside this worktree (no /tmp paths)
+- NO backend/Rust changes (`src-tauri/`)
+- NO changes to `save_note` / `load_notes` command semantics
+- NO dependency changes (no new npm packages)
+- NO formatting churn / unrelated refactors
+- Do NOT change the "Preview" toggle behaviour itself — autosave must coexist with it
+- Do NOT use `/tmp` paths — work only inside this worktree
+- Do NOT commit
 
 ## Acceptance criteria
-
-- [ ] `FEATURE_IDEAS.md` exists in the worktree root
-- [ ] Ideas are grouped: (1) new features, (2) polish/UX improvements
-- [ ] Each idea is grounded: cite the doc or code file it builds on (path:line where possible)
-- [ ] Each idea states why it matters for GMs prepping/running campaigns
-- [ ] Ideas are prioritised (e.g. quick win / strategic / moonshot, or P1/P2/P3)
-- [ ] Honest about existing gaps (e.g. image generation is a placeholder)
-- [ ] Written in professional international English, Australian spelling
+- [ ] Debounced autosave: while a note is being edited, changes auto-save after ~1500ms of inactivity (no manual action required)
+- [ ] Autosave does not fire when the note is unmodified (no spurious `save_note` invocations)
+- [ ] Navigation guard: switching note, folder, or view with unsaved changes warns the user (confirm dialog) instead of silently discarding
+- [ ] Acknowledged "discard" still works (user can leave without saving)
+- [ ] `npm test` passes (existing tests, no new failures)
+- [ ] `npm run build` passes (tsc + vite)
 
 ## Harness & budget
-
-- Harness: agy (devising partner — idea generation)
-- Budget: sketch-level thinking, no exploration beyond the listed docs
-- Sandbox guard: work only inside this worktree. Do NOT use /tmp paths.
-- Do not commit. Write the report file and your status into this file when done.
+- Harness: opencode
+- Budget: quick win — max ~4 files, no new deps, finish under 15 minutes of work
 
 ## Status
+- [x] In progress
+- [x] Done — agent writes a summary of what changed here on exit
 
-- **Status**: Completed
-- **Devising Output**: A comprehensive prioritised feature ideas and UX polish report has been created at [FEATURE_IDEAS.md](file:///Users/chris/Development/loreweaver-feature-ideas-polish/FEATURE_IDEAS.md).
-- **Core Findings**:
-  - Gaps such as unimplemented local Speech-to-Text, mock/placeholder image generation UI, transient plugin states, and lack of autosave logic have been detailed and mapped to their exact source positions.
-  - New features for customisable world manifest bibles, offline STT backend engines, and persistent SQLite-backed plugin states were proposed.
-  - Polish items such as debounced autosave/unsaved change warnings, base URL overrides for speech services, and accessibility theme overrides were documented.
-- **Verification**: Verified that all proposals are fully grounded, aligned with "The Tactile Ledger" styling guidelines, and written in Australian spelling.
+## Summary (agent exit note)
+Implemented debounced autosave + navigation guard in the frontend only (no backend/Rust, no deps, no Preview-toggle changes).
 
+- `src/hooks/useNotes.ts`: added a `useEffect` that schedules `immediateSave()` ~1500ms after the last edit (title/content/frontmatter). `immediateSave()` already no-ops when the note is unmodified, so no spurious `save_note` invocations fire.
+- `src/App.tsx`: added `hasUnsavedChanges` (mirrors the dirty check in `immediateSave`) and two guarded setters — `guardedSetActiveView` and `guardedSetSelectedNoteId` — that show a confirm dialog ("You have unsaved changes. Leave without saving?") before navigating away from an unsaved note. Confirming still discards and leaves. Wired the guarded setters through AppShell ribbon, Dashboard, CampaignVaultView, search results, backlinks, canvas/character-sheet/graph/timeline open-note paths, and the NewRule modal.
+
+Verification: `npm test` → 16 files / 91 tests pass. `npm run build` (tsc + vite) → passes. No commit made.
+
+## Evidence
+_State vocabulary — record every transition in the ledger
+(`~/Development/agent-dispatch/evidence <repo> <task> <state>`). Missing
+records remain missing evidence; never infer a state from text._
+
+- `prepared` — dispatch created the worktree. Recorded automatically.
+- `running` — _you are executing now_
+- `reported` — _you claim done. NOT verified. Write this before exit:_
+  `~/Development/agent-dispatch/evidence loreweaver autosave-navigation-guard reported "exit 0, unverified"`
+- `verified` — Hermes checked the diff against the acceptance criteria
+  (then `merged`). `reported` ≠ `verified`.
