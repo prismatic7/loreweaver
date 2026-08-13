@@ -724,7 +724,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               )}
 
-              {activeConfigTab !== "tts" && activeConfigTab !== "stt" && (
+              {(
                 <div style={{ flex: 2 }}>
                   <label
                     style={{

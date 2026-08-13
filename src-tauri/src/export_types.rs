@@ -76,9 +76,11 @@ pub struct AppSettings {
     pub tts_provider: String,
     pub tts_api_key: String,
     pub tts_voice: String,
+    pub tts_base_url: String,
 
     pub stt_provider: String,
     pub stt_api_key: String,
+    pub stt_base_url: String,
 
     pub allow_local_providers: bool,
 }

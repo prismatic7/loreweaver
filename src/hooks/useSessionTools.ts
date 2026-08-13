@@ -11,8 +11,10 @@ interface SessionToolsDeps {
   imageBaseUrl: string;
   ttsProvider: string;
   ttsApiKey: string;
+  ttsBaseUrl: string;
   sttProvider: string;
   sttApiKey: string;
+  sttBaseUrl: string;
 }
 
 export const useSessionTools = (deps: SessionToolsDeps) => {
@@ -25,8 +27,10 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    ttsBaseUrl,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   } = deps;
 
   const [scratchpadText, setScratchpadText] = useState(() => {
@@ -114,7 +118,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
       provider: ttsProvider,
       apiKey: ttsApiKey || null,
       voice: ttsProvider === "openai" ? "alloy" : null,
-      baseUrl: null,
+      baseUrl: ttsBaseUrl || null,
     })
       .then((audioUrl) => {
         setGeneratedSpeechUrl(audioUrl);
@@ -148,6 +152,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
           audioBase64: base64Data,
           provider: sttProvider,
           apiKey: sttApiKey || null,
+          baseUrl: sttBaseUrl || null,
         });
         setTranscribedText(text);
       } catch (err) {

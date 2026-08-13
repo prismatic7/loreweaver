@@ -30,9 +30,17 @@ export const settingsSchema = z.object({
   tts_provider: z.string().min(1, "Provider is required"),
   tts_api_key: z.string(),
   tts_voice: z.string(),
+  tts_base_url: z.union([
+    z.string().url("Must be a valid URL"),
+    z.literal(""),
+  ]),
 
   stt_provider: z.string().min(1, "Provider is required"),
   stt_api_key: z.string(),
+  stt_base_url: z.union([
+    z.string().url("Must be a valid URL"),
+    z.literal(""),
+  ]),
 });
 
 export type SettingsForm = z.infer<typeof settingsSchema>;
@@ -57,9 +65,11 @@ export const DEFAULT_SETTINGS: SettingsForm = {
   tts_provider: "local",
   tts_api_key: "",
   tts_voice: "default",
+  tts_base_url: "",
 
   stt_provider: "local",
   stt_api_key: "",
+  stt_base_url: "",
 };
 
 export function useSettings() {
@@ -108,9 +118,11 @@ export function useSettings() {
           tts_provider: settings.tts_provider || DEFAULT_SETTINGS.tts_provider,
           tts_api_key: settings.tts_api_key || "",
           tts_voice: settings.tts_voice || DEFAULT_SETTINGS.tts_voice,
+          tts_base_url: settings.tts_base_url || "",
 
           stt_provider: settings.stt_provider || DEFAULT_SETTINGS.stt_provider,
           stt_api_key: settings.stt_api_key || "",
+          stt_base_url: settings.stt_base_url || "",
         });
       }
     } catch (err) {
@@ -152,6 +164,8 @@ export function useSettings() {
   const ttsApiKey = watch("tts_api_key");
   const sttProvider = watch("stt_provider");
   const sttApiKey = watch("stt_api_key");
+  const ttsBaseUrl = watch("tts_base_url");
+  const sttBaseUrl = watch("stt_base_url");
 
   return {
     theme,
@@ -178,7 +192,9 @@ export function useSettings() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    ttsBaseUrl,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   };
 }
