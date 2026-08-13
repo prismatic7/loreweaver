@@ -99,6 +99,10 @@ interface MapBuilderViewProps {
   vaultPath: string;
   mapRelPath: string;
   alert: (message: string) => void;
+  /** Called whenever the map's dirty state changes (true = unsaved edits). */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Registers a save function so the parent can persist before navigating away. */
+  registerSave?: (fn: () => Promise<boolean>) => void;
 }
 
 type CanvasMode = "none" | "ruler" | "draw" | "annotate";
@@ -142,7 +146,10 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   vaultPath,
   mapRelPath,
   alert,
+  onDirtyChange,
+  registerSave,
 }) => {
+  const [isDirty, setIsDirty] = useState(false);
   const [tokens, setTokens] = useState<MapToken[]>([]);
   const [fog, setFog] = useState<FogRegion[]>([]);
   const [background, setBackground] = useState<MapBackground | null>(null);
@@ -171,6 +178,13 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
 
   const rulerMode = mode === "ruler";
 
+  // Set to true once the initial map load has populated state, so the dirty
+  // tracker below does not treat the initial load as a user edit. The flag is
+  // flipped in an effect that runs AFTER the dirty-tracking effect on the load
+  // commit, so the load render itself is never counted as a user edit.
+  const loadCompletedRef = useRef(false);
+  const hasLoadedRef = useRef(false);
+
   const loadMap = useCallback(() => {
     invoke<string>("load_canvas_file", { relPath: mapRelPath })
       .then((rawJson) => {
@@ -191,6 +205,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         setDrawings(
           data.drawings || { lines: [], annotations: [] },
         );
+        loadCompletedRef.current = true;
       })
       .catch((err) => console.error("Error loading map file:", err));
   }, [mapRelPath]);
@@ -199,15 +214,60 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     loadMap();
   }, [loadMap, vaultPath]);
 
+  // Track dirty state: any change to tokens / fog / background / drawings
+  // after the initial load marks the map dirty. The initial load itself is
+  // not a user edit, so it is excluded via hasLoadedRef.
+  useEffect(() => {
+    if (!hasLoadedRef.current) return;
+    setIsDirty(true);
+  }, [tokens, fog, background, drawings]);
+
+  // Flip the loaded flag AFTER the dirty-tracking effect has run on the load
+  // commit, so the load render is never counted as a user edit.
+  useEffect(() => {
+    if (loadCompletedRef.current) {
+      hasLoadedRef.current = true;
+    }
+  }, [tokens, fog, background, drawings]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
   const saveMap = () => {
     const data: MapData = { type: "map", tokens, fog, background, drawings };
     invoke("save_canvas_file", {
       relPath: mapRelPath,
       content: JSON.stringify(data, null, 2),
     })
-      .then(() => alert("Map saved successfully!"))
+      .then(() => {
+        setIsDirty(false);
+        alert("Map saved successfully!");
+      })
       .catch((err) => alert("Failed to save map: " + err));
   };
+
+  // Expose a save that resolves to success/failure so the parent can persist
+  // before navigating away (used by the unsaved-changes guard).
+  useEffect(() => {
+    registerSave?.(() =>
+      new Promise<boolean>((resolve) => {
+        const data: MapData = { type: "map", tokens, fog, background, drawings };
+        invoke("save_canvas_file", {
+          relPath: mapRelPath,
+          content: JSON.stringify(data, null, 2),
+        })
+          .then(() => {
+            setIsDirty(false);
+            resolve(true);
+          })
+          .catch((err) => {
+            alert("Failed to save map: " + err);
+            resolve(false);
+          });
+      }),
+    );
+  }, [registerSave, tokens, fog, background, drawings, mapRelPath, alert]);
 
   const addToken = () => {
     setTokenName("");

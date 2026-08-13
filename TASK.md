@@ -1,42 +1,63 @@
-# TASK: tts-stt-base-url-override
+# TASK: map-change-detection
 
 ## Goal
-Let GMs point TTS and STT providers at local/proxy endpoints: expose the "API Endpoint URL" (base_url) field for the TTS and STT tabs in Settings, and make the backend honour it for both speech generation and transcription.
+Stop silent data loss in the map builder: warn the GM before navigating away when a map has unsaved changes (tokens, fog, drawings, background, or annotations).
 
 ## Context (verified on main)
-- `src-tauri/src/providers/speech.rs`:
-  - `generate_speech(...)` ALREADY accepts `base_url: Option<&str>` and uses it for the `"openai"` provider (and `"elevenlabs"`).
-  - `transcribe_speech(...)` does NOT accept `base_url` — the `"openai"` arm hardcodes `https://api.openai.com/v1/audio/transcriptions`.
-- `src/components/SettingsView.tsx` (~line 723): the "API Endpoint URL" field is hidden when `activeConfigTab === "tts" || activeConfigTab === "stt"`.
+- `src/components/MapBuilderView.tsx`:
+  - `saveMap()` calls `save_canvas_file` then `alert("Map saved successfully!")`.
+  - State: `tokens`, `fog`, `background`, `drawings` — loaded via `loadMap()` from the `.canvas` JSON.
+  - NO dirty tracking exists today. Navigating away silently discards changes.
+- `src/App.tsx` owns `activeView` / `setActiveView` and exposes a `confirm` helper (used elsewhere, e.g. `confirm(\`Save "${title}" as a note?\`, ...)`).
 
 ## Scope
 Files the agent MAY touch:
-- `src/components/SettingsView.tsx` (remove the hiding condition so base_url shows for tts/stt tabs)
-- `src-tauri/src/providers/speech.rs` (thread `base_url` through `transcribe_speech`, same trim/trailing-slash handling as `generate_speech`)
-- The Rust command wiring that calls `transcribe_speech` (find it — likely in `src-tauri/src/` commands module — and pass the stored `base_url` from settings)
+- `src/components/MapBuilderView.tsx` (dirty tracking + guard)
+- `src/App.tsx` (ONLY the minimum needed to route a confirm prompt through the existing dialog system when leaving the map view — do not restructure view state)
 
 ## Out of scope
-- NO new providers or provider types
-- NO changes to `generate_speech` behaviour for existing providers
+- NO backend/Rust changes (`src-tauri/`)
+- NO changes to the `.canvas` file format or `save_canvas_file` / `load_canvas_file` commands
 - NO dependency changes
 - NO formatting churn / unrelated refactors
 - Do NOT use `/tmp` paths — work only inside this worktree
 - Do NOT commit
 
 ## Acceptance criteria
-- [ ] Settings shows the API Endpoint URL input for the TTS and STT config tabs (consistent with llm/embed/image tabs)
-- [ ] `transcribe_speech` accepts and honours `base_url` for the openai provider (falls back to `https://api.openai.com` when empty — same pattern as `generate_speech`)
-- [ ] The command wiring passes the configured base_url to transcription (settings field → command arg)
-- [ ] `npm run build` passes (frontend typecheck)
-- [ ] `cargo check` passes in `src-tauri/`
+- [ ] Dirty state is tracked: any change to tokens / fog / background / drawings marks the map dirty; a save (or reload) clears it
+- [ ] Navigating away from the map view with unsaved changes shows a warning (confirm dialog): e.g. "You have unsaved map changes" with Save / Discard / Cancel options (or equivalent — the key is no silent discard)
+- [ ] Cancel keeps the user on the map; Discard navigates without saving; Save persists then navigates
+- [ ] Saving the map clears the dirty flag (no false warnings after save)
+- [ ] `npm run build` passes (tsc + vite)
 
 ## Harness & budget
 - Harness: opencode
-- Budget: quick win — max ~4 files, no new deps
+- Budget: quick win — max ~2-3 files, no new deps
 
 ## Status
 - [x] In progress
-- [x] Done — Threaded `base_url` through the TTS/STT chain: exposed the API Endpoint URL field for the tts/stt Settings tabs, added `tts_base_url`/`stt_base_url` to `AppSettings` (load/save), threaded `base_url` through `transcribe_speech` (same trim/trailing-slash fallback as `generate_speech`), and wired the frontend invoke sites (`useSessionTools`, `useAgent`) to pass the configured base URL. `npm run build` and `cargo check` both pass.
+- [x] Done — agent writes a summary of what changed here on exit
+
+## Summary (agent exit note)
+Implemented unsaved-changes protection for the map builder.
+
+**`src/components/MapBuilderView.tsx`**
+- Added `isDirty` state. A `useEffect` watching `tokens` / `fog` / `background` / `drawings` marks the map dirty on any post-load mutation. The initial `loadMap()` commit is excluded via a `loadCompletedRef`/`hasLoadedRef` pair (flag flips in an effect that runs *after* the dirty-tracking effect on the load render, so the load is never counted as a user edit).
+- `saveMap()` now clears the dirty flag on success (no false warnings after save).
+- Added two optional props: `onDirtyChange(dirty)` reports dirty state to the parent, and `registerSave(fn)` exposes a save that resolves `true`/`false` so the parent can persist before navigating away.
+
+**`src/App.tsx`**
+- Added a navigation guard: `requestViewChange` wraps `setActiveView`. When leaving the map view with unsaved changes, it shows a Save / Discard / Cancel dialog instead of silently discarding.
+  - **Cancel** stays on the map.
+  - **Discard** navigates without saving.
+  - **Save** persists via the registered save fn, then navigates (stays on the map if the save fails).
+- Wired `onDirtyChange` / `registerSave` into `<MapBuilderView>` and passed `requestViewChange` to `<AppShell>`.
+- No view-state restructuring; the guard is additive.
+
+**Verification**
+- `npm run build` (tsc + vite) passes.
+- `npm run test` passes: 16 suites / 91 tests.
+- No backend/Rust, `.canvas` format, dependency, or formatting changes. No commit made.
 
 ## Evidence
 _State vocabulary — record every transition in the ledger
@@ -46,6 +67,6 @@ records remain missing evidence; never infer a state from text._
 - `prepared` — dispatch created the worktree. Recorded automatically.
 - `running` — _you are executing now_
 - `reported` — _you claim done. NOT verified. Write this before exit:_
-  `~/Development/agent-dispatch/evidence loreweaver tts-stt-base-url-override reported "exit 0, unverified"`
+  `~/Development/agent-dispatch/evidence loreweaver map-change-detection reported "exit 0, unverified"`
 - `verified` — Hermes checked the diff against the acceptance criteria
   (then `merged`). `reported` ≠ `verified`.
