@@ -121,6 +121,7 @@ pub fn transcribe_speech(
     audio_base64: &str,
     provider: &str,
     api_key: Option<&str>,
+    base_url: Option<&str>,
     agent: &Agent,
 ) -> Result<String, String> {
     if audio_base64.trim().is_empty() {
@@ -136,7 +137,12 @@ pub fn transcribe_speech(
             let key = api_key
                 .filter(|k| !k.trim().is_empty())
                 .ok_or("OpenAI Whisper API key is required")?;
-            let url = "https://api.openai.com/v1/audio/transcriptions";
+            let base = base_url
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or("https://api.openai.com")
+                .trim()
+                .trim_end_matches('/');
+            let url = format!("{}/v1/audio/transcriptions", base);
             let boundary = format!("----loreweaver{}", std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis())
@@ -155,7 +161,7 @@ pub fn transcribe_speech(
             body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
             let response = agent
-                .post(url)
+                .post(&url)
                 .timeout(std::time::Duration::from_secs(60))
                 .set("Authorization", &format!("Bearer {}", key.trim()))
                 .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"))

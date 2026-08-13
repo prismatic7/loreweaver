@@ -1,47 +1,42 @@
-# TASK: autosave-navigation-guard
+# TASK: tts-stt-base-url-override
 
 ## Goal
-Stop silent data loss when a GM edits a note and then navigates away or switches views without toggling Preview mode: add debounced autosave and a navigation guard.
+Let GMs point TTS and STT providers at local/proxy endpoints: expose the "API Endpoint URL" (base_url) field for the TTS and STT tabs in Settings, and make the backend honour it for both speech generation and transcription.
+
+## Context (verified on main)
+- `src-tauri/src/providers/speech.rs`:
+  - `generate_speech(...)` ALREADY accepts `base_url: Option<&str>` and uses it for the `"openai"` provider (and `"elevenlabs"`).
+  - `transcribe_speech(...)` does NOT accept `base_url` — the `"openai"` arm hardcodes `https://api.openai.com/v1/audio/transcriptions`.
+- `src/components/SettingsView.tsx` (~line 723): the "API Endpoint URL" field is hidden when `activeConfigTab === "tts" || activeConfigTab === "stt"`.
 
 ## Scope
 Files the agent MAY touch:
-- `src/hooks/useNotes.ts`
-- `src/components/CampaignVaultView.tsx`
-- `src/App.tsx` (only the view-switching path — see Out of scope)
-- `src/hooks/` (only if a small new hook is genuinely cleaner; prefer in-file)
+- `src/components/SettingsView.tsx` (remove the hiding condition so base_url shows for tts/stt tabs)
+- `src-tauri/src/providers/speech.rs` (thread `base_url` through `transcribe_speech`, same trim/trailing-slash handling as `generate_speech`)
+- The Rust command wiring that calls `transcribe_speech` (find it — likely in `src-tauri/src/` commands module — and pass the stored `base_url` from settings)
 
 ## Out of scope
-- NO backend/Rust changes (`src-tauri/`)
-- NO changes to `save_note` / `load_notes` command semantics
-- NO dependency changes (no new npm packages)
+- NO new providers or provider types
+- NO changes to `generate_speech` behaviour for existing providers
+- NO dependency changes
 - NO formatting churn / unrelated refactors
-- Do NOT change the "Preview" toggle behaviour itself — autosave must coexist with it
 - Do NOT use `/tmp` paths — work only inside this worktree
 - Do NOT commit
 
 ## Acceptance criteria
-- [ ] Debounced autosave: while a note is being edited, changes auto-save after ~1500ms of inactivity (no manual action required)
-- [ ] Autosave does not fire when the note is unmodified (no spurious `save_note` invocations)
-- [ ] Navigation guard: switching note, folder, or view with unsaved changes warns the user (confirm dialog) instead of silently discarding
-- [ ] Acknowledged "discard" still works (user can leave without saving)
-- [ ] `npm test` passes (existing tests, no new failures)
-- [ ] `npm run build` passes (tsc + vite)
+- [ ] Settings shows the API Endpoint URL input for the TTS and STT config tabs (consistent with llm/embed/image tabs)
+- [ ] `transcribe_speech` accepts and honours `base_url` for the openai provider (falls back to `https://api.openai.com` when empty — same pattern as `generate_speech`)
+- [ ] The command wiring passes the configured base_url to transcription (settings field → command arg)
+- [ ] `npm run build` passes (frontend typecheck)
+- [ ] `cargo check` passes in `src-tauri/`
 
 ## Harness & budget
 - Harness: opencode
-- Budget: quick win — max ~4 files, no new deps, finish under 15 minutes of work
+- Budget: quick win — max ~4 files, no new deps
 
 ## Status
 - [x] In progress
-- [x] Done — agent writes a summary of what changed here on exit
-
-## Summary (agent exit note)
-Implemented debounced autosave + navigation guard in the frontend only (no backend/Rust, no deps, no Preview-toggle changes).
-
-- `src/hooks/useNotes.ts`: added a `useEffect` that schedules `immediateSave()` ~1500ms after the last edit (title/content/frontmatter). `immediateSave()` already no-ops when the note is unmodified, so no spurious `save_note` invocations fire.
-- `src/App.tsx`: added `hasUnsavedChanges` (mirrors the dirty check in `immediateSave`) and two guarded setters — `guardedSetActiveView` and `guardedSetSelectedNoteId` — that show a confirm dialog ("You have unsaved changes. Leave without saving?") before navigating away from an unsaved note. Confirming still discards and leaves. Wired the guarded setters through AppShell ribbon, Dashboard, CampaignVaultView, search results, backlinks, canvas/character-sheet/graph/timeline open-note paths, and the NewRule modal.
-
-Verification: `npm test` → 16 files / 91 tests pass. `npm run build` (tsc + vite) → passes. No commit made.
+- [x] Done — Threaded `base_url` through the TTS/STT chain: exposed the API Endpoint URL field for the tts/stt Settings tabs, added `tts_base_url`/`stt_base_url` to `AppSettings` (load/save), threaded `base_url` through `transcribe_speech` (same trim/trailing-slash fallback as `generate_speech`), and wired the frontend invoke sites (`useSessionTools`, `useAgent`) to pass the configured base URL. `npm run build` and `cargo check` both pass.
 
 ## Evidence
 _State vocabulary — record every transition in the ledger
@@ -51,6 +46,6 @@ records remain missing evidence; never infer a state from text._
 - `prepared` — dispatch created the worktree. Recorded automatically.
 - `running` — _you are executing now_
 - `reported` — _you claim done. NOT verified. Write this before exit:_
-  `~/Development/agent-dispatch/evidence loreweaver autosave-navigation-guard reported "exit 0, unverified"`
+  `~/Development/agent-dispatch/evidence loreweaver tts-stt-base-url-override reported "exit 0, unverified"`
 - `verified` — Hermes checked the diff against the acceptance criteria
   (then `merged`). `reported` ≠ `verified`.

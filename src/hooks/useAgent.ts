@@ -28,6 +28,7 @@ export function useAgent(
     imageBaseUrl: string;
     ttsProvider: string;
     ttsApiKey: string;
+    ttsBaseUrl: string;
   },
   selectedNoteId: string,
 ) {
@@ -244,7 +245,7 @@ export function useAgent(
       provider: settings.ttsProvider,
       apiKey: settings.ttsApiKey || null,
       voice: npcVoiceName || null,
-      baseUrl: null,
+      baseUrl: settings.ttsBaseUrl || null,
     })
       .then((audioUrl) => setNpcAudioUrl(audioUrl))
       .catch((err) => {

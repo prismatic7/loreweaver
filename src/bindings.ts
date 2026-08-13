@@ -18,8 +18,10 @@ export type AppSettings = {
 	tts_provider: string,
 	tts_api_key: string,
 	tts_voice: string,
+	tts_base_url: string,
 	stt_provider: string,
 	stt_api_key: string,
+	stt_base_url: string,
 	allow_local_providers: boolean,
 };
 

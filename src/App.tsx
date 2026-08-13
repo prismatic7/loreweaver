@@ -141,8 +141,10 @@ function App() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    ttsBaseUrl,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   } = useSettings();
   const {
     pluginsList,
@@ -298,6 +300,7 @@ function App() {
       imageBaseUrl,
       ttsProvider,
       ttsApiKey,
+      ttsBaseUrl,
     },
     selectedNoteId,
   );
@@ -383,8 +386,10 @@ function App() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    ttsBaseUrl,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   });
 
   const vaultActions = useVaultActions({
