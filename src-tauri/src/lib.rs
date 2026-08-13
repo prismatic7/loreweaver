@@ -1766,9 +1766,13 @@ async fn transcribe_speech(
             .unwrap_or(true)
     };
 
-    if let Some(base) = base_url {
-        if !base.trim().is_empty() {
-            validate_provider_url(base.trim().trim_end_matches('/'), allow_local)?;
+    // For the local provider, `base_url` is a filesystem path to the model
+    // directory, NOT a URL — do not run SSRF validation on it.
+    if provider != "local" {
+        if let Some(base) = base_url {
+            if !base.trim().is_empty() {
+                validate_provider_url(base.trim().trim_end_matches('/'), allow_local)?;
+            }
         }
     }
 

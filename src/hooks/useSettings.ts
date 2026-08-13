@@ -37,10 +37,7 @@ export const settingsSchema = z.object({
 
   stt_provider: z.string().min(1, "Provider is required"),
   stt_api_key: z.string(),
-  stt_base_url: z.union([
-    z.string().url("Must be a valid URL"),
-    z.literal(""),
-  ]),
+  stt_base_url: z.string(),
 });
 
 export type SettingsForm = z.infer<typeof settingsSchema>;
