@@ -1,55 +1,72 @@
-# TASK: feature-ideas-polish
+# TASK: map-change-detection
 
 ## Goal
+Stop silent data loss in the map builder: warn the GM before navigating away when a map has unsaved changes (tokens, fog, drawings, background, or annotations).
 
-Produce a **feature-ideas and polish report** for the Loreweaver app: a
-prioritised list of new feature ideas and UI/UX polish opportunities, grounded
-in the actual design truth and the actual codebase. This is a devising run —
-the output is a written report, not code.
+## Context (verified on main)
+- `src/components/MapBuilderView.tsx`:
+  - `saveMap()` calls `save_canvas_file` then `alert("Map saved successfully!")`.
+  - State: `tokens`, `fog`, `background`, `drawings` — loaded via `loadMap()` from the `.canvas` JSON.
+  - NO dirty tracking exists today. Navigating away silently discards changes.
+- `src/App.tsx` owns `activeView` / `setActiveView` and exposes a `confirm` helper (used elsewhere, e.g. `confirm(\`Save "${title}" as a note?\`, ...)`).
 
 ## Scope
-
-- Read the design truth docs in this worktree:
-  - `PRODUCT.md` (product intent + brand commitments)
-  - `DESIGN.md` (design north star — "The Tactile Ledger")
-  - `DESIGN_SKETCH.md` (arc 1: FATE of Cthulhu campaign build)
-  - `DESIGN_SKETCH_WORLDS.md` (arc 2: World Objects build, supersedes where conflicting)
-  - `FEATURE_PROPOSAL.md`
-- Read the codebase reality docs in `docs/codebase/` (ARCHITECTURE, STACK,
-  STRUCTURE, CONVENTIONS, INTEGRATIONS, CONCERNS) so ideas match what exists.
-- Write the report to `FEATURE_IDEAS.md` in this worktree.
+Files the agent MAY touch:
+- `src/components/MapBuilderView.tsx` (dirty tracking + guard)
+- `src/App.tsx` (ONLY the minimum needed to route a confirm prompt through the existing dialog system when leaving the map view — do not restructure view state)
 
 ## Out of scope
-
-- NO code changes, NO commits of code
-- NO campaign content — design the instrument, never campaign content
-- NO implementation plans — ideas and polish suggestions only
-- Do NOT touch anything outside this worktree (no /tmp paths)
+- NO backend/Rust changes (`src-tauri/`)
+- NO changes to the `.canvas` file format or `save_canvas_file` / `load_canvas_file` commands
+- NO dependency changes
+- NO formatting churn / unrelated refactors
+- Do NOT use `/tmp` paths — work only inside this worktree
+- Do NOT commit
 
 ## Acceptance criteria
-
-- [ ] `FEATURE_IDEAS.md` exists in the worktree root
-- [ ] Ideas are grouped: (1) new features, (2) polish/UX improvements
-- [ ] Each idea is grounded: cite the doc or code file it builds on (path:line where possible)
-- [ ] Each idea states why it matters for GMs prepping/running campaigns
-- [ ] Ideas are prioritised (e.g. quick win / strategic / moonshot, or P1/P2/P3)
-- [ ] Honest about existing gaps (e.g. image generation is a placeholder)
-- [ ] Written in professional international English, Australian spelling
+- [ ] Dirty state is tracked: any change to tokens / fog / background / drawings marks the map dirty; a save (or reload) clears it
+- [ ] Navigating away from the map view with unsaved changes shows a warning (confirm dialog): e.g. "You have unsaved map changes" with Save / Discard / Cancel options (or equivalent — the key is no silent discard)
+- [ ] Cancel keeps the user on the map; Discard navigates without saving; Save persists then navigates
+- [ ] Saving the map clears the dirty flag (no false warnings after save)
+- [ ] `npm run build` passes (tsc + vite)
 
 ## Harness & budget
-
-- Harness: agy (devising partner — idea generation)
-- Budget: sketch-level thinking, no exploration beyond the listed docs
-- Sandbox guard: work only inside this worktree. Do NOT use /tmp paths.
-- Do not commit. Write the report file and your status into this file when done.
+- Harness: opencode
+- Budget: quick win — max ~2-3 files, no new deps
 
 ## Status
+- [x] In progress
+- [x] Done — agent writes a summary of what changed here on exit
 
-- **Status**: Completed
-- **Devising Output**: A comprehensive prioritised feature ideas and UX polish report has been created at [FEATURE_IDEAS.md](file:///Users/chris/Development/loreweaver-feature-ideas-polish/FEATURE_IDEAS.md).
-- **Core Findings**:
-  - Gaps such as unimplemented local Speech-to-Text, mock/placeholder image generation UI, transient plugin states, and lack of autosave logic have been detailed and mapped to their exact source positions.
-  - New features for customisable world manifest bibles, offline STT backend engines, and persistent SQLite-backed plugin states were proposed.
-  - Polish items such as debounced autosave/unsaved change warnings, base URL overrides for speech services, and accessibility theme overrides were documented.
-- **Verification**: Verified that all proposals are fully grounded, aligned with "The Tactile Ledger" styling guidelines, and written in Australian spelling.
+## Summary (agent exit note)
+Implemented unsaved-changes protection for the map builder.
 
+**`src/components/MapBuilderView.tsx`**
+- Added `isDirty` state. A `useEffect` watching `tokens` / `fog` / `background` / `drawings` marks the map dirty on any post-load mutation. The initial `loadMap()` commit is excluded via a `loadCompletedRef`/`hasLoadedRef` pair (flag flips in an effect that runs *after* the dirty-tracking effect on the load render, so the load is never counted as a user edit).
+- `saveMap()` now clears the dirty flag on success (no false warnings after save).
+- Added two optional props: `onDirtyChange(dirty)` reports dirty state to the parent, and `registerSave(fn)` exposes a save that resolves `true`/`false` so the parent can persist before navigating away.
+
+**`src/App.tsx`**
+- Added a navigation guard: `requestViewChange` wraps `setActiveView`. When leaving the map view with unsaved changes, it shows a Save / Discard / Cancel dialog instead of silently discarding.
+  - **Cancel** stays on the map.
+  - **Discard** navigates without saving.
+  - **Save** persists via the registered save fn, then navigates (stays on the map if the save fails).
+- Wired `onDirtyChange` / `registerSave` into `<MapBuilderView>` and passed `requestViewChange` to `<AppShell>`.
+- No view-state restructuring; the guard is additive.
+
+**Verification**
+- `npm run build` (tsc + vite) passes.
+- `npm run test` passes: 16 suites / 91 tests.
+- No backend/Rust, `.canvas` format, dependency, or formatting changes. No commit made.
+
+## Evidence
+_State vocabulary — record every transition in the ledger
+(`~/Development/agent-dispatch/evidence <repo> <task> <state>`). Missing
+records remain missing evidence; never infer a state from text._
+
+- `prepared` — dispatch created the worktree. Recorded automatically.
+- `running` — _you are executing now_
+- `reported` — _you claim done. NOT verified. Write this before exit:_
+  `~/Development/agent-dispatch/evidence loreweaver map-change-detection reported "exit 0, unverified"`
+- `verified` — Hermes checked the diff against the acceptance criteria
+  (then `merged`). `reported` ≠ `verified`.

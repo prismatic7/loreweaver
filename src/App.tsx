@@ -50,6 +50,51 @@ import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
 function App() {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
 
+  // Unsaved-changes guard for the map builder. When the map is dirty and the
+  // user tries to leave the map view, route through a Save / Discard / Cancel
+  // prompt instead of silently discarding.
+  const [mapDirty, setMapDirty] = useState(false);
+  const [mapSave, setMapSave] = useState<(() => Promise<boolean>) | null>(null);
+  const [pendingMapNav, setPendingMapNav] = useState<AppView | null>(null);
+  const [showMapGuard, setShowMapGuard] = useState(false);
+
+  const requestViewChange = useCallback(
+    (next: AppView) => {
+      if (activeView === "map" && mapDirty && next !== "map") {
+        setPendingMapNav(next);
+        setShowMapGuard(true);
+        return;
+      }
+      setActiveView(next);
+    },
+    [activeView, mapDirty],
+  );
+
+  const handleMapGuardDiscard = () => {
+    setShowMapGuard(false);
+    if (pendingMapNav) {
+      setActiveView(pendingMapNav);
+      setPendingMapNav(null);
+    }
+  };
+
+  const handleMapGuardSave = async () => {
+    if (mapSave) {
+      const ok = await mapSave();
+      if (!ok) return; // save failed — stay on the map
+    }
+    setShowMapGuard(false);
+    if (pendingMapNav) {
+      setActiveView(pendingMapNav);
+      setPendingMapNav(null);
+    }
+  };
+
+  const handleMapGuardCancel = () => {
+    setShowMapGuard(false);
+    setPendingMapNav(null);
+  };
+
   const { vaultPath, vaults, switchVault, refreshVaultPath, getVaultLabel, loadVaults } = useVault();
   const { noteTypes, provenanceTaxonomy } = useWorld(vaultPath);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
@@ -498,7 +543,7 @@ function App() {
   return (
     <AppShell
       activeView={activeView}
-      setActiveView={setActiveView}
+      setActiveView={requestViewChange}
       theme={theme}
       setTheme={setTheme}
       vaultPath={vaultPath}
@@ -727,6 +772,8 @@ function App() {
           vaultPath={vaultPath}
           mapRelPath="Maps/Active_Map.canvas"
           alert={alert}
+          onDirtyChange={setMapDirty}
+          registerSave={setMapSave}
         />
       )}
 
@@ -836,6 +883,91 @@ function App() {
         message={alertDialog.message}
         onClose={() => setAlertDialog({ open: false, message: "" })}
       />
+
+      {showMapGuard && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="map-guard-title"
+          tabIndex={-1}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={handleMapGuardCancel}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              padding: "20px",
+              maxWidth: "360px",
+              width: "90%",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div id="map-guard-title" style={{ fontSize: "14px", lineHeight: 1.5 }}>
+              You have unsaved map changes. Save before leaving?
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={handleMapGuardCancel}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  padding: "6px 12px",
+                  borderRadius: 0,
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMapGuardDiscard}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--fg)",
+                  padding: "6px 12px",
+                  borderRadius: 0,
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={handleMapGuardSave}
+                style={{
+                  background: "var(--accent)",
+                  border: "none",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  borderRadius: 0,
+                  cursor: "pointer",
+                  fontSize: "12px",
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <IngestModal
         open={ingestDialog.open}
