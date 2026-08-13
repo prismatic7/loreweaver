@@ -724,6 +724,48 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               )}
 
+              {activeConfigTab === "stt" && (
+                <div style={{ flex: 1 }}>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      fontWeight: 500,
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Local Model Path
+                  </label>
+                  <input
+                    type="text"
+                    {...register("stt_base_url")}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      fontSize: "12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 0,
+                      color: "var(--fg)",
+                    }}
+                    placeholder="Path to sherpa-onnx model directory"
+                  />
+                  {errors.stt_base_url && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--danger)",
+                        marginTop: "4px",
+                        display: "block",
+                      }}
+                    >
+                      {errors.stt_base_url?.message as string}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {activeConfigTab !== "tts" && activeConfigTab !== "stt" && (
                 <div style={{ flex: 2 }}>
                   <label

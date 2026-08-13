@@ -1750,13 +1750,36 @@ async fn generate_speech(
 /// Transcribes audio (base64) to text using the configured STT provider.
 #[tauri::command]
 async fn transcribe_speech(
+    state: State<'_, AppState>,
     audio_base64: &str,
     provider: &str,
     api_key: Option<&str>,
+    base_url: Option<&str>,
 ) -> Result<String, String> {
+    let allow_local = {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(true)
+    };
+
+    // For the local provider, `base_url` is a filesystem path to the model
+    // directory, NOT a URL — do not run SSRF validation on it.
+    if provider != "local" {
+        if let Some(base) = base_url {
+            if !base.trim().is_empty() {
+                validate_provider_url(base.trim().trim_end_matches('/'), allow_local)?;
+            }
+        }
+    }
+
     let provider_owned = provider.to_string();
     let audio_owned = audio_base64.to_string();
     let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
 
     run_blocking(move || {
         let agent = crate::providers::http_client();
@@ -1764,6 +1787,7 @@ async fn transcribe_speech(
             &audio_owned,
             &provider_owned,
             api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
             &agent,
         )
     })
@@ -1855,6 +1879,9 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
         &stt_provider,
     )
     .unwrap_or_default();
+    let stt_base_url = db::get_setting(&conn, "stt_base_url")
+        .unwrap_or(None)
+        .unwrap_or_default();
 
     Ok(AppSettings {
         allow_local_providers,
@@ -1875,6 +1902,7 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
         tts_voice,
         stt_provider,
         stt_api_key,
+        stt_base_url,
     })
 }
 
@@ -1944,6 +1972,7 @@ async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Res
         &encrypt_api_key(&settings.stt_api_key, &settings.stt_provider),
     )
     .map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "stt_base_url", &settings.stt_base_url).map_err(|e| e.to_string())?;
 
     Ok(())
 }

@@ -143,6 +143,7 @@ function App() {
     ttsApiKey,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   } = useSettings();
   const {
     pluginsList,
@@ -344,6 +345,7 @@ function App() {
     ttsApiKey,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   });
 
   const vaultActions = useVaultActions({

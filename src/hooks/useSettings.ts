@@ -33,6 +33,7 @@ export const settingsSchema = z.object({
 
   stt_provider: z.string().min(1, "Provider is required"),
   stt_api_key: z.string(),
+  stt_base_url: z.string(),
 });
 
 export type SettingsForm = z.infer<typeof settingsSchema>;
@@ -60,6 +61,7 @@ export const DEFAULT_SETTINGS: SettingsForm = {
 
   stt_provider: "local",
   stt_api_key: "",
+  stt_base_url: "",
 };
 
 export function useSettings() {
@@ -111,6 +113,7 @@ export function useSettings() {
 
           stt_provider: settings.stt_provider || DEFAULT_SETTINGS.stt_provider,
           stt_api_key: settings.stt_api_key || "",
+          stt_base_url: settings.stt_base_url || "",
         });
       }
     } catch (err) {
@@ -152,6 +155,7 @@ export function useSettings() {
   const ttsApiKey = watch("tts_api_key");
   const sttProvider = watch("stt_provider");
   const sttApiKey = watch("stt_api_key");
+  const sttBaseUrl = watch("stt_base_url");
 
   return {
     theme,
@@ -180,5 +184,6 @@ export function useSettings() {
     ttsApiKey,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   };
 }

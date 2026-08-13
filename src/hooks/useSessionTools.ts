@@ -13,6 +13,7 @@ interface SessionToolsDeps {
   ttsApiKey: string;
   sttProvider: string;
   sttApiKey: string;
+  sttBaseUrl: string;
 }
 
 export const useSessionTools = (deps: SessionToolsDeps) => {
@@ -27,6 +28,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     ttsApiKey,
     sttProvider,
     sttApiKey,
+    sttBaseUrl,
   } = deps;
 
   const [scratchpadText, setScratchpadText] = useState(() => {
@@ -148,6 +150,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
           audioBase64: base64Data,
           provider: sttProvider,
           apiKey: sttApiKey || null,
+          baseUrl: sttBaseUrl || null,
         });
         setTranscribedText(text);
       } catch (err) {

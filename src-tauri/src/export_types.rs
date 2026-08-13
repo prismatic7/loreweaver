@@ -79,6 +79,7 @@ pub struct AppSettings {
 
     pub stt_provider: String,
     pub stt_api_key: String,
+    pub stt_base_url: String,
 
     pub allow_local_providers: bool,
 }
