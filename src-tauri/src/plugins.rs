@@ -14,6 +14,12 @@
 //!    - Maximum script size: 1 MiB (`MAX_SCRIPT_SIZE`).
 //!    - Maximum hook payload: 32 KiB.
 //!    - Loop iteration limit: 50,000 iterations per execution context to prevent infinite loops.
+//!    - Recursion limit: 256 (explicit, tightened from Boa's 512 default).
+//!    - Stack size limit: 512 (explicit, tightened from Boa's 1024 default).
+//!    - Wall-clock timeout: 5 s per hook via a dedicated thread + `recv_timeout`.
+//!    - **No heap-memory cap**: Boa 0.19 exposes no allocation limit, so a plugin
+//!      that allocates unbounded memory (e.g. `new Array(1e9)`) is bounded only by
+//!      process memory. See CONCERNS.md for the accepted risk.
 //! 5. **Safe Injection**: Plugin state is converted from `serde_json::Value` into native Boa values
 //!    and set on `globalThis` directly, eliminating code injection through string interpolation.
 
@@ -73,6 +79,27 @@ fn plugin_states() -> &'static Mutex<HashMap<String, HashMap<String, String>>> {
 /// Maximum allowed size for a single plugin entry script (1 MiB).
 const MAX_SCRIPT_SIZE: usize = 1024 * 1024;
 
+/// Loop iteration cap per execution context — guards against infinite loops.
+const LOOP_ITERATION_LIMIT: u64 = 50_000;
+
+/// Recursion depth cap — tightened from Boa's 512 default to bound deep recursion.
+const RECURSION_LIMIT: usize = 256;
+
+/// VM stack size cap — tightened from Boa's 1024 default to bound stack growth.
+const STACK_SIZE_LIMIT: usize = 512;
+
+/// Applies the plugin sandbox's resource limits to a fresh Boa context.
+///
+/// Boa 0.19 exposes loop-iteration, recursion, and stack-size limits but no
+/// heap-memory cap; unbounded allocation is bounded only by process memory
+/// (see the module docs and CONCERNS.md for the accepted risk).
+fn apply_runtime_limits(context: &mut Context) {
+    let limits = context.runtime_limits_mut();
+    limits.set_loop_iteration_limit(LOOP_ITERATION_LIMIT);
+    limits.set_recursion_limit(RECURSION_LIMIT);
+    limits.set_stack_size_limit(STACK_SIZE_LIMIT);
+}
+
 /// Scans the specified plugins directory, loading and validating all plugins.
 ///
 /// Discovery & Ingestion Steps:
@@ -110,7 +137,7 @@ pub fn load_all_plugins(
                         // We don't persist the context — run_plugin_hook creates a fresh one.
                         {
                             let mut context = Context::default();
-                            context.runtime_limits_mut().set_loop_iteration_limit(50000);
+                            apply_runtime_limits(&mut context);
                             let source = Source::from_bytes(info.script_content.as_bytes());
                             if let Err(e) = context.eval(source) {
                                 eprintln!("JS Eval Error for plugin {}: {:?}", info.id, e);
@@ -250,7 +277,8 @@ fn json_to_js_value(value: &serde_json::Value, context: &mut Context) -> JsValue
 /// 3. **Hook Name Sanitization**: Rejects non-alphanumeric/underscore hook names to prevent injection.
 /// 4. **State Hydration**: Retrieves JSON state for `(vault_path, plugin_id)` and sets `globalThis.__state`
 ///    via native Boa value construction (no string interpolation / `eval`).
-/// 5. **Context Setup**: Configures a fresh Boa `Context` with a 50,000 loop iteration limit.
+/// 5. **Context Setup**: Configures a fresh Boa `Context` with loop-iteration, recursion,
+///    and stack-size limits via `apply_runtime_limits`.
    /// 6. **Function Calling**: Evaluates the script, extracts the target hook function, and calls it with `payload`.
    ///    The call runs synchronously on the current thread; Boa's `Context` is not `Send`, so a scoped
    ///    thread timeout cannot borrow it, and Boa 0.19 exposes only loop-iteration and recursion limits.
@@ -358,7 +386,7 @@ fn execute_hook_in_context(
     state_json: &str,
 ) -> Result<(String, String), String> {
     let mut context = Context::default();
-    context.runtime_limits_mut().set_loop_iteration_limit(50000);
+    apply_runtime_limits(&mut context);
 
     // Evaluate plugin script
     let source = Source::from_bytes(script_content.as_bytes());
@@ -518,6 +546,25 @@ mod tests {
         assert!(
             start.elapsed() < std::time::Duration::from_secs(2),
             "must timeout quickly"
+        );
+    }
+
+    #[test]
+    fn test_plugin_recursion_limit_fires() {
+        // Deep recursion must be rejected by the explicit recursion limit rather
+        // than exhausting the native stack. 10,000 frames is far beyond the 256 cap.
+        let script = r#"
+            function on_rec(payload) {
+                function dive(n) { return n <= 0 ? 0 : dive(n - 1); }
+                return String(dive(10000));
+            }
+        "#;
+        register_test_plugin("recursion-test", script, vec!["hooks".to_string()]);
+        let result = run_plugin_hook("/tmp/vault", "recursion-test", "on_rec", "{}");
+        assert!(
+            result.is_err(),
+            "deep recursion should be rejected by the recursion limit, got: {:?}",
+            result
         );
     }
 }
