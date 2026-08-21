@@ -93,7 +93,27 @@ export const AppShell: React.FC<AppShellProps> = ({
           title="Loreweaver"
           onClick={() => setActiveView("dashboard")}
         >
-          <Layers size={22} style={{ color: "var(--accent)" }} />
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+            {/* Outer Editorial Border */}
+            <rect x="3" y="3" width="26" height="26" stroke="var(--fg)" strokeWidth="1.5" fill="none" />
+            
+            {/* Light Sepia Grid Line */}
+            <line x1="16" y1="3" x2="16" y2="29" stroke="var(--border)" strokeWidth="1" />
+            <line x1="3" y1="16" x2="29" y2="16" stroke="var(--border)" strokeWidth="1" />
+
+            {/* Woven Occult Diamond in accent */}
+            <path d="M16 8l8 8-8 8-8-8z" stroke="var(--accent)" strokeWidth="2" fill="none" strokeLinejoin="miter" />
+
+            {/* Axis Threads (Obsidian Ink / fg) */}
+            <line x1="16" y1="3" x2="16" y2="10" stroke="var(--fg)" strokeWidth="2" />
+            <line x1="16" y1="22" x2="16" y2="29" stroke="var(--fg)" strokeWidth="2" />
+            <line x1="3" y1="16" x2="10" y2="16" stroke="var(--fg)" strokeWidth="2" />
+            <line x1="22" y1="16" x2="29" y2="16" stroke="var(--fg)" strokeWidth="2" />
+
+            {/* Central Compass / Gate Core */}
+            <circle cx="16" cy="16" r="4.5" fill="var(--bg)" stroke="var(--accent)" strokeWidth="1.5" />
+            <rect x="14.5" y="14.5" width="3" height="3" fill="var(--fg)" transform="rotate(45 16 16)" />
+          </svg>
         </div>
 
         <div className="ribbon-nav">

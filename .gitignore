@@ -29,3 +29,6 @@ dist-ssr
 *.db-wal
 *.db-shm
 .worktrees/
+
+# OpenCode agent tooling (session memory, node_modules)
+.opencode/

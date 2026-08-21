@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Warm Alabaster Ledger Background -->
+  <rect width="512" height="512" fill="#f4f0eb"/>
+
+  <!-- Outer Editorial Border (Sharp Corners, 0px Radius) -->
+  <rect x="48" y="48" width="416" height="416" stroke="#1c1e22" stroke-width="12" fill="none"/>
+
+  <!-- Light Sepia Grid / Ledger Lines -->
+  <!-- Vertical Grid -->
+  <line x1="152" y1="48" x2="152" y2="464" stroke="#e2ded9" stroke-width="4"/>
+  <line x1="256" y1="48" x2="256" y2="464" stroke="#e2ded9" stroke-width="4"/>
+  <line x1="360" y1="48" x2="360" y2="464" stroke="#e2ded9" stroke-width="4"/>
+  <!-- Horizontal Grid -->
+  <line x1="48" y1="152" x2="464" y2="152" stroke="#e2ded9" stroke-width="4"/>
+  <line x1="48" y1="256" x2="464" y2="256" stroke="#e2ded9" stroke-width="4"/>
+  <line x1="48" y1="360" x2="464" y2="360" stroke="#e2ded9" stroke-width="4"/>
+
+  <!-- Terracotta Rust Woven Occult Diamond / Gate -->
+  <path d="M 256 120 L 392 256 L 256 392 L 120 256 Z" stroke="#c96442" stroke-width="16" fill="none" stroke-linejoin="miter"/>
+
+  <!-- Weaving Axis Threads (Obsidian Ink) -->
+  <!-- Weaving behind/under the diamond center, but crossing active areas -->
+  <line x1="256" y1="48" x2="256" y2="160" stroke="#1c1e22" stroke-width="16" stroke-linecap="square"/>
+  <line x1="256" y1="352" x2="256" y2="464" stroke="#1c1e22" stroke-width="16" stroke-linecap="square"/>
+  <line x1="48" y1="256" x2="160" y2="256" stroke="#1c1e22" stroke-width="16" stroke-linecap="square"/>
+  <line x1="352" y1="256" x2="464" y2="256" stroke="#1c1e22" stroke-width="16" stroke-linecap="square"/>
+
+  <!-- Central Compass / Gate Core (Terracotta Rust Circle & Obsidian Ink Eye) -->
+  <circle cx="256" cy="256" r="56" fill="#f4f0eb" stroke="#c96442" stroke-width="12"/>
+  <rect x="236" y="236" width="40" height="40" fill="#1c1e22" transform="rotate(45 256 256)"/>
+</svg>
