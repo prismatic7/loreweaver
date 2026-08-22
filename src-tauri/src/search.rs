@@ -757,9 +757,9 @@ mod tests {
     fn test_cosine_similarity_calculation() {
         // Since we cannot run local ONNX model download in tests, we test the math of similarity score directly.
         // L2 normalized vectors
-        let vec_a = vec![1.0f32, 0.0f32, 0.0f32];
-        let vec_b = vec![1.0f32, 0.0f32, 0.0f32];
-        let vec_c = vec![0.0f32, 1.0f32, 0.0f32];
+        let vec_a = [1.0f32, 0.0f32, 0.0f32];
+        let vec_b = [1.0f32, 0.0f32, 0.0f32];
+        let vec_c = [0.0f32, 1.0f32, 0.0f32];
 
         // Similarity between vec_a and vec_b should be 1.0 (identical)
         let mut score_ab = 0.0f32;

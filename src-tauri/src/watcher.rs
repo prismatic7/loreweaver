@@ -427,7 +427,7 @@ mod tests {
             frontmatter.get("title").and_then(|v| v.as_str()),
             Some("Custom Title")
         );
-        assert!(frontmatter.get("tags").is_some());
+        assert!(frontmatter.contains_key("tags"));
 
         let _ = std::fs::remove_file(file_path);
     }

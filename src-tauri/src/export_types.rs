@@ -106,6 +106,7 @@ pub struct TemplateEntry {
     pub actions: Vec<TemplateAction>,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
 pub struct VaultSettings {
     pub name: Option<String>,
@@ -177,6 +178,7 @@ pub struct WorldInfo {
 }
 
 /// Export TypeScript bindings for all command input/output types.
+#[allow(dead_code)]
 pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
     tauri_specta::Builder::<tauri::Wry>::new()
         .typ::<CampaignNote>()

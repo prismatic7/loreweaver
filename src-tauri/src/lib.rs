@@ -464,7 +464,7 @@ async fn resolve_wiki_link(
             }) {
                 for meta in meta_rows.flatten() {
                     let val =
-                        serde_json::from_str(&meta.1).unwrap_or_else(|_| Value::String(meta.1));
+                        serde_json::from_str(&meta.1).unwrap_or(Value::String(meta.1));
                     frontmatter.insert(meta.0, val);
                 }
             }
@@ -767,7 +767,7 @@ fn load_trash_notes_impl(vault_path: &str) -> Result<Vec<CampaignNote>, String> 
     if let Ok(entries) = std::fs::read_dir(trash_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
                 if let Ok((title, content, frontmatter)) = watcher::parse_markdown_file(&path) {
                     let rel_path = path
                         .strip_prefix(vault_path)
@@ -877,7 +877,7 @@ fn cleanup_expired_trash(vault_path_str: &str, conn: &rusqlite::Connection) -> R
     if let Ok(entries) = std::fs::read_dir(trash_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
                 if let Ok((_title, _content, frontmatter)) = watcher::parse_markdown_file(&path) {
                     let mut delete_file = false;
                     if let Some(Value::Number(deleted_at_num)) = frontmatter.get("deleted_at") {
@@ -1394,7 +1394,7 @@ fn list_liminal_notes_impl(campaigns_root: &std::path::Path) -> Result<Vec<Campa
     for entry in std::fs::read_dir(&captures_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if !path.is_file() || path.extension().map_or(true, |ext| ext != "md") {
+        if !path.is_file() || path.extension().is_none_or(|ext| ext != "md") {
             continue;
         }
         let rel = path
@@ -1496,7 +1496,7 @@ async fn make_world_from_liminal(state: State<'_, AppState>, name: &str) -> Resu
         for entry in std::fs::read_dir(&captures_dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
                 let filename = path
                     .file_name()
                     .unwrap_or_default()
@@ -2298,7 +2298,7 @@ async fn list_templates(state: State<'_, AppState>) -> Result<Vec<TemplateEntry>
     for entry in std::fs::read_dir(templates_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
             let name = path
                 .file_stem()
                 .unwrap_or_default()
@@ -2956,26 +2956,26 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             // Create notes in DB from disk content
-            let binding = state.conn.lock().await;
-            let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
-            let _ = db::upsert_note(
-                &conn_guard,
-                "Worldbuilding/50% discount.md",
-                "50% discount",
-                "content",
-                &HashMap::new(),
-            )
-            .unwrap();
-            let _ = db::upsert_note(
-                &conn_guard,
-                "Worldbuilding/Goblin.md",
-                "Goblin",
-                "content",
-                &HashMap::new(),
-            )
-            .unwrap();
-            drop(conn_guard);
-            drop(binding);
+            {
+                let binding = state.conn.lock().await;
+                let conn_guard = binding.lock().map_err(|e| e.to_string()).unwrap();
+                let _ = db::upsert_note(
+                    &conn_guard,
+                    "Worldbuilding/50% discount.md",
+                    "50% discount",
+                    "content",
+                    &HashMap::new(),
+                )
+                .unwrap();
+                let _ = db::upsert_note(
+                    &conn_guard,
+                    "Worldbuilding/Goblin.md",
+                    "Goblin",
+                    "content",
+                    &HashMap::new(),
+                )
+                .unwrap();
+            }
 
             // Resolve the literal '%' target. It should match the exact note, not every note.
             let note = unsafe {

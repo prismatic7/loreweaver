@@ -31,7 +31,6 @@ use boa_engine::{
     Context, Source,
 };
 use crate::PluginInfo;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
