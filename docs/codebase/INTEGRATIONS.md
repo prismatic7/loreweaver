@@ -39,7 +39,7 @@
 ## Future Integrations Status
 
 - **Image Generation:** Currently a frontend placeholder mock. Stable Diffusion ComfyUI bindings exist in the Rust backend code but are not connected to the UI.
-- **Audio Processing:** Text-to-speech (TTS) and speech-to-text (STT) capabilities are currently not implemented in the application backend.
+- **Audio Processing:** Text-to-speech (TTS) is fully implemented in the backend (supporting OpenAI, ElevenLabs, and a local fallback via `espeak-ng`). Speech-to-text (STT) is also fully implemented (supporting OpenAI Whisper and a local fallback via `sherpa-onnx`).
 
 ## Evidence
 

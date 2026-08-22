@@ -250,3 +250,145 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Arguments:** None.
 - **Returns:** `Result<Vec<TemplateEntry>, String>`
 - **Description:** Scans the active campaign vault's `.templates/` folder, parses YAML frontmatter configurations using `gray-matter`, and returns all registered document templates and script action mappings.
+
+---
+
+## 9. World Objects and Liminal Pen
+
+### `get_world_manifest`
+
+- **Arguments:** None.
+- **Returns:** `Result<WorldManifest, String>`
+- **Description:** Returns the manifest (`world.json`) of the active world campaign, creating a default manifest if none exists.
+
+### `list_worlds`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<WorldInfo>, String>`
+- **Description:** Lists all world folders in the campaigns root directory, excluding system folders.
+
+### `create_world`
+
+- **Arguments:** `name: &str`, `scaffold_from: Option<&str>`
+- **Returns:** `Result<String, String>`
+- **Description:** Creates a new campaign world folder and manifest, optionally copying folders from a template.
+
+### `export_world`
+
+- **Arguments:** `vault_path: &str`, `dest_path: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Packages a campaign world folder into a ZIP bundle and saves it to the destination path.
+
+### `import_world`
+
+- **Arguments:** `zip_path: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Imports a campaign world bundle from a ZIP archive into the campaign directories.
+
+### `list_liminal_notes`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<CampaignNote>, String>`
+- **Description:** Scans the `_liminal/Captures/` folder and returns the list of unassigned holding-pen capture notes.
+
+### `claim_liminal_note`
+
+- **Arguments:** `note_path: &str`, `target_world_path: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Moves a captured markdown note from the liminal folder into the target world campaign's `Worldbuilding` directory.
+
+### `make_world_from_liminal`
+
+- **Arguments:** `name: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Creates a new campaign world and moves all current liminal capture notes into it.
+
+---
+
+## 10. Provenance Tracking & Web Clipping
+
+### `list_sources`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<SourceEntry>, String>`
+- **Description:** Retrieves all recorded provenance sources stored in the database for tracking document origin.
+
+### `save_source`
+
+- **Arguments:** `source: SourceEntry`
+- **Returns:** `Result<String, String>`
+- **Description:** Upserts (creates or updates) a provenance source record in the database.
+
+### `delete_source`
+
+- **Arguments:** `source_id: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Deletes a provenance source tracking record by ID.
+
+### `get_source`
+
+- **Arguments:** `source_id: &str`
+- **Returns:** `Result<Option<SourceEntry>, String>`
+- **Description:** Retrieves a single provenance source from the database by ID.
+
+### `clip_webpage`
+
+- **Arguments:** `url: &str`
+- **Returns:** `Result<WebClip, String>`
+- **Description:** Fetches an external webpage URL and extracts its content as clean Markdown.
+
+---
+
+## 11. Session Memory & Transcription
+
+### `save_session_memory`
+
+- **Arguments:** `fact: &str`, `category: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Saves a persistent session memory fact / metadata context snippet inside the active vault db.
+
+### `list_session_memory`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<(String, String, String, i64)>, String>`
+- **Description:** Lists all persistent session memory facts / notes for the active campaign.
+
+### `delete_session_memory`
+
+- **Arguments:** `id: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Deletes a session memory fact from the database by ID.
+
+### `summarize_session`
+
+- **Arguments:** `messages_json: &str`, `provider: &str`, `model: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`
+- **Returns:** `Result<String, String>`
+- **Description:** Passes a chat transcript to the LLM to generate a concise summary (what happened, decisions, followups).
+
+### `transcribe_speech`
+
+- **Arguments:** `audio_base64: &str`, `provider: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`
+- **Returns:** `Result<String, String>`
+- **Description:** Transcribes base64-encoded audio bytes into text using either local (ONNX sherpa-onnx) or OpenAI Whisper models.
+
+---
+
+## 12. Additional Operations
+
+### `reindex_vault`
+
+- **Arguments:** None.
+- **Returns:** `Result<(), String>`
+- **Description:** Force-rebuilds the local database search index by parsing all Markdown files in the active vault.
+
+### `convert_pdf_to_markdown`
+
+- **Arguments:** `base64_pdf: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Extracts text and structures rules from a PDF document to generate clean Markdown.
+
+### `capture_note`
+
+- **Arguments:** `title: &str`, `content: &str`, `source_type: Option<&str>`, `source_title: Option<&str>`, `source_author: Option<&str>`, `source_url: Option<&str>`, `target: Option<&str>`
+- **Returns:** `Result<String, String>`
+- **Description:** Captures a quick note into the vault's `Captures/` inbox folder, recording full provenance metadata inside the note's YAML frontmatter.
