@@ -24,7 +24,7 @@
 - Modify: `src-tauri/src/watcher.rs`
 - Modify: `src-tauri/src/search.rs`
 
-- [ ] **Step 1: Scope Mutex guards in `src-tauri/src/lib.rs` tests**
+- [x] **Step 1: Scope Mutex guards in `src-tauri/src/lib.rs` tests**
   Modify line 2957-2979 in `src-tauri/src/lib.rs` to restrict the lexical lifetimes of `binding` and `conn_guard` within an inner scope `{ ... }`:
   ```rust
           tauri::async_runtime::block_on(async {
@@ -51,14 +51,14 @@
               }
   ```
 
-- [ ] **Step 2: Remove unused imports in `src-tauri/src/plugins.rs`**
+- [x] **Step 2: Remove unused imports in `src-tauri/src/plugins.rs`**
   Modify line 34 in `src-tauri/src/plugins.rs` to remove unused imports `Deserialize, Serialize`:
   ```rust
   use crate::PluginInfo;
   use std::collections::HashMap;
   ```
 
-- [ ] **Step 3: Allow dead code for exported Specta types in `src-tauri/src/export_types.rs`**
+- [x] **Step 3: Allow dead code for exported Specta types in `src-tauri/src/export_types.rs`**
   Add `#[allow(dead_code)]` above `VaultSettings` and `export_bindings_to` in `src-tauri/src/export_types.rs`:
   ```rust
   #[allow(dead_code)]
@@ -71,7 +71,7 @@
   pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
   ```
 
-- [ ] **Step 4: Update map_or and get checks in `src-tauri/src/watcher.rs` and `src-tauri/src/lib.rs`**
+- [x] **Step 4: Update map_or and get checks in `src-tauri/src/watcher.rs` and `src-tauri/src/lib.rs`**
   - In `src-tauri/src/watcher.rs:430`, change:
     `assert!(frontmatter.get("tags").is_some());` -> `assert!(frontmatter.contains_key("tags"));`
   - In `src-tauri/src/lib.rs`, replace map_or helpers with modern equivalents:
@@ -82,7 +82,7 @@
     - Line 1499: `if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {`
     - Line 2301: `if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {`
 
-- [ ] **Step 5: Replace vec! with arrays in `src-tauri/src/search.rs` test**
+- [x] **Step 5: Replace vec! with arrays in `src-tauri/src/search.rs` test**
   Modify lines 760-762 in `src-tauri/src/search.rs` to use raw arrays:
   ```rust
           let vec_a = [1.0f32, 0.0f32, 0.0f32];
@@ -90,11 +90,11 @@
           let vec_c = [0.0f32, 1.0f32, 0.0f32];
   ```
 
-- [ ] **Step 6: Run cargo clippy & cargo test**
+- [x] **Step 6: Run cargo clippy & cargo test**
   Run: `cargo clippy --all-targets` and `cargo test -- --skip test_api_key_round_trip` from `src-tauri/`
   Expected: 0 warnings, all tests pass.
 
-- [ ] **Step 7: Commit clippy fixes**
+- [x] **Step 7: Commit clippy fixes**
   ```bash
   git add src-tauri/src/
   git commit -m "chore: resolve rust clippy and compilation warnings"
@@ -107,10 +107,10 @@
 **Files:**
 - Modify: `docs/codebase/INTEGRATIONS.md`
 
-- [ ] **Step 1: Update Audio Processing description**
+- [x] **Step 1: Update Audio Processing description**
   Update the "Future Integrations Status" or "Audio Processing" section in `docs/codebase/INTEGRATIONS.md` to show that TTS (OpenAI, ElevenLabs, espeak-ng) and STT (OpenAI Whisper, sherpa-onnx) are fully implemented.
 
-- [ ] **Step 2: Commit documentation correction**
+- [x] **Step 2: Commit documentation correction**
   ```bash
   git add docs/codebase/INTEGRATIONS.md
   git commit -m "docs: correct integrations documentation for TTS/STT"
@@ -123,7 +123,7 @@
 **Files:**
 - Modify: `docs/developer/API.md`
 
-- [ ] **Step 1: Document missing commands in API.md**
+- [x] **Step 1: Document missing commands in API.md**
   Add detailed documentation block (name, arguments, return type, description) for each of the 21 missing commands:
   - `reindex_vault`
   - `convert_pdf_to_markdown`
@@ -147,11 +147,11 @@
   - `summarize_session`
   - `transcribe_speech`
 
-- [ ] **Step 2: Run verification script**
+- [x] **Step 2: Run verification script**
   Run: `node docs/verify.mjs`
   Expected: SUCCESS
 
-- [ ] **Step 3: Commit API docs update**
+- [x] **Step 3: Commit API docs update**
   ```bash
   git add docs/developer/API.md
   git commit -m "docs: add documented commands in API.md"
