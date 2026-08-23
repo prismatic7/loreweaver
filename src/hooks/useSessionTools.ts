@@ -130,6 +130,42 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
       });
   };
 
+  // --- Note → image flow: illustrate an open note ---
+  const handleGenerateImageFromNote = (noteTitle: string, noteContent: string) => {
+    if (!noteTitle.trim() || isGeneratingImage) return;
+    setIsGeneratingImage(true);
+    setGeneratedImageUrl("");
+
+    // Assemble: style template (if set) → note title/content → optional
+    // per-use prompt from the drawer. The note's own words are the source.
+    invoke<{ image_style_template?: string | null }>("load_vault_settings")
+      .then((vs) => {
+        const template = vs?.image_style_template?.trim() || "Fantasy Portrait";
+        const cleanTitle = noteTitle.replace(/\.md$/, "").trim();
+        const prompt = imagePrompt.trim()
+          ? `${imagePrompt.trim()} — ${cleanTitle}: ${noteContent.slice(0, 1200)}`
+          : `${cleanTitle}: ${noteContent.slice(0, 1200)}`;
+        return invoke<string>("generate_image", {
+          prompt,
+          style: template,
+          provider: imageProvider,
+          model: imageModel,
+          apiKey: imageApiKey || null,
+          baseUrl: imageBaseUrl || null,
+        });
+      })
+      .then((dataUrl) => {
+        setGeneratedImageUrl(dataUrl);
+        setImagePrompt("");
+      })
+      .catch((err) => {
+        alert("Image generation failed: " + err);
+      })
+      .finally(() => {
+        setIsGeneratingImage(false);
+      });
+  };
+
   const handleGenerateSpeech = () => {
     if (!ttsText.trim()) return;
     setIsGeneratingSpeech(true);
@@ -201,6 +237,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     isGeneratingImage,
     generatedImageUrl,
     handleGenerateImage,
+    handleGenerateImageFromNote,
     ttsText,
     setTtsText,
     isGeneratingSpeech,

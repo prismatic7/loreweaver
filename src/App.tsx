@@ -750,6 +750,8 @@ function App() {
           onSelectNoteFromCanvas={vaultActions.handleSelectNoteFromCanvas}
           onSelectCanvas={vaultActions.handleSelectCanvas}
           provenanceTaxonomy={provenanceTaxonomy}
+          handleGenerateImageFromNote={sessionTools.handleGenerateImageFromNote}
+          isGeneratingImage={sessionTools.isGeneratingImage}
         />
       )}
 

@@ -68,6 +68,8 @@ export interface CampaignVaultViewProps {
   ) => void;
   activeFolderDropdown: string | null;
   setActiveFolderDropdown: (key: string | null) => void;
+  handleGenerateImageFromNote?: (title: string, content: string) => void;
+  isGeneratingImage?: boolean;
   renderFolderDropdown: (folderName: string, isRulebook?: boolean) => React.ReactNode;
   handleNewNote: () => void;
   handleNewFolder: () => void;
@@ -133,6 +135,8 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   setActiveView,
   onSelectNoteFromCanvas,
   onSelectCanvas,
+  handleGenerateImageFromNote,
+  isGeneratingImage,
   provenanceTaxonomy = DEFAULT_PROVENANCE_TAXONOMY,
 }) => {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
@@ -652,6 +656,32 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       <PenLine size={12} /> Edit
                     </button>
                   </div>
+
+                  {handleGenerateImageFromNote && currentNote && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        triggerImmediateSave();
+                        handleGenerateImageFromNote(
+                          currentNote.title,
+                          currentNote.content,
+                        );
+                      }}
+                      disabled={isGeneratingImage}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        padding: "4px 10px",
+                        borderRadius: 0,
+                        fontSize: "11px",
+                      }}
+                      title="Generate an image from this note's content"
+                      data-od-id="illustrate-note-btn"
+                    >
+                      <ImageIcon size={12} /> Illustrate
+                    </button>
+                  )}
 
                   <button
                     className="btn btn-sm"
