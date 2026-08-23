@@ -40,7 +40,10 @@ export function useAgent(
     useState("");
   const [memoryFacts, setMemoryFacts] = useState<MemoryFact[]>([]);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [summaryText, setSummaryText] = useState("");
+  // Per-vault so a summary from World A never shows while browsing World B.
+  const [summaryByVault, setSummaryByVault] = useState<Record<string, string>>(
+    {},
+  );
   const [npcVoiceText, setNpcVoiceText] = useState("");
   const [npcVoiceName, setNpcVoiceName] = useState("");
   const [isSpeakingNpc, setIsSpeakingNpc] = useState(false);
@@ -127,64 +130,7 @@ export function useAgent(
     }));
   }, [vaultPath, sessionCloneTargetVaultPath, currentChatMessages]);
 
-  const handleSendChatMessage = useCallback(() => {
-    if (!chatInput.trim()) return;
-    const userMsg = chatInput;
-    updateVaultChatMessages((prev) => [
-      ...prev,
-      { role: "user", text: userMsg },
-    ]);
-    setChatInput("");
-
-    invoke<string>("orchestrate_agent", {
-      prompt: userMsg,
-      provider: settings.llmProvider,
-      model: settings.llmModel,
-      apiKey: settings.llmApiKey || null,
-      baseUrl: settings.llmBaseUrl || null,
-      activeNoteId: selectedNoteId || null,
-      sessionTemperature,
-    })
-      .then((botResponse) => {
-        updateVaultChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: botResponse },
-        ]);
-      })
-      .catch((err) => {
-        console.error("AI agent error:", err);
-        const fallback =
-          `Error calling AI provider: ${err}. Please ensure your configured LLM server is running or configure an API key in Settings.`;
-        updateVaultChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: fallback },
-        ]);
-      });
-  }, [
-    chatInput,
-    settings.llmProvider,
-    settings.llmModel,
-    settings.llmApiKey,
-    settings.llmBaseUrl,
-    selectedNoteId,
-    sessionTemperature,
-    updateVaultChatMessages,
-  ]);
-
-  const initVaultChat = useCallback(() => {
-    if (!vaultPath) return;
-    setChatMessagesByVault((prev) => {
-      if (prev[vaultPath]) return prev;
-      return { ...prev, [vaultPath]: defaultChatMessages };
-    });
-    setSessionCloneTargetVaultPath((currentTarget) => {
-      if (currentTarget && currentTarget !== vaultPath) return currentTarget;
-      const firstOtherVault = vaults.find((item) => item.path !== vaultPath);
-      return firstOtherVault?.path || "";
-    });
-  }, [vaultPath, vaults, defaultChatMessages]);
-
-  // --- P7: Session Memory ---
+  // --- P7: Session Memory (declared before the chat handler, which calls it) ---
   const loadMemoryFacts = useCallback(() => {
     if (!vaultPath) return;
     invoke<MemoryFact[]>("list_session_memory")
@@ -212,11 +158,92 @@ export function useAgent(
     [vaultPath, loadMemoryFacts],
   );
 
+  const handleSendChatMessage = useCallback(() => {
+    if (!chatInput.trim()) return;
+    const userMsg = chatInput;
+    const priorMessages = chatMessagesByVault[vaultPath] || defaultChatMessages;
+    updateVaultChatMessages((prev) => [
+      ...prev,
+      { role: "user", text: userMsg },
+    ]);
+    setChatInput("");
+
+    invoke<string>("orchestrate_agent", {
+      prompt: userMsg,
+      provider: settings.llmProvider,
+      model: settings.llmModel,
+      apiKey: settings.llmApiKey || null,
+      baseUrl: settings.llmBaseUrl || null,
+      activeNoteId: selectedNoteId || null,
+      sessionTemperature,
+    })
+      .then((botResponse) => {
+        updateVaultChatMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: botResponse },
+        ]);
+        // World-scoped memory: after each completed exchange, ask the LLM to
+        // extract durable facts into the ACTIVE world's memory table. Best-
+        // effort and silent — a failed extraction never breaks the chat.
+        const transcript = JSON.stringify([
+          ...priorMessages,
+          { role: "user", text: userMsg },
+          { role: "assistant", text: botResponse },
+        ]);
+        invoke<number>("extract_session_memories", {
+          messagesJson: transcript,
+          provider: settings.llmProvider,
+          model: settings.llmModel,
+          apiKey: settings.llmApiKey || null,
+          baseUrl: settings.llmBaseUrl || null,
+        })
+          .then(() => loadMemoryFacts())
+          .catch((err) =>
+            console.error("Memory extraction failed (non-fatal):", err),
+          );
+      })
+      .catch((err) => {
+        console.error("AI agent error:", err);
+        const fallback =
+          `Error calling AI provider: ${err}. Please ensure your configured LLM server is running or configure an API key in Settings.`;
+        updateVaultChatMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: fallback },
+        ]);
+      });
+  }, [
+    chatInput,
+    chatMessagesByVault,
+    vaultPath,
+    defaultChatMessages,
+    settings.llmProvider,
+    settings.llmModel,
+    settings.llmApiKey,
+    settings.llmBaseUrl,
+    selectedNoteId,
+    sessionTemperature,
+    updateVaultChatMessages,
+    loadMemoryFacts,
+  ]);
+
+  const initVaultChat = useCallback(() => {
+    if (!vaultPath) return;
+    setChatMessagesByVault((prev) => {
+      if (prev[vaultPath]) return prev;
+      return { ...prev, [vaultPath]: defaultChatMessages };
+    });
+    setSessionCloneTargetVaultPath((currentTarget) => {
+      if (currentTarget && currentTarget !== vaultPath) return currentTarget;
+      const firstOtherVault = vaults.find((item) => item.path !== vaultPath);
+      return firstOtherVault?.path || "";
+    });
+  }, [vaultPath, vaults, defaultChatMessages]);
+
   // --- P8: Session Summary ---
   const handleSummarizeSession = useCallback(() => {
     if (!vaultPath || isSummarizing) return;
     setIsSummarizing(true);
-    setSummaryText("");
+    setSummaryByVault((prev) => ({ ...prev, [vaultPath]: "" }));
     const transcript = JSON.stringify(currentChatMessages);
     invoke<string>("summarize_session", {
       messagesJson: transcript,
@@ -225,10 +252,15 @@ export function useAgent(
       apiKey: settings.llmApiKey || null,
       baseUrl: settings.llmBaseUrl || null,
     })
-      .then((summary) => setSummaryText(summary))
+      .then((summary) =>
+        setSummaryByVault((prev) => ({ ...prev, [vaultPath]: summary })),
+      )
       .catch((err) => {
         console.error("Session summary error:", err);
-        setSummaryText(`Error generating summary: ${err}`);
+        setSummaryByVault((prev) => ({
+          ...prev,
+          [vaultPath]: `Error generating summary: ${err}`,
+        }));
       })
       .finally(() => setIsSummarizing(false));
   }, [
@@ -347,7 +379,7 @@ export function useAgent(
     deleteMemoryFact,
     // P8
     isSummarizing,
-    summaryText,
+    summaryText: summaryByVault[vaultPath] || "",
     handleSummarizeSession,
     // P9
     npcVoiceText,
