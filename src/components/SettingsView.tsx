@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Brain,
   FileText,
@@ -66,6 +66,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     null
   );
   const [isReindexing, setIsReindexing] = useState(false);
+  const [vaultSettings, setVaultSettings] = useState<{
+    name: string | null;
+    campaign_system: string | null;
+    description: string | null;
+    tag_colors: Record<string, string> | null;
+  } | null>(null);
+  const [vaultSettingsSaved, setVaultSettingsSaved] = useState(false);
+  const [vaultSettingsError, setVaultSettingsError] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!vaultPath) return;
+    let cancelled = false;
+    invoke<{
+      name: string | null;
+      campaign_system: string | null;
+      description: string | null;
+      tag_colors: Record<string, string> | null;
+    }>("load_vault_settings")
+      .then((settings) => {
+        if (!cancelled) setVaultSettings(settings);
+      })
+      .catch(() => {
+        if (!cancelled) setVaultSettings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultPath]);
+
+  const saveVaultSettings = () => {
+    if (!vaultSettings) return;
+    setVaultSettingsSaved(false);
+    setVaultSettingsError(null);
+    invoke("save_vault_settings", { settings: vaultSettings })
+      .then(() => setVaultSettingsSaved(true))
+      .catch((err) => setVaultSettingsError(err.toString()));
+  };
 
   const isTestingConnection = isTestingConnectionProp ?? localIsTesting;
 
@@ -307,6 +346,108 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* Section: Campaign Voice */}
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 0,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "12px",
+            }}
+          >
+            <div>
+              <h3
+                style={{
+                  fontSize: "12px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: "var(--accent)",
+                  margin: 0,
+                  fontWeight: 600,
+                }}
+              >
+                Campaign Voice
+              </h3>
+              <p
+                style={{
+                  fontSize: "11px",
+                  color: "var(--muted)",
+                  margin: "4px 0 0 0",
+                }}
+              >
+                Who the Muse is in this world. Overrides the default
+                assistant persona when set.
+              </p>
+            </div>
+            {vaultSettings && (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={saveVaultSettings}
+                disabled={vaultSettingsSaved}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                }}
+              >
+                {vaultSettingsSaved ? "Saved" : "Save Voice"}
+              </button>
+            )}
+          </div>
+
+          {vaultSettingsError && (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "var(--danger, #c0392b)",
+                marginBottom: "8px",
+              }}
+            >
+              {vaultSettingsError}
+            </div>
+          )}
+
+          <div className="settings-item">
+            <div
+              className="settings-label"
+              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "6px" }}
+            >
+              Persona
+            </div>
+            <textarea
+              rows={4}
+              value={vaultSettings?.campaign_system ?? ""}
+              onChange={(e) =>
+                setVaultSettings((prev) =>
+                  prev
+                    ? { ...prev, campaign_system: e.target.value }
+                    : prev
+                )
+              }
+              placeholder="e.g. You are the Keeper of the Gate, a sardonic cosmic-horror narrator who answers in dry, measured prose."
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: 12,
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                color: "var(--fg)",
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
           </div>
         </div>
 
