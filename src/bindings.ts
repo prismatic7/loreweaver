@@ -119,6 +119,11 @@ export type VaultSettings = {
 	 *  by `image.rs` when generating images for this world.
 	 */
 	image_style_template?: string | null,
+	/**
+	 *  Per-world predictability override (0.0 = Firm, 1.0 = Wild).
+	 *  Resolved as: session toggle → world override → global default.
+	 */
+	firm_wild?: number | null,
 };
 
 /**

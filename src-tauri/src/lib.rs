@@ -110,6 +110,10 @@ pub struct VaultSettings {
     /// `image.rs` when generating images for this world.
     #[serde(default)]
     pub image_style_template: Option<String>,
+    /// Per-world predictability override (0.0 = Firm, 1.0 = Wild).
+    /// Resolved as: session toggle → world override → global default.
+    #[serde(default)]
+    pub firm_wild: Option<f64>,
 }
 
 // --- Tauri Commands ---
@@ -1649,10 +1653,11 @@ async fn orchestrate_agent(
     api_key: Option<&str>,
     base_url: Option<&str>,
     active_note_id: Option<&str>,
+    session_temperature: Option<f64>,
 ) -> Result<String, String> {
     let allow_local;
     let system_context;
-    let sampling_params;
+    let mut sampling_params;
     {
         let vault_path = state.vault_path.lock().await;
         let conn_arc = state.conn.lock().await;
@@ -1662,12 +1667,13 @@ async fn orchestrate_agent(
             .flatten()
             .map(|v| v == "true")
             .unwrap_or(true);
+        let global_temp = db::get_setting(&conn, "llm_temperature")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.8);
         sampling_params = crate::providers::llm::SamplingParams {
-            temperature: db::get_setting(&conn, "llm_temperature")
-                .ok()
-                .flatten()
-                .and_then(|v| v.parse::<f64>().ok())
-                .unwrap_or(0.8),
+            temperature: global_temp,
             top_p: db::get_setting(&conn, "llm_top_p")
                 .ok()
                 .flatten()
@@ -1684,6 +1690,11 @@ async fn orchestrate_agent(
                 .and_then(|v| v.parse::<i64>().ok()),
         };
         system_context = agent::build_system_context(&conn, prompt, active_note_id, &vault_path)?;
+
+        // The Cascade for predictability: session toggle → world override → global default.
+        let world_temp = agent::load_world_firm_wild(&vault_path);
+        sampling_params.temperature =
+            session_temperature.or(world_temp).unwrap_or(global_temp);
     }
 
     if let Some(base) = base_url {
@@ -3342,7 +3353,7 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
             let res =
-                orchestrate_agent(s, "hello", "nonexistent", "some-model", None, None, None).await;
+                orchestrate_agent(s, "hello", "nonexistent", "some-model", None, None, None, None).await;
             assert!(
                 res.is_err(),
                 "unsupported provider should fail before any HTTP call"

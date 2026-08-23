@@ -174,6 +174,7 @@ export function useSettings() {
   const llmModel = watch("llm_model");
   const llmApiKey = watch("llm_api_key");
   const llmBaseUrl = watch("llm_base_url");
+  const llmTemperature = watch("llm_temperature");
   const imageProvider = watch("image_provider");
   const imageModel = watch("image_model");
   const imageApiKey = watch("image_api_key");
@@ -204,6 +205,7 @@ export function useSettings() {
     llmModel,
     llmApiKey,
     llmBaseUrl,
+    llmTemperature,
     imageProvider,
     imageModel,
     imageApiKey,

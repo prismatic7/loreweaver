@@ -6,6 +6,9 @@ export interface AiViewProps {
   chatInput: string;
   setChatInput: (value: string) => void;
   handleSendChatMessage: () => void;
+  sessionTemperature: number | null;
+  setSessionTemperature: (value: number | null) => void;
+  defaultTemperature: number;
 }
 
 export const AiView: React.FC<AiViewProps> = ({
@@ -13,6 +16,9 @@ export const AiView: React.FC<AiViewProps> = ({
   chatInput,
   setChatInput,
   handleSendChatMessage,
+  sessionTemperature,
+  setSessionTemperature,
+  defaultTemperature,
 }) => {
   return (
     <div
@@ -33,18 +39,85 @@ export const AiView: React.FC<AiViewProps> = ({
             style={{
               padding: "20px 24px",
               borderBottom: "1px solid var(--border)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "16px",
             }}
           >
-            <span className="panel-title">Campaign Architect</span>
+            <div>
+              <span className="panel-title">Campaign Architect</span>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--muted)",
+                  marginTop: 4,
+                }}
+              >
+                Ask the Architect for plot suggestions, NPC development, or
+                worldbuilding ideas.
+              </div>
+            </div>
             <div
               style={{
-                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: 11,
                 color: "var(--muted)",
-                marginTop: 4,
+                whiteSpace: "nowrap",
               }}
             >
-              Ask the Architect for plot suggestions, NPC development, or
-              worldbuilding ideas.
+              <span>Firm</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={
+                  sessionTemperature === null
+                    ? defaultTemperature
+                    : sessionTemperature
+                }
+                onChange={(e) => setSessionTemperature(Number(e.target.value))}
+                style={{ width: 120, accentColor: "var(--accent)" }}
+                aria-label="Session predictability (Firm ↔ Wild)"
+              />
+              <span>Wild</span>
+              {sessionTemperature === null && (
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  onClick={() => setSessionTemperature(defaultTemperature)}
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                  title="Pin the default for this session"
+                >
+                  default
+                </button>
+              )}
+              {sessionTemperature !== null && (
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  onClick={() => setSessionTemperature(null)}
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                  title="Back to world/global default"
+                >
+                  reset
+                </button>
+              )}
             </div>
           </div>
           <div

@@ -132,6 +132,16 @@ fn load_campaign_persona(vault_path: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Loads the world-level predictability override (0.0 = Firm, 1.0 = Wild)
+/// from `vault_config.json`. Missing/unparseable config yields `None`, in
+/// which case the global default applies.
+pub(crate) fn load_world_firm_wild(vault_path: &str) -> Option<f64> {
+    let config_file = std::path::Path::new(vault_path).join("vault_config.json");
+    let content = std::fs::read_to_string(&config_file).ok()?;
+    let settings: crate::VaultSettings = serde_json::from_str(&content).ok()?;
+    settings.firm_wild.filter(|v| (0.0..=1.0).contains(v))
+}
+
 /// Reads the campaign bible files from `<vault_path>/bible/` and concatenates them
 /// into a single fixed conditioning block.
 ///
@@ -438,5 +448,42 @@ mod tests {
             load_campaign_persona(vault.to_str().unwrap()).is_none(),
             "blank persona should yield None"
         );
+    }
+
+    #[test]
+    fn test_load_world_firm_wild_cascade_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+
+        // No config → None (global default applies).
+        assert_eq!(load_world_firm_wild(vault.to_str().unwrap()), None);
+
+        // Valid override → Some(value).
+        std::fs::write(
+            vault.join("vault_config.json"),
+            r#"{ "firm_wild": 0.3 }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            load_world_firm_wild(vault.to_str().unwrap()),
+            Some(0.3),
+            "world override should be honoured"
+        );
+
+        // Out-of-range values are rejected (fall back to global).
+        std::fs::write(
+            vault.join("vault_config.json"),
+            r#"{ "firm_wild": 1.7 }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            load_world_firm_wild(vault.to_str().unwrap()),
+            None,
+            "out-of-range override should be ignored"
+        );
+
+        // Unparseable config → None.
+        std::fs::write(vault.join("vault_config.json"), "not json").unwrap();
+        assert_eq!(load_world_firm_wild(vault.to_str().unwrap()), None);
     }
 }

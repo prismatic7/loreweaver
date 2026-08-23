@@ -135,6 +135,7 @@ function App() {
     llmModel,
     llmApiKey,
     llmBaseUrl,
+    llmTemperature,
     imageProvider,
     imageModel,
     imageApiKey,
@@ -797,6 +798,9 @@ function App() {
           chatInput={agent.chatInput}
           setChatInput={agent.setChatInput}
           handleSendChatMessage={agent.handleSendChatMessage}
+          sessionTemperature={agent.sessionTemperature}
+          setSessionTemperature={agent.setSessionTemperature}
+          defaultTemperature={llmTemperature}
         />
       )}
 

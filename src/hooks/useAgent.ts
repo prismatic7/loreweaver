@@ -47,6 +47,10 @@ export function useAgent(
   const [npcAudioUrl, setNpcAudioUrl] = useState("");
   const [isGeneratingChatImage, setIsGeneratingChatImage] = useState(false);
   const [chatImageUrl, setChatImageUrl] = useState("");
+  // Session-level Firm↔Wild override. `null` = follow world/global default.
+  const [sessionTemperature, setSessionTemperature] = useState<number | null>(
+    null
+  );
 
   const defaultChatMessages = useMemo(
     () => [
@@ -139,6 +143,7 @@ export function useAgent(
       apiKey: settings.llmApiKey || null,
       baseUrl: settings.llmBaseUrl || null,
       activeNoteId: selectedNoteId || null,
+      sessionTemperature,
     })
       .then((botResponse) => {
         updateVaultChatMessages((prev) => [
@@ -162,6 +167,7 @@ export function useAgent(
     settings.llmApiKey,
     settings.llmBaseUrl,
     selectedNoteId,
+    sessionTemperature,
     updateVaultChatMessages,
   ]);
 
@@ -331,6 +337,9 @@ export function useAgent(
     cloneCurrentVaultSession,
     handleSendChatMessage,
     initVaultChat,
+    // Session Firm↔Wild quick toggle
+    sessionTemperature,
+    setSessionTemperature,
     // P7
     memoryFacts,
     loadMemoryFacts,

@@ -73,6 +73,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     description: string | null;
     tag_colors: Record<string, string> | null;
     image_style_template: string | null;
+    firm_wild: number | null;
   } | null>(null);
   const [vaultSettingsSaved, setVaultSettingsSaved] = useState(false);
   const [vaultSettingsError, setVaultSettingsError] = useState<string | null>(
@@ -91,6 +92,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       description: string | null;
       tag_colors: Record<string, string> | null;
       image_style_template: string | null;
+      firm_wild: number | null;
     }>("load_vault_settings")
       .then((settings) => {
         if (!cancelled) setVaultSettings(settings);
@@ -563,6 +565,102 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 fontFamily: "inherit",
               }}
             />
+          </div>
+
+          {/* World predictability override */}
+          <div
+            className="settings-item"
+            style={{
+              borderTop: "1px solid var(--border)",
+              paddingTop: "12px",
+              marginTop: "12px",
+            }}
+          >
+            <div
+              className="settings-label"
+              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}
+            >
+              World Predictability
+            </div>
+            <div
+              className="settings-desc"
+              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "8px" }}
+            >
+              This world's Firm ↔ Wild default. Leave blank to follow the global
+              default; the session toggle overrides this while you play.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={
+                  vaultSettings?.firm_wild === null ||
+                  vaultSettings?.firm_wild === undefined
+                    ? 0.5
+                    : vaultSettings.firm_wild
+                }
+                onChange={(e) =>
+                  setVaultSettings((prev) =>
+                    prev ? { ...prev, firm_wild: Number(e.target.value) } : prev
+                  )
+                }
+                style={{ flex: 1, accentColor: "var(--accent)" }}
+              />
+              {vaultSettings?.firm_wild === null ||
+              vaultSettings?.firm_wild === undefined ? (
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  onClick={() =>
+                    setVaultSettings((prev) =>
+                      prev ? { ...prev, firm_wild: 0.5 } : prev
+                    )
+                  }
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                >
+                  set
+                </button>
+              ) : (
+                <button
+                  className="btn btn-sm"
+                  type="button"
+                  onClick={() =>
+                    setVaultSettings((prev) =>
+                      prev ? { ...prev, firm_wild: null } : prev
+                    )
+                  }
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                >
+                  clear
+                </button>
+              )}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "11px",
+                color: "var(--muted)",
+                marginTop: "2px",
+              }}
+            >
+              <span>Firm</span>
+              <span>Wild</span>
+            </div>
           </div>
 
           {/* Bible conditioning pins */}

@@ -123,6 +123,10 @@ pub struct VaultSettings {
     /// by `image.rs` when generating images for this world.
     #[serde(default)]
     pub image_style_template: Option<String>,
+    /// Per-world predictability override (0.0 = Firm, 1.0 = Wild).
+    /// Resolved as: session toggle → world override → global default.
+    #[serde(default)]
+    pub firm_wild: Option<f64>,
 }
 
 /// PluginInfo mirrors the runtime type in `plugins.rs` so it can be exported to TypeScript.
