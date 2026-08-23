@@ -864,8 +864,6 @@ function App() {
           errors={errors}
           isDirty={isDirty}
           isValid={isValid}
-          theme={theme}
-          setTheme={setTheme}
           watch={watch}
           setValue={setValue}
           vaultPath={vaultPath}

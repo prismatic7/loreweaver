@@ -31,8 +31,6 @@ export interface SettingsViewProps {
   isDirty: boolean;
   isValid: boolean;
   isTestingConnection?: boolean;
-  theme?: "dark" | "light";
-  setTheme?: (theme: "dark" | "light") => void;
   testSettingsConnection?: (provider: string) => void;
   watch: any;
   setValue: any;
@@ -48,8 +46,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   isDirty,
   isValid,
   isTestingConnection: isTestingConnectionProp,
-  theme: _theme,
-  setTheme: _setTheme,
   testSettingsConnection,
   watch,
   setValue,
