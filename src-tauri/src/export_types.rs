@@ -72,6 +72,7 @@ pub struct AppSettings {
     pub image_model: String,
     pub image_api_key: String,
     pub image_base_url: String,
+    pub image_size: String,
 
     pub tts_provider: String,
     pub tts_api_key: String,

@@ -15,6 +15,7 @@ export type AppSettings = {
 	image_model: string,
 	image_api_key: string,
 	image_base_url: string,
+	image_size: string,
 	tts_provider: string,
 	tts_api_key: string,
 	tts_voice: string,

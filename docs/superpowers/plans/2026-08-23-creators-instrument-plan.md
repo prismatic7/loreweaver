@@ -82,8 +82,8 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 6: Output size (OpenAI / Stability)
 
-- [ ] **Step 1: Setting** `image_size` (default `1024x1024`) in `AppSettings` + zod + `image.rs` body (`image.rs:94` currently hardcodes it).
-- [ ] **Step 2: Verify** generate with a non-default size through OpenAI-compatible provider.
+- [x] **Step 1: Setting** `image_size` (default `1024x1024`) in `AppSettings` + zod + `image.rs` body (`image.rs:94` currently hardcodes it).
+- [x] **Step 2: Verify** generate with a non-default size through OpenAI-compatible provider.
 
 ### Task 7: TTS preview + STT picker
 

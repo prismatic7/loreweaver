@@ -1714,6 +1714,16 @@ async fn generate_image(
         }
     };
 
+    // Image size from persisted settings (WxH string, default 1024x1024).
+    let image_size_owned = {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        db::get_setting(&conn, "image_size")
+            .ok()
+            .flatten()
+            .filter(|v| !v.is_empty())
+    };
+
     run_blocking(move || {
         let agent = crate::providers::http_client();
         crate::providers::image::generate_image(
@@ -1726,6 +1736,7 @@ async fn generate_image(
             allow_local,
             quality_owned.as_deref(),
             fixed_seed,
+            image_size_owned.as_deref(),
             &agent,
         )
     })
@@ -1890,6 +1901,9 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
     let image_base_url = db::get_setting(&conn, "image_base_url")
         .unwrap_or(None)
         .unwrap_or_default();
+    let image_size = db::get_setting(&conn, "image_size")
+        .unwrap_or(None)
+        .unwrap_or_else(|| "1024x1024".to_string());
 
     let tts_provider = db::get_setting(&conn, "tts_provider")
         .unwrap_or(None)
@@ -1936,6 +1950,7 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
         image_model,
         image_api_key,
         image_base_url,
+        image_size,
         tts_provider,
         tts_api_key,
         tts_voice,
@@ -1994,6 +2009,8 @@ async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Res
     )
     .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "image_base_url", &settings.image_base_url)
+        .map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "image_size", &settings.image_size)
         .map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "tts_provider", &settings.tts_provider).map_err(|e| e.to_string())?;

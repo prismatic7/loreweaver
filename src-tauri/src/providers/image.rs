@@ -63,6 +63,7 @@ pub fn generate_image(
     allow_local: bool,
     quality: Option<&str>,
     fixed_seed: Option<u64>,
+    image_size: Option<&str>,
     agent: &Agent,
 ) -> Result<String, String> {
     let clean_prompt = if style.trim().is_empty() {
@@ -93,7 +94,7 @@ pub fn generate_image(
             let body = json!({
                 "model": image_model,
                 "prompt": clean_prompt,
-                "size": "1024x1024",
+                "size": image_size.unwrap_or("1024x1024"),
                 "response_format": "b64_json"
             });
 
@@ -115,7 +116,7 @@ pub fn generate_image(
             Ok(image_data_url_from_bytes(&image_bytes))
         }
         "stability" => {
-            generate_stability_image(prompt, style, image_model, api_key, base_url, agent)
+            generate_stability_image(prompt, style, image_model, api_key, base_url, image_size, agent)
         }
         other => Err(format!("Unsupported image provider: {}", other)),
     }
@@ -366,6 +367,7 @@ fn generate_stability_image(
     model: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    image_size: Option<&str>,
     agent: &Agent,
 ) -> Result<String, String> {
     let key = api_key
@@ -393,13 +395,20 @@ fn generate_stability_image(
         model.trim()
     };
 
+    // Parse "WxH" from the image_size setting (default 768x768 for stability).
+    let size = image_size.unwrap_or("768x768").trim();
+    let (width, height) = match size.split_once('x') {
+        Some((w, h)) => (w.trim().to_string(), h.trim().to_string()),
+        None => ("768".to_string(), "768".to_string()),
+    };
+
     let url = format!("{}/v1/generation/{}/text-to-image", base, engine_id);
     let body = serde_json::json!({
         "text_prompts": [{ "text": clean_prompt }],
         "cfg_scale": 7,
         "clip_guidance_preset": "FAST_BLUE",
-        "height": 768,
-        "width": 768,
+        "height": height,
+        "width": width,
         "samples": 1,
         "steps": 30
     });

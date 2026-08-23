@@ -1199,6 +1199,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )}
               </button>
 
+              {/* Output size (image providers only) */}
+              {activeConfigTab === "image" && (
+                <div
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    paddingTop: "12px",
+                    marginTop: "12px",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      fontWeight: 500,
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Output Size
+                  </label>
+                  <select
+                    {...register("image_size")}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      fontSize: "12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 0,
+                      color: "var(--fg)",
+                    }}
+                  >
+                    <option value="1024x1024">1024 × 1024 (Square)</option>
+                    <option value="768x768">768 × 768 (Square)</option>
+                    <option value="512x512">512 × 512 (Square)</option>
+                    <option value="1024x768">1024 × 768 (Landscape)</option>
+                    <option value="768x1024">768 × 1024 (Portrait)</option>
+                  </select>
+                </div>
+              )}
+
               {/* Connection Test Output */}
               {testConnectionError && (
                 <div

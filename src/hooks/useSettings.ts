@@ -26,6 +26,7 @@ export const settingsSchema = z.object({
     z.string().url("Must be a valid URL"),
     z.literal(""),
   ]),
+  image_size: z.string(),
 
   tts_provider: z.string().min(1, "Provider is required"),
   tts_api_key: z.string(),
@@ -58,6 +59,7 @@ export const DEFAULT_SETTINGS: SettingsForm = {
   image_model: "",
   image_api_key: "",
   image_base_url: "",
+  image_size: "1024x1024",
 
   tts_provider: "local",
   tts_api_key: "",
@@ -111,6 +113,7 @@ export function useSettings() {
           image_model: settings.image_model || "",
           image_api_key: settings.image_api_key || "",
           image_base_url: settings.image_base_url || "",
+          image_size: settings.image_size || DEFAULT_SETTINGS.image_size,
 
           tts_provider: settings.tts_provider || DEFAULT_SETTINGS.tts_provider,
           tts_api_key: settings.tts_api_key || "",
