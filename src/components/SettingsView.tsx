@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import React, { useEffect, useState } from "react";
 import {
   Brain,
@@ -125,6 +126,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     invoke("save_vault_settings", { settings: vaultSettings })
       .then(() => setVaultSettingsSaved(true))
       .catch((err) => setVaultSettingsError(err.toString()));
+  };
+
+  const [ttsPreviewUrl, setTtsPreviewUrl] = useState<string>("");
+  const [ttsPreviewLoading, setTtsPreviewLoading] = useState(false);
+  const [ttsPreviewError, setTtsPreviewError] = useState<string | null>(null);
+
+  const previewVoice = () => {
+    const voice = (watch("tts_voice") as string) || "";
+    const provider = (watch("tts_provider") as string) || "local";
+    const apiKey = (watch("tts_api_key") as string) || "";
+    const baseUrl = (watch("tts_base_url") as string) || "";
+    if (!voice.trim()) {
+      setTtsPreviewError("Enter a voice name/ID first");
+      return;
+    }
+    setTtsPreviewLoading(true);
+    setTtsPreviewError(null);
+    setTtsPreviewUrl("");
+    invoke<string>("generate_speech", {
+      text: "Hello. This is the voice of the world.",
+      provider,
+      apiKey: apiKey || null,
+      voice,
+      baseUrl: baseUrl || null,
+    })
+      .then((url) => {
+        setTtsPreviewUrl(url);
+        const audio = new Audio(url);
+        audio.play().catch(() => setTtsPreviewError("Audio playback failed"));
+      })
+      .catch((err) => setTtsPreviewError(err.toString()))
+      .finally(() => setTtsPreviewLoading(false));
+  };
+
+  const handlePickSttFolder = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: true,
+      });
+      if (selected && typeof selected === "string") {
+        setValue("stt_base_url", selected, { shouldDirty: true });
+      }
+    } catch (err) {
+      setTtsPreviewError("Folder picker failed: " + err);
+    }
   };
 
   const isTestingConnection = isTestingConnectionProp ?? localIsTesting;
@@ -1040,6 +1087,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       }
                     </span>
                   )}
+
+                  {/* TTS voice preview */}
+                  {activeConfigTab === "tts" && (
+                    <div style={{ marginTop: "8px" }}>
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{
+                          width: "100%",
+                          padding: "6px",
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 0,
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                        onClick={previewVoice}
+                        disabled={ttsPreviewLoading}
+                        data-od-id="settings-tts-preview"
+                      >
+                        <AudioLines size={12} />
+                        {ttsPreviewLoading ? "Speaking…" : "Preview Voice"}
+                      </button>
+                      {ttsPreviewError && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "var(--danger)",
+                            marginTop: "4px",
+                            display: "block",
+                          }}
+                        >
+                          {ttsPreviewError}
+                        </span>
+                      )}
+                      {ttsPreviewUrl && !ttsPreviewError && (
+                        <audio
+                          src={ttsPreviewUrl}
+                          controls
+                          style={{ width: "100%", marginTop: "6px" }}
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1056,20 +1151,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   >
                     Local Model Path
                   </label>
-                  <input
-                    type="text"
-                    {...register("stt_base_url")}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      fontSize: "12px",
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 0,
-                      color: "var(--fg)",
-                    }}
-                    placeholder="Path to sherpa-onnx model directory"
-                  />
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="text"
+                      {...register("stt_base_url")}
+                      style={{
+                        flex: 1,
+                        padding: "8px 10px",
+                        fontSize: "12px",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 0,
+                        color: "var(--fg)",
+                      }}
+                      placeholder="Path to sherpa-onnx model directory"
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        padding: "0 10px",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 0,
+                        cursor: "pointer",
+                        fontSize: "12px",
+                        whiteSpace: "nowrap",
+                      }}
+                      onClick={handlePickSttFolder}
+                      data-od-id="settings-stt-folder-picker"
+                    >
+                      Browse…
+                    </button>
+                  </div>
                   {errors.stt_base_url && (
                     <span
                       style={{

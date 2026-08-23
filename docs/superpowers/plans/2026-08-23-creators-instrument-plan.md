@@ -87,8 +87,8 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 7: TTS preview + STT picker
 
-- [ ] **Step 1: Voice preview** a small "speak sample" button per voice in the TTS settings, calling the existing `generate_speech` command with a short sample line, playing the result.
-- [ ] **Step 2: STT model picker** replace the STT "base URL" text field with a folder picker for the sherpa-onnx model directory (label lies today).
+- [x] **Step 1: Voice preview** a small "speak sample" button per voice in the TTS settings, calling the existing `generate_speech` command with a short sample line, playing the result.
+- [x] **Step 2: STT model picker** replace the STT "base URL" text field with a folder picker for the sherpa-onnx model directory (label lies today).
 
 ---
 
