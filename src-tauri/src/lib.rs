@@ -1674,6 +1674,8 @@ async fn generate_image(
     model: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
+    quality: Option<&str>,
+    fixed_seed: Option<u64>,
 ) -> Result<String, String> {
     let allow_local = {
         let conn_arc = state.conn.lock().await;
@@ -1698,6 +1700,20 @@ async fn generate_image(
     let api_key_owned = api_key.map(|k| k.to_string());
     let base_url_owned = base_url.map(|b| b.to_string());
 
+    // Quality / fixed-seed resolve from the command args when supplied,
+    // otherwise fall back to persisted settings (fast/standard/high).
+    let quality_owned = match quality {
+        Some(q) if !q.trim().is_empty() => Some(q.to_string()),
+        _ => {
+            let conn_arc = state.conn.lock().await;
+            let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+            db::get_setting(&conn, "image_quality")
+                .ok()
+                .flatten()
+                .filter(|v| !v.is_empty())
+        }
+    };
+
     run_blocking(move || {
         let agent = crate::providers::http_client();
         crate::providers::image::generate_image(
@@ -1708,6 +1724,8 @@ async fn generate_image(
             api_key_owned.as_deref(),
             base_url_owned.as_deref(),
             allow_local,
+            quality_owned.as_deref(),
+            fixed_seed,
             &agent,
         )
     })

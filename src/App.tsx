@@ -664,6 +664,10 @@ function App() {
             setImagePrompt={sessionTools.setImagePrompt}
             imageStyle={sessionTools.imageStyle}
             setImageStyle={sessionTools.setImageStyle}
+            imageQuality={sessionTools.imageQuality}
+            setImageQuality={sessionTools.setImageQuality}
+            imageFixedSeed={sessionTools.imageFixedSeed}
+            setImageFixedSeed={sessionTools.setImageFixedSeed}
             isGeneratingImage={sessionTools.isGeneratingImage}
             generatedImageUrl={sessionTools.generatedImageUrl}
             handleGenerateImage={sessionTools.handleGenerateImage}

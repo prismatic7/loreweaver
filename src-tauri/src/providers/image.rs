@@ -61,6 +61,8 @@ pub fn generate_image(
     api_key: Option<&str>,
     base_url: Option<&str>,
     allow_local: bool,
+    quality: Option<&str>,
+    fixed_seed: Option<u64>,
     agent: &Agent,
 ) -> Result<String, String> {
     let clean_prompt = if style.trim().is_empty() {
@@ -76,7 +78,7 @@ pub fn generate_image(
     };
 
     match provider {
-        "local" => generate_comfyui_image(prompt, style, image_model, base_url, agent),
+        "local" => generate_comfyui_image(prompt, style, image_model, base_url, quality, fixed_seed, agent),
         "openai" | "openai-compatible" => {
             let base = base_url
                 .unwrap_or("https://api.openai.com")
@@ -124,6 +126,8 @@ fn generate_comfyui_image(
     style: &str,
     model: &str,
     base_url: Option<&str>,
+    quality: Option<&str>,
+    fixed_seed: Option<u64>,
     agent: &Agent,
 ) -> Result<String, String> {
     let base = base_url
@@ -134,6 +138,19 @@ fn generate_comfyui_image(
     if base.is_empty() {
         return Err("ComfyUI base URL is required".to_string());
     }
+
+    // Quality → steps mapping (fast / standard / high). Default 28.
+    let steps = match quality.unwrap_or("standard").trim() {
+        "fast" => 12,
+        "high" => 40,
+        _ => 28,
+    };
+
+    // Fixed seed = reproducible; None = random (today's behaviour).
+    let seed = match fixed_seed {
+        Some(s) => s,
+        None => uuid::Uuid::new_v4().as_u128() as u64,
+    };
 
     let client_id = uuid::Uuid::new_v4().to_string();
     let positive_prompt = if style.trim().is_empty() {
@@ -152,8 +169,8 @@ fn generate_comfyui_image(
     let workflow = serde_json::json!({
         "3": {
             "inputs": {
-                "seed": uuid::Uuid::new_v4().as_u128() as u64,
-                "steps": 28,
+                "seed": seed,
+                "steps": steps,
                 "cfg": 7,
                 "sampler_name": "dpmpp_2m",
                 "scheduler": "karras",

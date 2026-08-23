@@ -71,6 +71,10 @@ export interface RightDrawerProps {
   setImagePrompt: (value: string) => void;
   imageStyle: string;
   setImageStyle: (value: string) => void;
+  imageQuality: string;
+  setImageQuality: (value: string) => void;
+  imageFixedSeed: string;
+  setImageFixedSeed: (value: string) => void;
   isGeneratingImage: boolean;
   generatedImageUrl: string;
   handleGenerateImage: () => void;
@@ -1229,6 +1233,10 @@ const AssetTab: React.FC<RightDrawerProps> = ({
   setImagePrompt,
   imageStyle,
   setImageStyle,
+  imageQuality,
+  setImageQuality,
+  imageFixedSeed,
+  setImageFixedSeed,
   isGeneratingImage,
   generatedImageUrl,
   handleGenerateImage,
@@ -1317,6 +1325,97 @@ const AssetTab: React.FC<RightDrawerProps> = ({
         <option value="Vibrant Concept Art">Vibrant Concept Art</option>
       </select>
     </div>
+
+    {/* Advanced options: quality + seed, tucked away */}
+    <details
+      style={{
+        marginTop: "8px",
+        border: "1px solid var(--border)",
+        borderRadius: 0,
+        padding: "6px 8px",
+        background: "var(--bg)",
+      }}
+    >
+      <summary
+        style={{
+          fontSize: "10px",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--muted)",
+          fontWeight: 600,
+          cursor: "pointer",
+          outline: "none",
+        }}
+      >
+        Advanced
+      </summary>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          marginTop: "8px",
+        }}
+      >
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: "11px",
+              color: "var(--muted)",
+              marginBottom: "4px",
+            }}
+          >
+            Quality
+          </label>
+          <select
+            value={imageQuality}
+            onChange={(e) => setImageQuality(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "5px 8px",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              color: "var(--fg)",
+              fontSize: "12px",
+            }}
+          >
+            <option value="fast">Fast</option>
+            <option value="standard">Standard</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: "11px",
+              color: "var(--muted)",
+              marginBottom: "4px",
+            }}
+          >
+            Seed (blank = random)
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={imageFixedSeed}
+            onChange={(e) => setImageFixedSeed(e.target.value)}
+            placeholder="e.g. 123456789"
+            style={{
+              width: "100%",
+              padding: "5px 8px",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              color: "var(--fg)",
+              fontSize: "12px",
+            }}
+          />
+        </div>
+      </div>
+    </details>
 
       <button
         className="btn btn-sm btn-primary"

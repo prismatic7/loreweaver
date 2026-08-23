@@ -76,9 +76,9 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 5: Quality, not knobs (image)
 
-- [ ] **Step 1: Settings** a `Quality` choice (fast / standard / high) mapping to ComfyUI steps (e.g. 12 / 28 / 40), plus a seed toggle (random ↔ fixed). These are **advanced options**, collapsed by default.
-- [ ] **Step 2: Backend** `generate_comfyui_image` (`image.rs:122`) accepts `steps` + `seed`; defaults keep today's values (28 / 7 / random) when unset.
-- [ ] **Step 3: Verify** local generation at each quality level; confirm workflow JSON contains the mapped steps.
+- [x] **Step 1: Settings** a `Quality` choice (fast / standard / high) mapping to ComfyUI steps (e.g. 12 / 28 / 40), plus a seed toggle (random ↔ fixed). These are **advanced options**, collapsed by default.
+- [x] **Step 2: Backend** `generate_comfyui_image` (`image.rs:122`) accepts `steps` + `seed`; defaults keep today's values (28 / 7 / random) when unset.
+- [x] **Step 3: Verify** local generation at each quality level; confirm workflow JSON contains the mapped steps.
 
 ### Task 6: Output size (OpenAI / Stability)
 

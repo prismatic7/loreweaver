@@ -53,6 +53,8 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     "A detailed portrait of Lirael, the elven mage",
   );
   const [imageStyle, setImageStyle] = useState("Fantasy Portrait");
+  const [imageQuality, setImageQuality] = useState("standard");
+  const [imageFixedSeed, setImageFixedSeed] = useState("");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string>("");
 
@@ -118,6 +120,8 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
       model: imageModel,
       apiKey: imageApiKey || null,
       baseUrl: imageBaseUrl || null,
+      quality: imageQuality,
+      fixedSeed: imageFixedSeed.trim() ? Number(imageFixedSeed.trim()) : null,
     })
       .then((dataUrl) => {
         setGeneratedImageUrl(dataUrl);
@@ -234,6 +238,10 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     setImagePrompt,
     imageStyle,
     setImageStyle,
+    imageQuality,
+    setImageQuality,
+    imageFixedSeed,
+    setImageFixedSeed,
     isGeneratingImage,
     generatedImageUrl,
     handleGenerateImage,
