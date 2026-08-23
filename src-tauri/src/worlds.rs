@@ -76,6 +76,7 @@ pub fn default_manifest(folder_name: &str) -> WorldManifest {
         note_types: default_note_types(),
         provenance_taxonomy: default_provenance_taxonomy(),
         bible: true,
+        bible_files: Vec::new(),
         created: chrono::Utc::now().format("%Y-%m-%d").to_string(),
     }
 }
@@ -83,6 +84,36 @@ pub fn default_manifest(folder_name: &str) -> WorldManifest {
 /// Serialize a manifest to pretty JSON.
 pub fn manifest_to_json(m: &WorldManifest) -> Result<String, String> {
     serde_json::to_string_pretty(m).map_err(|e| format!("Failed to serialize manifest: {}", e))
+}
+
+/// Write a manifest to `<vault_path>/world.json`, preserving any other
+/// top-level keys already present in the file.
+pub fn save_manifest(vault_path: &str, m: &WorldManifest) -> Result<(), String> {
+    let vault = std::path::Path::new(vault_path);
+    let manifest_path = vault.join(MANIFEST_FILE);
+
+    // Merge with existing file so unrelated hand-edited keys survive.
+    let mut merged: serde_json::Map<String, Value> = std::fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+
+    let updated = serde_json::to_value(m)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))?
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+
+    for (k, v) in updated {
+        merged.insert(k, v);
+    }
+
+    let json = serde_json::to_string_pretty(&merged)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
+    std::fs::write(&manifest_path, json)
+        .map_err(|e| format!("Failed to write world.json: {}", e))?;
+    Ok(())
 }
 
 /// Read `<vault_path>/world.json` and apply per-field fallback to defaults.
@@ -175,6 +206,19 @@ pub fn load_manifest(vault_path: &str) -> Result<WorldManifest, String> {
         .get("bible")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+
+    // bible_files: pinned conditioning files; empty = canon 8-file set.
+    if let Some(Value::Array(arr)) = raw.get("bible_files") {
+        let mut files = Vec::new();
+        for v in arr {
+            if let Some(s) = v.as_str() {
+                if !s.trim().is_empty() {
+                    files.push(s.to_string());
+                }
+            }
+        }
+        m.bible_files = files;
+    }
 
     // created: optional.
     if let Some(Value::String(s)) = raw.get("created") {

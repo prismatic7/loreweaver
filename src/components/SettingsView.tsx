@@ -76,6 +76,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [vaultSettingsError, setVaultSettingsError] = useState<string | null>(
     null
   );
+  const [biblePins, setBiblePins] = useState<string[] | null>(null);
+  const [biblePinsSaved, setBiblePinsSaved] = useState(false);
+  const [biblePinsError, setBiblePinsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!vaultPath) return;
@@ -92,10 +95,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .catch(() => {
         if (!cancelled) setVaultSettings(null);
       });
+    invoke<{ bible_files?: string[] }>("get_world_manifest")
+      .then((manifest) => {
+        if (!cancelled) setBiblePins(manifest.bible_files ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setBiblePins([]);
+      });
     return () => {
       cancelled = true;
     };
   }, [vaultPath]);
+
+  const saveBiblePins = () => {
+    if (biblePins === null) return;
+    setBiblePinsSaved(false);
+    setBiblePinsError(null);
+    invoke("update_bible_files", { files: biblePins })
+      .then(() => setBiblePinsSaved(true))
+      .catch((err) => setBiblePinsError(err.toString()));
+  };
 
   const saveVaultSettings = () => {
     if (!vaultSettings) return;
@@ -448,6 +467,116 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 fontFamily: "inherit",
               }}
             />
+          </div>
+
+          {/* Bible conditioning pins */}
+          <div
+            className="settings-item"
+            style={{
+              borderTop: "1px solid var(--border)",
+              paddingTop: "12px",
+              marginTop: "12px",
+            }}
+          >
+            <div
+              className="settings-label"
+              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}
+            >
+              Bible Conditioning
+            </div>
+            <div
+              className="settings-desc"
+              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "8px" }}
+            >
+              Pinned notes are always injected into the Muse's context. Unpin
+              to let a note drop out of conditioning as play moves on.
+            </div>
+            {biblePins !== null ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {[
+                  "TONE.md",
+                  "TOUCHSTONES.md",
+                  "THE_PLAN.md",
+                  "CONSPIRACY.md",
+                  "PEOPLE.md",
+                  "PLACES.md",
+                  "RULES.md",
+                  "SESSION_LOG.md",
+                ].map((file) => {
+                  const pinned = biblePins.includes(file);
+                  const unpinned = biblePins.length === 0;
+                  return (
+                    <label
+                      key={file}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 12,
+                        padding: "4px 0",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={pinned || unpinned}
+                        disabled={unpinned}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...biblePins, file]
+                            : biblePins.filter((f) => f !== file);
+                          setBiblePins(next);
+                        }}
+                      />
+                      <span
+                        style={{
+                          color: pinned || unpinned ? "var(--fg)" : "var(--muted)",
+                        }}
+                      >
+                        {file.replace(".md", "")}
+                      </span>
+                      {unpinned && (
+                        <span style={{ fontSize: 10, color: "var(--muted)" }}>
+                          (all active by default)
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                Loading…
+              </div>
+            )}
+
+            {biblePinsError && (
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--danger, #c0392b)",
+                  marginTop: "8px",
+                }}
+              >
+                {biblePinsError}
+              </div>
+            )}
+
+            {biblePins !== null && (
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={saveBiblePins}
+                disabled={biblePinsSaved}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  marginTop: "8px",
+                }}
+              >
+                {biblePinsSaved ? "Saved" : "Save Bible"}
+              </button>
+            )}
           </div>
         </div>
 

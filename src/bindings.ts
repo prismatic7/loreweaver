@@ -145,6 +145,11 @@ export type WorldManifest = {
 	note_types: NoteType[],
 	provenance_taxonomy: ProvenanceType[],
 	bible: boolean,
+	/**
+	 *  Pinned bible files (e.g. ["TONE.md", "RULES.md"]). Empty = the canon
+	 *  8-file set is active (backward compatible).
+	 */
+	bible_files?: string[],
 	created: string,
 };
 

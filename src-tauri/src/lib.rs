@@ -1285,6 +1285,19 @@ async fn get_world_manifest(state: State<'_, AppState>) -> Result<WorldManifest,
     worlds::ensure_manifest(&vault_path)
 }
 
+/// Updates the pinned bible conditioning files for the active world.
+#[tauri::command]
+async fn update_bible_files(
+    state: State<'_, AppState>,
+    files: Vec<String>,
+) -> Result<WorldManifest, String> {
+    let vault_path = state.vault_path.lock().await;
+    let mut manifest = worlds::ensure_manifest(&vault_path)?;
+    manifest.bible_files = files;
+    worlds::save_manifest(&vault_path, &manifest)?;
+    Ok(manifest)
+}
+
 /// Lists all worlds in the campaigns root, excluding the `_liminal` system folder.
 #[tauri::command]
 async fn list_worlds(state: State<'_, AppState>) -> Result<Vec<WorldInfo>, String> {
@@ -2667,6 +2680,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             capture_note,
             clip_webpage,
             get_world_manifest,
+            update_bible_files,
             list_worlds,
             create_world,
             export_world,

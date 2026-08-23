@@ -163,6 +163,10 @@ pub struct WorldManifest {
     pub note_types: Vec<NoteType>,
     pub provenance_taxonomy: Vec<ProvenanceType>,
     pub bible: bool,
+    /// Pinned bible files (e.g. ["TONE.md", "RULES.md"]). Empty = the canon
+    /// 8-file set is active (backward compatible).
+    #[serde(default)]
+    pub bible_files: Vec<String>,
     pub created: String,
 }
 

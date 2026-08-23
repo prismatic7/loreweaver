@@ -138,6 +138,9 @@ fn load_campaign_persona(vault_path: &str) -> Option<String> {
 /// The bible is ALWAYS-ON conditioning — it is injected verbatim into the system
 /// prompt regardless of the query, so the Muse never generates off-tone even when
 /// the query is vague. Missing files are skipped gracefully.
+///
+/// When the world manifest pins `bible_files`, only those files are read;
+/// an empty pin list means the canon 8-file set is active.
 fn load_bible_context(vault_path: &str) -> String {
     const BIBLE_FILES: [&str; 8] = [
         "TONE.md",
@@ -150,21 +153,43 @@ fn load_bible_context(vault_path: &str) -> String {
         "SESSION_LOG.md",
     ];
 
+    let pinned: Vec<String> = crate::worlds::load_manifest(vault_path)
+        .map(|m| m.bible_files)
+        .unwrap_or_default();
+
     let bible_dir = std::path::Path::new(vault_path).join("bible");
     let mut sections: Vec<String> = Vec::new();
 
-    for file in BIBLE_FILES {
-        let path = bible_dir.join(file);
-        match std::fs::read_to_string(&path) {
-            Ok(contents) => {
-                let trimmed = contents.trim();
-                if !trimmed.is_empty() {
-                    sections.push(format!("[{}]\n{}", file, trimmed));
+    if pinned.is_empty() {
+        for file in BIBLE_FILES {
+            let path = bible_dir.join(file);
+            match std::fs::read_to_string(&path) {
+                Ok(contents) => {
+                    let trimmed = contents.trim();
+                    if !trimmed.is_empty() {
+                        sections.push(format!("[{}]\n{}", file, trimmed));
+                    }
+                }
+                Err(_) => {
+                    // Skip missing/unreadable bible files gracefully.
+                    continue;
                 }
             }
-            Err(_) => {
-                // Skip missing/unreadable bible files gracefully.
-                continue;
+        }
+    } else {
+        for file in &pinned {
+            let path = bible_dir.join(file);
+            match std::fs::read_to_string(&path) {
+                Ok(contents) => {
+                    let trimmed = contents.trim();
+                    if !trimmed.is_empty() {
+                        sections.push(format!("[{}]\n{}", file, trimmed));
+                    }
+                }
+                Err(_) => {
+                    // Skip missing/unreadable bible files gracefully.
+                    continue;
+                }
             }
         }
     }
@@ -209,6 +234,7 @@ pub fn generate_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::worlds::{default_manifest, load_manifest, save_manifest};
 
     #[test]
     fn test_load_bible_context_injects_bible_when_files_exist() {
@@ -289,6 +315,68 @@ mod tests {
             !context.system_prompt.contains("CAMPAIGN BIBLE"),
             "bible should be skipped when manifest bible=false"
         );
+    }
+
+    #[test]
+    fn test_load_bible_context_honours_pinned_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        let bible_dir = vault.join("bible");
+        std::fs::create_dir_all(&bible_dir).unwrap();
+        std::fs::write(bible_dir.join("TONE.md"), "Grim, cosmic horror.").unwrap();
+        std::fs::write(bible_dir.join("RULES.md"), "Sanity erodes.").unwrap();
+        std::fs::write(bible_dir.join("PEOPLE.md"), "The Keeper of the Gate.").unwrap();
+
+        // Unpinned (empty) → canon set: all three files present.
+        let context = load_bible_context(vault.to_str().unwrap());
+        assert!(context.contains("[TONE.md]"));
+        assert!(context.contains("[RULES.md]"));
+        assert!(context.contains("[PEOPLE.md]"));
+
+        // Pin only TONE.md → others excluded.
+        std::fs::write(
+            vault.join("world.json"),
+            r#"{ "id": "pinned", "name": "Pinned", "bible_files": ["TONE.md"] }"#,
+        )
+        .unwrap();
+        let context = load_bible_context(vault.to_str().unwrap());
+        assert!(context.contains("[TONE.md]"));
+        assert!(!context.contains("[RULES.md]"), "unpinned file should be excluded");
+        assert!(!context.contains("[PEOPLE.md]"), "unpinned file should be excluded");
+
+        // Pin a file that doesn't exist → gracefully skipped.
+        std::fs::write(
+            vault.join("world.json"),
+            r#"{ "id": "pinned", "name": "Pinned", "bible_files": ["TONE.md", "MISSING.md"] }"#,
+        )
+        .unwrap();
+        let context = load_bible_context(vault.to_str().unwrap());
+        assert!(context.contains("[TONE.md]"));
+        assert!(!context.contains("[MISSING.md]"), "missing pinned file should be skipped");
+    }
+
+    #[test]
+    fn test_save_manifest_preserves_unrelated_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        std::fs::create_dir_all(&vault).unwrap();
+        std::fs::write(
+            vault.join("world.json"),
+            r#"{ "id": "w", "name": "W", "custom_field": "keep-me" }"#,
+        )
+        .unwrap();
+
+        let mut m = default_manifest("w");
+        m.bible_files = vec!["TONE.md".to_string()];
+        save_manifest(vault.to_str().unwrap(), &m).unwrap();
+
+        let on_disk = std::fs::read_to_string(vault.join("world.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&on_disk).unwrap();
+        assert_eq!(parsed["custom_field"], "keep-me", "unrelated key should survive");
+        assert_eq!(parsed["bible_files"][0], "TONE.md");
+        // Round-trip through load_manifest.
+        let loaded = load_manifest(vault.to_str().unwrap()).unwrap();
+        assert_eq!(loaded.bible_files, vec!["TONE.md".to_string()]);
     }
 
     #[test]
