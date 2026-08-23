@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
 
 export const settingsSchema = z.object({
@@ -10,6 +10,10 @@ export const settingsSchema = z.object({
   llm_model: z.string().min(1, "Model is required"),
   llm_api_key: z.string(),
   llm_base_url: z.string().url("Must be a valid URL"),
+  llm_temperature: z.coerce.number().min(0).max(2),
+  llm_top_p: z.coerce.number().min(0).max(1),
+  llm_max_tokens: z.coerce.number().int().min(256).max(32768),
+  llm_seed: z.union([z.coerce.number().int().min(0), z.literal(""), z.null()]),
 
   embed_provider: z.string().min(1, "Provider is required"),
   embed_model: z.string().min(1, "Model is required"),
@@ -49,6 +53,10 @@ export const DEFAULT_SETTINGS: SettingsForm = {
   llm_model: "llama3:8b",
   llm_api_key: "",
   llm_base_url: "http://localhost:11434",
+  llm_temperature: 0.8,
+  llm_top_p: 1,
+  llm_max_tokens: 4096,
+  llm_seed: null,
 
   embed_provider: "local",
   embed_model: "all-MiniLM-L6-v2",
@@ -85,7 +93,7 @@ export function useSettings() {
     reset,
     formState: { errors, isDirty, isValid },
   } = useForm<SettingsForm>({
-    resolver: zodResolver(settingsSchema),
+    resolver: zodResolver(settingsSchema) as Resolver<SettingsForm>,
     defaultValues: DEFAULT_SETTINGS,
   });
 
@@ -101,6 +109,12 @@ export function useSettings() {
           llm_model: settings.llm_model || DEFAULT_SETTINGS.llm_model,
           llm_api_key: settings.llm_api_key || "",
           llm_base_url: settings.llm_base_url || DEFAULT_SETTINGS.llm_base_url,
+          llm_temperature:
+            settings.llm_temperature ?? DEFAULT_SETTINGS.llm_temperature,
+          llm_top_p: settings.llm_top_p ?? DEFAULT_SETTINGS.llm_top_p,
+          llm_max_tokens:
+            settings.llm_max_tokens ?? DEFAULT_SETTINGS.llm_max_tokens,
+          llm_seed: settings.llm_seed ?? null,
 
           embed_provider:
             settings.embed_provider || DEFAULT_SETTINGS.embed_provider,
@@ -141,8 +155,12 @@ export function useSettings() {
   const handleSaveSettings = useCallback(
     async (data: SettingsForm, alert: (message: string) => void) => {
       try {
-        await invoke("save_settings", { settings: data });
-        reset(data);
+        const payload = {
+          ...data,
+          llm_seed: data.llm_seed === "" ? null : data.llm_seed,
+        };
+        await invoke("save_settings", { settings: payload });
+        reset(payload);
         alert("Configuration settings saved successfully!");
       } catch (err) {
         alert("Failed to save settings: " + err);

@@ -1138,6 +1138,132 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               )}
 
+              {activeConfigTab === "llm" && (
+                <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid var(--border)" }}>
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      fontWeight: 500,
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Predictability — Firm ↔ Wild
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    {...register("llm_temperature", { valueAsNumber: true })}
+                    style={{ width: "100%", accentColor: "var(--accent)" }}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      marginTop: "2px",
+                    }}
+                  >
+                    <span>Firm</span>
+                    <span>Wild</span>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+                    <div style={{ flex: 1 }}>
+                      <label
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--muted)",
+                          fontWeight: 500,
+                          display: "block",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Top P
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        {...register("llm_top_p", { valueAsNumber: true })}
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          fontSize: "12px",
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 0,
+                          color: "var(--fg)",
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--muted)",
+                          fontWeight: 500,
+                          display: "block",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Max Tokens
+                      </label>
+                      <input
+                        type="number"
+                        min="256"
+                        max="32768"
+                        step="256"
+                        {...register("llm_max_tokens", { valueAsNumber: true })}
+                        style={{
+                          width: "100%",
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 0,
+                          color: "var(--fg)",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <label
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      fontWeight: 500,
+                      display: "block",
+                      marginTop: "12px",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Seed (optional — blank for random)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="e.g. 42"
+                    {...register("llm_seed")}
+                    style={{
+                      width: "100%",
+                      padding: "6px 10px",
+                      fontSize: "12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 0,
+                      color: "var(--fg)",
+                    }}
+                  />
+                </div>
+              )}
+
               {activeConfigTab === "stt" && (
                 <div style={{ flex: 1 }}>
                   <label
