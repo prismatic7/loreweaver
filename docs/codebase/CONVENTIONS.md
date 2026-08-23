@@ -29,6 +29,8 @@ Rules for adding selectors:
 ## Backend
 
 - Tauri commands are declared in `src-tauri/src/lib.rs` with `#[tauri::command]` and exposed through `generate_handler!`.
+- Streaming commands accept a `tauri::ipc::Channel<T>` argument (e.g. `orchestrate_agent_stream`'s `on_event: Channel<AgentEvent>`); the frontend constructs the channel with `new Channel<T>()` and assigns `onmessage`. Long-running commands run on a blocking thread via `run_blocking` so the async runtime stays responsive.
+- Cooperative cancellation: commands that can run long register an `Arc<AtomicBool>` in `AppState.agent_runs` keyed by run id; a paired `cancel_*` command flips the flag and the loop checks it between events.
 - Shared app state is held in `AppState` with `Mutex` guards around paths and the filesystem watcher.
 - Persistence and command handlers generally return `Result<..., String>` for error propagation.
 - Vault writes are checked with `validate_safe_path` before file output.

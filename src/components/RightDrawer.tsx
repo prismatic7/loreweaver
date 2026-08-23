@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { PenLine, Brain, Layers, Link2, Swords, Map, Image as ImageIcon } from "lucide-react";
+import { PenLine, Brain, Layers, Link2, Swords, Map, Image as ImageIcon, Square, ShieldAlert, Check, Ban } from "lucide-react";
 import {
   CampaignNote,
   DEFAULT_PROVENANCE_TAXONOMY,
   ProvenanceType,
   WebClip,
 } from "../types";
+import type { ChatMessage } from "../hooks/useAgent";
+import type { ContextItem, PendingToolApproval } from "../bindings";
+import { AgentMessageBlock } from "./AgentMessageBlock";
 
 export type RightDrawerTab =
   | "search"
@@ -33,10 +36,20 @@ export interface RightDrawerProps {
   handleInitiativeTracker: () => void;
   handleEncounterBuilder: () => void;
   // AI tab
-  currentChatMessages: Array<{ role: "user" | "assistant"; text: string; imageUrl?: string }>;
+  currentChatMessages: ChatMessage[];
   chatInput: string;
   setChatInput: (value: string) => void;
   handleSendChatMessage: () => void;
+  handleStopAgentStream: () => void;
+  handleApproveAgentTool: () => void;
+  handleRejectAgentTool: () => void;
+  pendingApproval: PendingToolApproval | null;
+  isAgentStreaming: boolean;
+  contextItems: ContextItem[];
+  addContextItem: (item: ContextItem) => void;
+  removeContextItem: (id: string) => void;
+  notes: Array<{ id: string; title: string; content: string }>;
+  rules: Array<{ id: string; title: string; content: string }>;
   renderMarkdown: (markdown: string) => React.ReactNode;
   vaultPath: string;
   resetCurrentVaultSession: () => void;
@@ -842,6 +855,16 @@ const AiTab: React.FC<RightDrawerProps> = ({
   chatInput,
   setChatInput,
   handleSendChatMessage,
+  handleStopAgentStream,
+  handleApproveAgentTool,
+  handleRejectAgentTool,
+  pendingApproval,
+  isAgentStreaming,
+  contextItems,
+  addContextItem,
+  removeContextItem,
+  notes,
+  rules,
   renderMarkdown,
   vaultPath,
   resetCurrentVaultSession,
@@ -867,6 +890,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
   isGeneratingChatImage,
   handleGenerateChatImage,
 }) => {
+  const [contextPickerOpen, setContextPickerOpen] = useState(false);
   useEffect(() => {
     loadMemoryFacts();
   }, [loadMemoryFacts]);
@@ -924,6 +948,128 @@ const AiTab: React.FC<RightDrawerProps> = ({
           label={isSummarizing ? "Summarizing..." : "Summarize Session"}
           dataOdId="ai-summarize-session"
         />
+      </div>
+
+      {/* Add Context picker */}
+      <div style={{ position: "relative", marginTop: "8px" }}>
+        <AiActionButton
+          onClick={() => setContextPickerOpen((open) => !open)}
+          disabled={false}
+          label="Add Context"
+          dataOdId="ai-add-context"
+        />
+        {contextPickerOpen && (
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 4px)",
+              left: 0,
+              width: 260,
+              maxHeight: 260,
+              overflowY: "auto",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+              zIndex: 20,
+              padding: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--muted)",
+                marginBottom: 6,
+              }}
+            >
+              Notes
+            </div>
+            {notes.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                No notes in this vault.
+              </div>
+            ) : (
+              notes.slice(0, 20).map((note) => (
+                <button
+                  key={note.id}
+                  type="button"
+                  onClick={() => {
+                    addContextItem({
+                      kind: "note",
+                      id: note.id,
+                      title: note.title,
+                      content: note.content,
+                    });
+                    setContextPickerOpen(false);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    background: "transparent",
+                    border: "none",
+                    padding: "4px 6px",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    color: "var(--fg)",
+                  }}
+                  data-od-id={`ai-context-note-${note.id}`}
+                >
+                  {note.title}
+                </button>
+              ))
+            )}
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                color: "var(--muted)",
+                margin: "8px 0 6px",
+              }}
+            >
+              Rules
+            </div>
+            {rules.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                No rules in this vault.
+              </div>
+            ) : (
+              rules.slice(0, 20).map((rule) => (
+                <button
+                  key={rule.id}
+                  type="button"
+                  onClick={() => {
+                    addContextItem({
+                      kind: "rule",
+                      id: rule.id,
+                      title: rule.title,
+                      content: rule.content,
+                    });
+                    setContextPickerOpen(false);
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    background: "transparent",
+                    border: "none",
+                    padding: "4px 6px",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    color: "var(--fg)",
+                  }}
+                  data-od-id={`ai-context-rule-${rule.id}`}
+                >
+                  {rule.title}
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       <div
@@ -1131,6 +1277,55 @@ const AiTab: React.FC<RightDrawerProps> = ({
       </div>
     </div>
 
+    {contextItems.length > 0 && (
+      <div
+        style={{
+          padding: "8px 12px",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 4,
+        }}
+      >
+        {contextItems.map((item) => (
+          <span
+            key={item.id}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 10,
+              padding: "2px 6px",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+            }}
+          >
+            <span style={{ color: "var(--muted)" }}>
+              {item.kind === "note" ? "📄" : item.kind === "rule" ? "📜" : "✏️"}
+            </span>
+            {item.title}
+            <button
+              type="button"
+              onClick={() => removeContextItem(item.id)}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--muted)",
+                padding: 0,
+                display: "inline-flex",
+              }}
+              aria-label={`Remove ${item.title} from context`}
+              data-od-id={`ai-context-remove-${item.id}`}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+      </div>
+    )}
+
     <div
       style={{
         flex: 1,
@@ -1142,32 +1337,66 @@ const AiTab: React.FC<RightDrawerProps> = ({
       }}
     >
       {currentChatMessages.map((msg, i) => (
-        <div
+        <AgentMessageBlock
           key={i}
-          className={`chat-bubble ${msg.role}`}
-          style={{ fontSize: "12px", padding: "8px 12px" }}
-        >
-          {msg.role === "assistant" ? (
-            <div className="chat-markdown">{renderMarkdown(msg.text)}</div>
-          ) : (
-            <div style={{ whiteSpace: "pre-wrap" }}>{msg.text}</div>
-          )}
-          {msg.imageUrl && (
-            <img
-              src={msg.imageUrl}
-              alt="Generated"
-              style={{ maxWidth: "100%", marginTop: "8px", borderRadius: 0 }}
-            />
-          )}
-        </div>
+          msg={msg}
+          renderMarkdown={renderMarkdown}
+          compact
+        />
       ))}
     </div>
+    {pendingApproval && (
+      <div
+        style={{
+          margin: "0 12px 8px",
+          padding: "8px 10px",
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+        data-od-id="ai-approval-banner"
+      >
+        <ShieldAlert size={14} style={{ flexShrink: 0, color: "var(--muted)" }} />
+        <div style={{ flex: 1, minWidth: 160, fontSize: 11 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>
+            Agent wants to write to your vault
+          </div>
+          <div style={{ color: "var(--muted)", fontFamily: "monospace" }}>
+            {pendingApproval.summary}
+          </div>
+        </div>
+        <button
+          className="btn btn-sm"
+          type="button"
+          onClick={handleApproveAgentTool}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+          data-od-id="btn-ai-approve"
+        >
+          <Check size={12} />
+          Approve
+        </button>
+        <button
+          className="btn btn-sm"
+          type="button"
+          onClick={handleRejectAgentTool}
+          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+          data-od-id="btn-ai-reject"
+        >
+          <Ban size={12} />
+          Reject
+        </button>
+      </div>
+    )}
     <div
       style={{
         padding: "12px",
         borderTop: "1px solid var(--border)",
         display: "flex",
         gap: "6px",
+        alignItems: "center",
       }}
     >
       <input
@@ -1189,13 +1418,23 @@ const AiTab: React.FC<RightDrawerProps> = ({
           if (e.key === "Enter") handleSendChatMessage();
         }}
       />
-      <AiActionButton
-        onClick={handleGenerateChatImage}
-        disabled={!vaultPath || isGeneratingChatImage || !chatInput.trim()}
-        label={isGeneratingChatImage ? "..." : ""}
-        icon={<ImageIcon size={12} />}
-        dataOdId="ai-chat-image"
-      />
+      {isAgentStreaming ? (
+        <AiActionButton
+          onClick={handleStopAgentStream}
+          disabled={false}
+          label=""
+          icon={<Square size={12} />}
+          dataOdId="ai-stop-stream"
+        />
+      ) : (
+        <AiActionButton
+          onClick={handleGenerateChatImage}
+          disabled={!vaultPath || isGeneratingChatImage || !chatInput.trim()}
+          label={isGeneratingChatImage ? "..." : ""}
+          icon={<ImageIcon size={12} />}
+          dataOdId="ai-chat-image"
+        />
+      )}
     </div>
   </div>
   );

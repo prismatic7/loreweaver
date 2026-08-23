@@ -195,6 +195,84 @@ pub struct WorldInfo {
     pub last_opened: Option<String>,
 }
 
+/// A single context item attached to an Architect chat turn.
+///
+/// `kind` is one of `"note"`, `"rule"`, or `"text"`. Notes and rules are
+/// resolved by id against the active vault; text items carry raw content.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct ContextItem {
+    pub kind: String,
+    pub id: String,
+    pub title: String,
+    pub content: String,
+}
+
+/// A tool the Architect may call during a turn.
+///
+/// `parameters` is a JSON Schema object describing the arguments.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    #[specta(type = specta_typescript::Unknown)]
+    pub parameters: serde_json::Value,
+}
+
+/// A single chat turn sent to the Architect (user or assistant).
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct ChatTurn {
+    pub role: String,
+    pub content: String,
+}
+
+/// A tool call requested by the model mid-stream.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// A tool call awaiting explicit user approval before execution.
+///
+/// Emitted when the agent requests a write (e.g. `save_note`). The frontend
+/// renders an Approve/Reject banner; the user's decision is delivered via
+/// `approve_agent_tool` / `reject_agent_tool` with the same `run_id` and
+/// `tool_call_id`.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct PendingToolApproval {
+    pub run_id: String,
+    pub tool_call_id: String,
+    pub name: String,
+    pub arguments: String,
+    /// Human-readable summary of what the tool will do (path, title, size).
+    pub summary: String,
+}
+
+/// Streaming events emitted by `orchestrate_agent_stream`.
+///
+/// The frontend receives these over a Tauri `Channel` and renders them as
+/// collapsible thinking blocks, tool-call blocks, and streamed text.
+#[derive(Serialize, Clone, Debug, Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AgentEvent {
+    /// A reasoning/thinking fragment (streamed).
+    Reasoning { delta: String },
+    /// A tool call was requested by the model.
+    ToolCall { id: String, name: String, arguments: String },
+    /// A tool call completed with its result.
+    ToolResult { id: String, name: String, result: String },
+    /// A text fragment of the final answer (streamed).
+    Delta { text: String },
+    /// The turn completed; `text` is the full final answer.
+    Done { text: String },
+    /// A non-fatal error; the turn continues.
+    Error { message: String },
+    /// A write tool is paused awaiting user approval. The turn is blocked
+    /// until `approve_agent_tool` / `reject_agent_tool` resolves it.
+    ToolApprovalRequired { approval: PendingToolApproval },
+}
+
 /// Export TypeScript bindings for all command input/output types.
 #[allow(dead_code)]
 pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
@@ -215,6 +293,12 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<WorldTheme>()
         .typ::<WorldManifest>()
         .typ::<WorldInfo>()
+        .typ::<ContextItem>()
+        .typ::<ToolSpec>()
+        .typ::<ChatTurn>()
+        .typ::<ToolCall>()
+        .typ::<PendingToolApproval>()
+        .typ::<AgentEvent>()
         .dangerously_cast_bigints_to_number()
         .export(specta_typescript::Typescript::default(), path)
         .expect("Failed to export bindings");

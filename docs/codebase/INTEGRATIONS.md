@@ -21,7 +21,7 @@
 ## AI Providers
 
 - Provider-specific HTTP logic lives in `src-tauri/src/providers/` (`llm.rs`, `image.rs`, `speech.rs`, `models.rs`).
-- `agent.rs` is a thin orchestrator that builds RAG context and delegates chat generation to `providers::llm`.
+- `agent.rs` is a thin orchestrator that builds RAG context and delegates chat generation to `providers::llm`. The streaming path (`run_agent_turn`) emits `AgentEvent`s over a Tauri `Channel` and executes vault tools (`roll_dice`, `search_vault`, `read_note`, `list_notes`, `save_note`) with results fed back to the model, bounded to `MAX_TOOL_ROUNDS`.
 - Tauri command handlers in `lib.rs` validate URLs and delegate image generation, speech generation, and model-list testing to `providers::{image, speech, models}`.
 - All supported provider categories are Ollama, OpenAI-compatible endpoints, Gemini, Anthropic, Stability, ComfyUI, and ElevenLabs.
 - `test_provider_connection` fetches available models from the configured provider's API.

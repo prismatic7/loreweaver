@@ -1,10 +1,24 @@
 import { useState, useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
+import type { AgentEvent, ContextItem, PendingToolApproval } from "../bindings";
+
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  arguments: string;
+  result?: string;
+}
 
 export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   imageUrl?: string;
+  /** Accumulated reasoning/thinking text (streamed). */
+  reasoning?: string;
+  /** Tool calls made during this turn, with results when available. */
+  toolCalls?: ToolCallRecord[];
+  /** True while the assistant turn is still streaming. */
+  isStreaming?: boolean;
 }
 
 export interface MemoryFact {
@@ -54,6 +68,13 @@ export function useAgent(
   const [sessionTemperature, setSessionTemperature] = useState<number | null>(
     null
   );
+  // Streaming state: active run id (for cancel), busy flag, and attached context.
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [isAgentStreaming, setIsAgentStreaming] = useState(false);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+  // A write tool (save_note) is paused awaiting the user's decision.
+  const [pendingApproval, setPendingApproval] =
+    useState<PendingToolApproval | null>(null);
 
   const defaultChatMessages = useMemo(
     () => [
@@ -159,16 +180,130 @@ export function useAgent(
   );
 
   const handleSendChatMessage = useCallback(() => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || isAgentStreaming) return;
     const userMsg = chatInput;
     const priorMessages = chatMessagesByVault[vaultPath] || defaultChatMessages;
+    // History sent to the backend: prior turns only (the new user turn is the
+    // `prompt` argument). Streaming placeholders are excluded.
+    const history: Array<{ role: string; content: string }> = priorMessages
+      .filter((m) => !m.isStreaming)
+      .map((m) => ({ role: m.role, content: m.text }));
     updateVaultChatMessages((prev) => [
       ...prev,
       { role: "user", text: userMsg },
+      {
+        role: "assistant",
+        text: "",
+        reasoning: "",
+        toolCalls: [],
+        isStreaming: true,
+      },
     ]);
     setChatInput("");
 
-    invoke<string>("orchestrate_agent", {
+    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setActiveRunId(runId);
+    setIsAgentStreaming(true);
+
+    const channel = new Channel<AgentEvent>();
+    channel.onmessage = (event) => {
+      switch (event.type) {
+        case "reasoning":
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                reasoning: (last.reasoning || "") + event.delta,
+              };
+            }
+            return next;
+          });
+          break;
+        case "tool_call":
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                toolCalls: [
+                  ...(last.toolCalls || []),
+                  {
+                    id: event.id,
+                    name: event.name,
+                    arguments: event.arguments,
+                  },
+                ],
+              };
+            }
+            return next;
+          });
+          break;
+        case "tool_result":
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                toolCalls: (last.toolCalls || []).map((tc) =>
+                  tc.id === event.id
+                    ? { ...tc, result: event.result }
+                    : tc,
+                ),
+              };
+            }
+            return next;
+          });
+          break;
+        case "delta":
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = { ...last, text: last.text + event.text };
+            }
+            return next;
+          });
+          break;
+        case "tool_approval_required":
+          setPendingApproval(event.approval);
+          break;
+        case "done":
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                text: event.text || last.text,
+                isStreaming: false,
+              };
+            }
+            return next;
+          });
+          break;
+        case "error":
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                text: last.text || `Error: ${event.message}`,
+                isStreaming: false,
+              };
+            }
+            return next;
+          });
+          break;
+      }
+    };
+
+    invoke<string>("orchestrate_agent_stream", {
+      runId,
       prompt: userMsg,
       provider: settings.llmProvider,
       model: settings.llmModel,
@@ -176,19 +311,17 @@ export function useAgent(
       baseUrl: settings.llmBaseUrl || null,
       activeNoteId: selectedNoteId || null,
       sessionTemperature,
+      history,
+      contextItems,
+      onEvent: channel,
     })
-      .then((botResponse) => {
-        updateVaultChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: botResponse },
-        ]);
+      .then(() => {
         // World-scoped memory: after each completed exchange, ask the LLM to
         // extract durable facts into the ACTIVE world's memory table. Best-
         // effort and silent — a failed extraction never breaks the chat.
         const transcript = JSON.stringify([
           ...priorMessages,
           { role: "user", text: userMsg },
-          { role: "assistant", text: botResponse },
         ]);
         invoke<number>("extract_session_memories", {
           messagesJson: transcript,
@@ -206,13 +339,26 @@ export function useAgent(
         console.error("AI agent error:", err);
         const fallback =
           `Error calling AI provider: ${err}. Please ensure your configured LLM server is running or configure an API key in Settings.`;
-        updateVaultChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: fallback },
-        ]);
+        updateVaultChatMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant" && last.isStreaming) {
+            next[next.length - 1] = {
+              ...last,
+              text: last.text || fallback,
+              isStreaming: false,
+            };
+          }
+          return next;
+        });
+      })
+      .finally(() => {
+        setActiveRunId(null);
+        setIsAgentStreaming(false);
       });
   }, [
     chatInput,
+    isAgentStreaming,
     chatMessagesByVault,
     vaultPath,
     defaultChatMessages,
@@ -222,9 +368,48 @@ export function useAgent(
     settings.llmBaseUrl,
     selectedNoteId,
     sessionTemperature,
+    contextItems,
     updateVaultChatMessages,
     loadMemoryFacts,
   ]);
+
+  const handleStopAgentStream = useCallback(() => {
+    if (!activeRunId) return;
+    invoke("cancel_agent_stream", { runId: activeRunId }).catch((err) =>
+      console.error("Failed to cancel agent stream:", err),
+    );
+  }, [activeRunId]);
+
+  const handleApproveAgentTool = useCallback(() => {
+    if (!pendingApproval) return;
+    invoke("approve_agent_tool", {
+      runId: pendingApproval.run_id,
+      toolCallId: pendingApproval.tool_call_id,
+    })
+      .then(() => setPendingApproval(null))
+      .catch((err) => console.error("Failed to approve agent tool:", err));
+  }, [pendingApproval]);
+
+  const handleRejectAgentTool = useCallback(() => {
+    if (!pendingApproval) return;
+    invoke("reject_agent_tool", {
+      runId: pendingApproval.run_id,
+      toolCallId: pendingApproval.tool_call_id,
+    })
+      .then(() => setPendingApproval(null))
+      .catch((err) => console.error("Failed to reject agent tool:", err));
+  }, [pendingApproval]);
+
+  const addContextItem = useCallback((item: ContextItem) => {
+    setContextItems((prev) => {
+      if (prev.some((existing) => existing.id === item.id)) return prev;
+      return [...prev, item];
+    });
+  }, []);
+
+  const removeContextItem = useCallback((id: string) => {
+    setContextItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
   const initVaultChat = useCallback(() => {
     if (!vaultPath) return;
@@ -368,6 +553,15 @@ export function useAgent(
     exportCurrentVaultSession,
     cloneCurrentVaultSession,
     handleSendChatMessage,
+    handleStopAgentStream,
+    handleApproveAgentTool,
+    handleRejectAgentTool,
+    pendingApproval,
+    isAgentStreaming,
+    activeRunId,
+    contextItems,
+    addContextItem,
+    removeContextItem,
     initVaultChat,
     // Session Firm↔Wild quick toggle
     sessionTemperature,

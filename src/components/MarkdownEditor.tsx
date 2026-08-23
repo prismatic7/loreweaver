@@ -98,6 +98,10 @@ export default function MarkdownEditor({
       placeholder("Start writing notes in markdown..."),
       autocompletion({ override: [wikiLinkCompletion(fuse, notes)] }),
       EditorView.theme({
+        "&": {
+          backgroundColor: "var(--surface)",
+          color: "var(--fg)",
+        },
         ".cm-scroller": {
           fontFamily: "var(--font-body)",
           fontSize: "16px",
@@ -105,6 +109,11 @@ export default function MarkdownEditor({
         },
         ".cm-content": {
           caretColor: "var(--fg)",
+          color: "var(--fg)",
+        },
+        ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+          backgroundColor:
+            "color-mix(in srgb, var(--accent) 28%, transparent)",
         },
         ".cm-cursor, .cm-dropCursor": {
           borderLeftColor: "var(--fg)",
@@ -120,6 +129,9 @@ export default function MarkdownEditor({
         },
         ".cm-activeLineGutter": {
           backgroundColor: "transparent",
+        },
+        ".cm-placeholder": {
+          color: "var(--muted)",
         },
         ".cm-tooltip": {
           border: "1px solid var(--border)",

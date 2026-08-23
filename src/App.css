@@ -677,13 +677,37 @@
   color: var(--fg);
 }
 
+/* Role label — small caps, muted, above the message */
+.chat-bubble::before {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.chat-bubble.user::before {
+  content: "You";
+}
+
+.chat-bubble.assistant::before {
+  content: "Architect";
+}
+
+/* User turns: elevated surface, inset right */
 .chat-bubble.user {
   background: var(--surface);
   border-color: var(--border);
+  margin-left: 28px;
 }
 
+/* Assistant turns: accent-tinted voice, accent left bar, inset left */
 .chat-bubble.assistant {
-  border-left: 2px solid var(--border);
+  background: color-mix(in oklch, var(--accent) 6%, var(--bg));
+  border-left: 2px solid var(--accent);
+  margin-right: 28px;
 }
 
 /* Compact markdown typography for Architect chat bubbles */

@@ -23,6 +23,7 @@
     "allow-search-vault",
     "allow-ingest-srd-text",
     "allow-orchestrate-agent",
+    "allow-orchestrate-agent-stream",
     "allow-generate-image",
     "allow-generate-speech",
     "allow-load-plugins",

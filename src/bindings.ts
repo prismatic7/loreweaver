@@ -2,6 +2,31 @@
 
 
 /* Types */
+/**
+ *  Streaming events emitted by `orchestrate_agent_stream`.
+ * 
+ *  The frontend receives these over a Tauri `Channel` and renders them as
+ *  collapsible thinking blocks, tool-call blocks, and streamed text.
+ */
+export type AgentEvent = 
+/**  A reasoning/thinking fragment (streamed). */
+{ type: "reasoning"; delta: string } | 
+/**  A tool call was requested by the model. */
+{ type: "tool_call"; id: string; name: string; arguments: string } | 
+/**  A tool call completed with its result. */
+{ type: "tool_result"; id: string; name: string; result: string } | 
+/**  A text fragment of the final answer (streamed). */
+{ type: "delta"; text: string } | 
+/**  The turn completed; `text` is the full final answer. */
+{ type: "done"; text: string } | 
+/**  A non-fatal error; the turn continues. */
+{ type: "error"; message: string } | 
+/**
+ *  A write tool is paused awaiting user approval. The turn is blocked
+ *  until `approve_agent_tool` / `reject_agent_tool` resolves it.
+ */
+{ type: "tool_approval_required"; approval: PendingToolApproval };
+
 export type AppSettings = {
 	llm_provider: string,
 	llm_model: string,
@@ -38,11 +63,47 @@ export type CampaignNote = {
 	content: string,
 };
 
+/**  A single chat turn sent to the Architect (user or assistant). */
+export type ChatTurn = {
+	role: string,
+	content: string,
+};
+
+/**
+ *  A single context item attached to an Architect chat turn.
+ * 
+ *  `kind` is one of `"note"`, `"rule"`, or `"text"`. Notes and rules are
+ *  resolved by id against the active vault; text items carry raw content.
+ */
+export type ContextItem = {
+	kind: string,
+	id: string,
+	title: string,
+	content: string,
+};
+
 /**  A single note-type registry entry declared by a world's manifest. */
 export type NoteType = {
 	id: string,
 	label: string,
 	color: string,
+};
+
+/**
+ *  A tool call awaiting explicit user approval before execution.
+ * 
+ *  Emitted when the agent requests a write (e.g. `save_note`). The frontend
+ *  renders an Approve/Reject banner; the user's decision is delivered via
+ *  `approve_agent_tool` / `reject_agent_tool` with the same `run_id` and
+ *  `tool_call_id`.
+ */
+export type PendingToolApproval = {
+	run_id: string,
+	tool_call_id: string,
+	name: string,
+	arguments: string,
+	/**  Human-readable summary of what the tool will do (path, title, size). */
+	summary: string,
 };
 
 /**
@@ -106,6 +167,24 @@ export type TemplateEntry = {
 export type TemplateProperty = {
 	type: string,
 	default: unknown,
+};
+
+/**  A tool call requested by the model mid-stream. */
+export type ToolCall = {
+	id: string,
+	name: string,
+	arguments: string,
+};
+
+/**
+ *  A tool the Architect may call during a turn.
+ * 
+ *  `parameters` is a JSON Schema object describing the arguments.
+ */
+export type ToolSpec = {
+	name: string,
+	description: string,
+	parameters: unknown,
 };
 
 export type VaultSettings = {

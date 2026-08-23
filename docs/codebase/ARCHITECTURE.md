@@ -10,7 +10,7 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 2. `watcher.rs` parses Markdown frontmatter and H1 titles, then syncs notes into SQLite.
 3. `db.rs` stores notes, note metadata, rules, chunk embeddings, and app settings.
 4. `search.rs` downloads and loads the local embedding model, chunks text, and performs hybrid semantic search.
-5. The frontend calls Tauri commands such as `load_notes`, `load_rules`, `search_vault`, `save_note`, and `orchestrate_agent`.
+5. The frontend calls Tauri commands such as `load_notes`, `load_rules`, `search_vault`, `save_note`, and `orchestrate_agent`. The Architect chat uses `orchestrate_agent_stream` (a Tauri `Channel` of `AgentEvent`s) for streaming reasoning, tool calls, and answer text; `cancel_agent_stream` flips a cooperative abort flag keyed by run id.
 
 ## Deletion and Trash
 
@@ -27,7 +27,7 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 - `watcher.rs` owns filesystem synchronization.
 - `search.rs` owns embedding generation and similarity search.
 - `ingest.rs` converts Markdown SRD text into rule rows and vector chunks.
-- `agent.rs` assembles RAG context and delegates provider calls to `providers/llm.rs`.
+- `agent.rs` assembles RAG context, runs the streaming agent loop (`run_agent_turn`), and executes vault tools (`roll_dice`, `search_vault`, `read_note`, `list_notes`, `save_note`) bounded to `MAX_TOOL_ROUNDS`; it delegates provider calls to `providers/llm.rs`.
 - `plugins.rs` loads plugin manifests and runs Boa-based hook functions.
 - `providers/` centralizes AI provider HTTP logic: `llm.rs` (chat), `image.rs` (image generation), `speech.rs` (TTS), `models.rs` (model listing).
 
@@ -100,6 +100,32 @@ provenance taxonomy, and theme. Signed-off design: `DESIGN_SKETCH_WORLDS.md`.
   bible conditioning is skipped (always-on when true/default).
 - **World Shelf UI** (`WorldShelf.tsx`): switcher with icon/name/description/
   last-opened, new-world (scaffold choice), Liminal entry, export/import.
+
+## Streaming Architect Chat
+
+The Architect chat (`AiView` full page and the RightDrawer AI tab) streams
+agent activity over a Tauri `Channel<AgentEvent>`:
+
+- `orchestrate_agent_stream(run_id, prompt, provider, model, api_key,
+  base_url, active_note_id, session_temperature, history, context_items,
+  on_event)` runs the turn on a blocking thread and emits `AgentEvent`s:
+  `reasoning` (thinking deltas), `tool_call` / `tool_result` (tool activity),
+  `delta` (answer text), `done` (final text), `error` (non-fatal).
+- `cancel_agent_stream(run_id)` flips a cooperative `AtomicBool` flag; the
+  agent loop checks it between events and stops emitting. The run flag is
+  registered in `AppState.agent_runs` and removed when the command returns.
+- The frontend (`useAgent`) accumulates events into the last assistant
+  message: `reasoning`, `toolCalls[]` (with results), and streamed `text`.
+  `AgentMessageBlock` renders collapsible Thinking and Tools blocks; the
+  input row swaps to a stop button while streaming.
+- Context attachment: the UI's "Add Context" picker attaches notes/rules as
+  `ContextItem`s (kind `note`/`rule`), which `run_agent_turn` injects as a
+  context block before history. The currently open note is always injected
+  when `active_note_id` is set.
+- Tool loop: the model may call `roll_dice`, `search_vault`, `read_note`,
+  `list_notes`, or `save_note`; results are fed back as tool messages,
+  bounded to `MAX_TOOL_ROUNDS` (4). All vault writes go through
+  `validate_safe_path`.
 
 ## Frontend Structure
 

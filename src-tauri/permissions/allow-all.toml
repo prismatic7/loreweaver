@@ -133,6 +133,11 @@ description = "Allows the orchestrate_agent command to be invoked by the fronten
 commands = { allow = ["orchestrate_agent"] }
 
 [[permission]]
+identifier = "allow-orchestrate-agent-stream"
+description = "Allows the orchestrate_agent_stream, cancel_agent_stream, approve_agent_tool, and reject_agent_tool commands to be invoked by the frontend"
+commands = { allow = ["orchestrate_agent_stream", "cancel_agent_stream", "approve_agent_tool", "reject_agent_tool"] }
+
+[[permission]]
 identifier = "allow-generate-image"
 description = "Allows the generate_image command to be invoked by the frontend"
 commands = { allow = ["generate_image"] }

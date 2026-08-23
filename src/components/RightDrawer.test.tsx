@@ -29,6 +29,16 @@ function makeProps(overrides: Partial<RightDrawerProps> = {}): RightDrawerProps 
     chatInput: "",
     setChatInput: vi.fn(),
     handleSendChatMessage: vi.fn(),
+    handleStopAgentStream: vi.fn(),
+    handleApproveAgentTool: vi.fn(),
+    handleRejectAgentTool: vi.fn(),
+    pendingApproval: null,
+    isAgentStreaming: false,
+    contextItems: [],
+    addContextItem: vi.fn(),
+    removeContextItem: vi.fn(),
+    notes: [],
+    rules: [],
     renderMarkdown: vi.fn((md: string) => (
       <div data-testid="rendered-md">{md}</div>
     )),

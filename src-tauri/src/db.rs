@@ -191,6 +191,7 @@ pub fn upsert_note(
     title: &str,
     content: &str,
     frontmatter: &HashMap<String, Value>,
+    note_id: Option<&str>,
 ) -> Result<String> {
     // Check if note exists by path
     let mut stmt = conn.prepare("SELECT id FROM notes WHERE path = ?1")?;
@@ -199,7 +200,7 @@ pub fn upsert_note(
     let note_id = if let Some(row) = rows.next()? {
         row.get::<_, String>(0)?
     } else {
-        Uuid::new_v4().to_string()
+        note_id.map(|s| s.to_string()).unwrap_or_else(|| Uuid::new_v4().to_string())
     };
 
     let now = chrono::Utc::now().timestamp();
@@ -831,7 +832,7 @@ mod tests {
         frontmatter.insert("type".to_string(), Value::String("Location".to_string()));
 
         let note_id =
-            upsert_note(&conn, path, title, content, &frontmatter).expect("Failed to upsert note");
+            upsert_note(&conn, path, title, content, &frontmatter, None).expect("Failed to upsert note");
 
         let notes = load_all_notes(&conn).expect("Failed to load notes");
         assert_eq!(notes.len(), 1);

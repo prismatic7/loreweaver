@@ -6,6 +6,7 @@
 - The image generation UI is presented as a feature, but the current implementation is only a timed placeholder that swaps in a static image path.
 - The app depends on runtime model downloads from Hugging Face for embeddings, which creates a startup/network dependency and a possible offline failure mode.
 - The search pipeline assumes 384-dimensional embeddings throughout; changing providers requires a full reindex and the code does not show automatic compatibility enforcement.
+- The Architect agent can execute vault tools (`save_note` writes files, `search_vault`/`read_note`/`list_notes` read the vault) based on model-generated tool calls. Writes go through `validate_safe_path`, the tool loop is bounded to `MAX_TOOL_ROUNDS` (4), and cancellation is cooperative (an in-flight HTTP read is abandoned only when the command returns) — but a misbehaving model can still write notes the user didn't ask for. The tool allow-list is fixed in `agent.rs::tool_definitions`; do not widen it without an explicit decision.
 
 ## Maintainability Risks
 

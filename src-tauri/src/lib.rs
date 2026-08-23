@@ -47,6 +47,7 @@ use tokio::sync::Mutex as TokioMutex;
 pub mod agent;
 mod bundles;
 mod db;
+mod dice;
 mod ingest;
 mod memory;
 mod pdf;
@@ -94,6 +95,17 @@ pub struct AppState {
     /// Held inside a `tokio::sync::Mutex` so `switch_vault` can atomically replace the flag
     /// shared with the active watcher flusher thread.
     pub shutdown: TokioMutex<Arc<AtomicBool>>,
+    /// Cooperative cancellation flags for running `orchestrate_agent_stream`
+    /// calls, keyed by run id. `cancel_agent_stream` flips the flag; the agent
+    /// loop checks it between events and stops emitting.
+    pub agent_runs: TokioMutex<HashMap<String, Arc<AtomicBool>>>,
+    /// Pending write-tool approvals awaiting a user decision, keyed by
+    /// `(run_id, tool_call_id)`. `approve_agent_tool` / `reject_agent_tool`
+    /// resolve these; `cancel_agent_stream` resolves them as rejected so a
+    /// blocked agent loop never hangs. `Arc` so the blocking agent thread can
+    /// clone it (the `State` borrow is not `'static`). `std::sync::Mutex`
+    /// because the agent loop locks it from a blocking thread (no awaits).
+    pub pending_approvals: Arc<Mutex<HashMap<(String, String), tokio::sync::oneshot::Sender<bool>>>>,
 }
 
 // Shared command input/output data shapes. Included here and by build.rs for Specta export.
@@ -377,6 +389,7 @@ async fn save_note(state: State<'_, AppState>, note: CampaignNote) -> Result<(),
         &note.title,
         &note.content,
         &note.frontmatter,
+        Some(&note.id),
     );
 
     Ok(())
@@ -529,6 +542,7 @@ async fn resolve_wiki_link(
         clean_title,
         &initial_content,
         &frontmatter,
+        None,
     )
     .map_err(|e| e.to_string())?;
     drop(conn);
@@ -748,7 +762,7 @@ fn restore_note_impl(
         .get("title")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let note_id = db::upsert_note(conn, &original_rel_path, title, &content, &frontmatter)
+    let note_id = db::upsert_note(conn, &original_rel_path, title, &content, &frontmatter, None)
         .unwrap_or_default();
 
     if watcher::should_ai_index(&original_file_path, &frontmatter) {
@@ -1278,7 +1292,7 @@ async fn capture_note(
     // Upsert into DB and index vectors.
     let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
-    let note_id = db::upsert_note(&conn, &rel_path, clean_title, content, &frontmatter)
+    let note_id = db::upsert_note(&conn, &rel_path, clean_title, content, &frontmatter, None)
         .map_err(|e| e.to_string())?;
     if watcher::should_ai_index(&full_path, &frontmatter) {
         let _ = search::index_note_vectors(&conn, &note_id, content);
@@ -1796,6 +1810,201 @@ async fn orchestrate_agent(
         )
     })
     .await
+}
+
+/// Streaming variant of `orchestrate_agent`.
+///
+/// Emits `AgentEvent`s over the provided Tauri `Channel` as the provider
+/// streams reasoning, tool calls, tool results, and the final answer. The
+/// agent loop executes tools (dice, vault search, note read/list/save) and
+/// feeds results back to the model, bounded to `MAX_TOOL_ROUNDS`.
+///
+/// Cancellation: call `cancel_agent_stream` with the same `run_id` to flip a
+/// cooperative flag; the loop checks it between events and stops cleanly.
+#[tauri::command]
+async fn orchestrate_agent_stream(
+    state: State<'_, AppState>,
+    run_id: &str,
+    prompt: &str,
+    provider: &str,
+    model: &str,
+    api_key: Option<&str>,
+    base_url: Option<&str>,
+    active_note_id: Option<&str>,
+    session_temperature: Option<f64>,
+    history: Vec<crate::ChatTurn>,
+    context_items: Vec<crate::ContextItem>,
+    on_event: tauri::ipc::Channel<crate::AgentEvent>,
+) -> Result<String, String> {
+    let allow_local;
+    let system_context;
+    let mut sampling_params;
+    let vault_path_owned;
+    let conn_arc_owned;
+    {
+        let vault_path = state.vault_path.lock().await;
+        vault_path_owned = vault_path.clone();
+        let conn_arc = state.conn.lock().await;
+        conn_arc_owned = Arc::clone(&conn_arc);
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        allow_local = db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(true);
+        let global_temp = db::get_setting(&conn, "llm_temperature")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.8);
+        sampling_params = crate::providers::llm::SamplingParams {
+            temperature: global_temp,
+            top_p: db::get_setting(&conn, "llm_top_p")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(1.0),
+            max_tokens: db::get_setting(&conn, "llm_max_tokens")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(4096),
+            seed: db::get_setting(&conn, "llm_seed")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok()),
+        };
+        system_context = agent::build_system_context(&conn, prompt, active_note_id, &vault_path_owned)?;
+
+        // The Cascade for predictability: session toggle → world override → global default.
+        let world_temp = agent::load_world_firm_wild(&vault_path_owned);
+        sampling_params.temperature =
+            session_temperature.or(world_temp).unwrap_or(global_temp);
+    }
+
+    if let Some(base) = base_url {
+        validate_provider_url(base, allow_local)?;
+    }
+
+    let provider_owned = provider.to_string();
+    let model_owned = model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+    let active_note_id_owned = active_note_id.map(|s| s.to_string());
+    let run_id_owned = run_id.to_string();
+    let run_id_cleanup = run_id_owned.clone();
+
+    // Register the run so `cancel_agent_stream` can flip its flag.
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut runs = state.agent_runs.lock().await;
+        runs.insert(run_id_owned.clone(), Arc::clone(&cancel_flag));
+    }
+
+    // Approval registry: the agent loop creates a per-tool-call oneshot
+    // channel and registers it here keyed by `(run_id, tool_call_id)`;
+    // `approve_agent_tool` / `reject_agent_tool` (or cancel) resolve it.
+    let pending_approvals = Arc::clone(&state.pending_approvals);
+
+    let result = run_blocking(move || {
+        let mut emit = |event: crate::AgentEvent| {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return;
+            }
+            let _ = on_event.send(event);
+        };
+        let conn_guard = conn_arc_owned.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        agent::run_agent_turn(
+            &conn_guard,
+            &vault_path_owned,
+            &system_context.system_prompt,
+            &history,
+            &context_items,
+            active_note_id_owned.as_deref(),
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            allow_local,
+            sampling_params,
+            &cancel_flag,
+            &run_id_owned,
+            &pending_approvals,
+            &mut emit,
+        )
+    })
+    .await;
+
+    // Clean up the run flag. Pending approvals are removed by the agent loop
+    // itself (each tool call removes its own key after resolution).
+    {
+        let mut runs = state.agent_runs.lock().await;
+        runs.remove(&run_id_cleanup);
+    }
+
+    result
+}
+
+/// Approves a pending agent write tool, unblocking the agent loop so the
+/// tool executes.
+#[tauri::command]
+async fn approve_agent_tool(
+    state: State<'_, AppState>,
+    run_id: &str,
+    tool_call_id: &str,
+) -> Result<(), String> {
+    let mut pending = state.pending_approvals.lock().map_err(|_| "Mutex poisoned".to_string())?;
+    let sender = pending
+        .remove(&(run_id.to_string(), tool_call_id.to_string()))
+        .ok_or_else(|| "No pending approval for this tool call".to_string())?;
+    let _ = sender.send(true);
+    Ok(())
+}
+
+/// Rejects a pending agent write tool, unblocking the agent loop without
+/// executing the tool.
+#[tauri::command]
+async fn reject_agent_tool(
+    state: State<'_, AppState>,
+    run_id: &str,
+    tool_call_id: &str,
+) -> Result<(), String> {
+    let mut pending = state.pending_approvals.lock().map_err(|_| "Mutex poisoned".to_string())?;
+    let sender = pending
+        .remove(&(run_id.to_string(), tool_call_id.to_string()))
+        .ok_or_else(|| "No pending approval for this tool call".to_string())?;
+    let _ = sender.send(false);
+    Ok(())
+}
+
+/// Cancels a running `orchestrate_agent_stream` by run id.
+///
+/// The flag is cooperative: the agent loop checks it between events and stops
+/// emitting; the underlying HTTP read is abandoned when the command returns.
+/// Any pending tool approval for the run is resolved as rejected so a blocked
+/// agent loop never hangs.
+#[tauri::command]
+async fn cancel_agent_stream(
+    state: State<'_, AppState>,
+    run_id: &str,
+) -> Result<(), String> {
+    let runs = state.agent_runs.lock().await;
+    if let Some(flag) = runs.get(run_id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    drop(runs);
+    let mut pending = state.pending_approvals.lock().map_err(|_| "Mutex poisoned".to_string())?;
+    let keys: Vec<(String, String)> = pending
+        .keys()
+        .filter(|(rid, _)| rid == run_id)
+        .cloned()
+        .collect();
+    for key in keys {
+        if let Some(sender) = pending.remove(&key) {
+            let _ = sender.send(false);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2831,7 +3040,10 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
                 conn: TokioMutex::new(conn),
                 campaigns_root,
                 shutdown: TokioMutex::new(shutdown),
+                agent_runs: TokioMutex::new(HashMap::new()),
+                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
             });
+
 
             Ok(())
         })
@@ -2850,6 +3062,10 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             search_vault,
             ingest_srd_text,
             orchestrate_agent,
+            orchestrate_agent_stream,
+            cancel_agent_stream,
+            approve_agent_tool,
+            reject_agent_tool,
             generate_image,
             generate_speech,
             transcribe_speech,
@@ -2956,6 +3172,8 @@ mod tests {
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+            agent_runs: TokioMutex::new(HashMap::new()),
+                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {
@@ -3065,6 +3283,8 @@ mod tests {
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+            agent_runs: TokioMutex::new(HashMap::new()),
+                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {
@@ -3174,6 +3394,8 @@ mod tests {
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+            agent_runs: TokioMutex::new(HashMap::new()),
+                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {
@@ -3187,6 +3409,7 @@ mod tests {
                     "50% discount",
                     "content",
                     &HashMap::new(),
+                    None,
                 )
                 .unwrap();
                 let _ = db::upsert_note(
@@ -3195,6 +3418,7 @@ mod tests {
                     "Goblin",
                     "content",
                     &HashMap::new(),
+                    None,
                 )
                 .unwrap();
             }
@@ -3238,6 +3462,8 @@ mod tests {
             conn: TokioMutex::new(conn),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+            agent_runs: TokioMutex::new(HashMap::new()),
+                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -3366,6 +3592,7 @@ mod tests {
                     "Goblin Hoard",
                     "The goblins buried their glittering hoard beneath the hill.",
                     &HashMap::new(),
+                    None,
                 )
                 .unwrap();
             }
@@ -3398,6 +3625,7 @@ mod tests {
                     "Sword of Dawn",
                     "A radiant blade forged at dawn.",
                     &HashMap::new(),
+                    None,
                 )
                 .unwrap()
             };
@@ -3475,6 +3703,8 @@ mod template_tests {
             conn: TokioMutex::new(Arc::clone(&conn)),
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
+            agent_runs: TokioMutex::new(HashMap::new()),
+                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {

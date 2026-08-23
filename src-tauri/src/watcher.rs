@@ -175,7 +175,7 @@ pub fn sync_entire_directory(vault_path: &Path, conn: &rusqlite::Connection) -> 
                         .to_string_lossy()
                         .into_owned();
                     disk_paths.insert(rel_path.clone());
-                    match db::upsert_note(conn, &rel_path, &title, &content, &frontmatter) {
+                    match db::upsert_note(conn, &rel_path, &title, &content, &frontmatter, None) {
                         Ok(note_id) => {
                             if ext == "md" {
                                 if should_ai_index(path, &frontmatter) {
@@ -377,7 +377,7 @@ fn process_file_event(
         };
         match parse_res {
             Ok((title, content, frontmatter)) => {
-                match db::upsert_note(conn, &rel_path, &title, &content, &frontmatter) {
+                match db::upsert_note(conn, &rel_path, &title, &content, &frontmatter, None) {
                     Ok(note_id) => {
                         if ext == "md" {
                             if should_ai_index(path, &frontmatter) {

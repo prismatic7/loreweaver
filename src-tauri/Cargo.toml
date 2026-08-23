@@ -57,6 +57,8 @@ specta-typescript = "0.0.12"
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native", "sync-secret-service"] }
 url = "2.5.8"
 ipnetwork = "0.21.1"
+rand = "0.8"
+regex = "1"
 reqwest = "0.13.4"
 pdf-inspector = "0.1.7"
 scraper = "0.19"

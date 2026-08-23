@@ -6115,6 +6115,8 @@ dependencies = [
  "notify",
  "ort",
  "pdf-inspector",
+ "rand 0.8.7",
+ "regex",
  "reqwest",
  "rfd 0.15.4",
  "rusqlite",
