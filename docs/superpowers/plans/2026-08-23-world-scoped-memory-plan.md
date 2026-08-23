@@ -30,7 +30,7 @@ The agent currently *reads* memory but never *writes* it. Add a dedicated module
 - Modify: `src-tauri/src/main.rs` (module declaration)
 - Modify: `src-tauri/src/lib.rs` (command registration)
 
-- [ ] **Step 1: `extract_facts` function**
+- [x] **Step 1: `extract_facts` function**
   Signature mirrors `summarize_session`'s internals:
   ```rust
   pub fn extract_facts(
@@ -47,21 +47,21 @@ The agent currently *reads* memory but never *writes* it. Add a dedicated module
   System prompt: "You are a campaign memory recorder. From the following GM/agent exchange, extract only durable, useful facts worth remembering across sessions — NPCs, factions, decisions made, plot threads opened or closed, world state changes. Skip chit-chat, pleasantries, and anything already implied by campaign notes. Return JSON: {\"facts\": [{\"fact\": \"...\", \"category\": \"npc|faction|decision|thread|world\"}]}. If nothing is worth remembering, return {\"facts\": []}."
   Call `llm::generate_response` with a minimal `SystemContext` (like `summarize_session` does).
 
-- [ ] **Step 2: Response parser**
+- [x] **Step 2: Response parser**
   Parse the LLM's JSON response. Tolerate:
   - Markdown code fences around the JSON
   - Leading/trailing prose before/after the JSON object
   - Missing `facts` key → empty vec
   If JSON parse fails, fall back to treating each line starting with `- ` as a fact with category `general`.
 
-- [ ] **Step 3: Dedupe + cap helpers**
+- [x] **Step 3: Dedupe + cap helpers**
   In `memory.rs`:
   - `normalise(s: &str) -> String`: lowercase, trim, collapse internal whitespace.
   - `is_duplicate(new: &str, existing: &[String]) -> bool`: true when normalised forms are equal, or one contains the other (90%+ overlap via containment). Pragmatic, not fancy.
   - `insert_facts_deduped(conn, facts: Vec<(String,String)>) -> usize`: for each fact, skip if duplicate of any existing fact (normalised equality OR containment either direction); else `db::insert_session_memory`.
   - Cap: after insert, if count > 200, delete oldest beyond cap (`DELETE FROM session_memory WHERE id NOT IN (SELECT id FROM session_memory ORDER BY created_at DESC LIMIT 200)`).
 
-- [ ] **Step 4: Tauri command `extract_session_memories`**
+- [x] **Step 4: Tauri command `extract_session_memories`**
   In `lib.rs`, mirror `summarize_session`:
   ```rust
   #[tauri::command]
@@ -77,7 +77,7 @@ The agent currently *reads* memory but never *writes* it. Add a dedicated module
   Loads `allow_local` + `SamplingParams` from settings (same block as `summarize_session`), validates provider URL, builds the transcript prompt, `run_blocking` → `extract_facts` → `insert_facts_deduped` (needs the DB connection inside the blocking closure) → returns count inserted.
   Register in the invoke_handler.
 
-- [ ] **Step 5: Tests**
+- [x] **Step 5: Tests**
   - `test_normalise`: case/whitespace collapse.
   - `test_is_duplicate`: exact, substring, near-match (90% containment), distinct.
   - `test_parse_extraction_response`: clean JSON, fenced JSON, prose-wrapped JSON, plain `- ` bullets, empty.
@@ -88,25 +88,25 @@ The agent currently *reads* memory but never *writes* it. Add a dedicated module
 
 Storage is isolated by construction; make the invariant visible to the model so a future shared-context refactor can't silently leak.
 
-- [ ] **Step 1: Boundary line in `build_system_context`**
+- [x] **Step 1: Boundary line in `build_system_context`**
   In `agent.rs`, after the memory block (`agent.rs:71-75`), append: "You have no memory of any other world or campaign. All context above belongs to the current world only."
-- [ ] **Step 2: Test**
+- [x] **Step 2: Test**
   `test_build_system_context_states_world_isolation`: assert the boundary sentence is present in the assembled prompt. Run `cargo test`.
 
 ### Task 3: Frontend — auto-extract after each agent turn
 
-- [ ] **Step 1: Fire extraction in `useAgent.ts`**
+- [x] **Step 1: Fire extraction in `useAgent.ts`**
   In `sendMessage` (the `orchestrate_agent` success path, after `botResponse` is appended to `updateVaultChatMessages`): invoke `extract_session_memories` with `messagesJson: JSON.stringify([...currentChatMessages, userMsg, botMsg])` and the same provider/model/key/base from `settings` that `orchestrate_agent` used. `.then(() => loadMemoryFacts())` so the RightDrawer panel refreshes; `.catch(console.error)` — silent failure.
-- [ ] **Step 2: Guard against empty transcripts**
+- [x] **Step 2: Guard against empty transcripts**
   Skip extraction if the user message is blank or the conversation has no bot response. (Cheap guard; the LLM pass itself returns `[]` for chit-chat.)
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
   `npx tsc --noEmit` clean; `NODE_ENV=test npx vitest run` all pass. Manual (local LLM): chat in World A → facts appear in RightDrawer memory panel; switch to World B → memory empty; return to A → facts still there.
 
 ### Task 4: Close the summary leak (cheap)
 
-- [ ] **Step 1: Key `summaryText` by vault**
+- [x] **Step 1: Key `summaryText` by vault**
   In `useAgent.ts`, change `summaryText: string` to `summaryByVault: Record<string, string>`; `currentSummaryText = summaryByVault[vaultPath] || ""`. Update `handleSummarizeSession` to write to `summaryByVault[vaultPath]`.
-- [ ] **Step 2: Verify** — summarize in World A, switch to B, summary panel shows nothing (not A's). `tsc` + `vitest`.
+- [x] **Step 2: Verify** — summarize in World A, switch to B, summary panel shows nothing (not A's). `tsc` + `vitest`.
 
 ---
 
