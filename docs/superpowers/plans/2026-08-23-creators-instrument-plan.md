@@ -63,10 +63,10 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 3: Style template — the image voice
 
-- [ ] **Step 1: Schema** `VaultSettings` gains `image_style_template: Option<String>` (per-world, lives in `vault_config.json`, travels with the world).
-- [ ] **Step 2: UI** a textarea in the world's voice section ("Style template — how images in this world look"), with a hint example (the cold-war dossier from the sketch).
-- [ ] **Step 3: Frontend wiring** `useSessionTools` / right drawer passes the world's template as `style`; the per-use `style` field becomes optional (keep it for one-off overrides).
-- [ ] **Step 4: Verify** build + manual: set a template, generate, confirm the prompt includes it server-side.
+- [x] **Step 1: Schema** `VaultSettings` gains `image_style_template: Option<String>` (per-world, lives in `vault_config.json`, travels with the world).
+- [x] **Step 2: UI** a textarea in the world's voice section ("Style template — how images in this world look"), with a hint example (the cold-war dossier from the sketch).
+- [x] **Step 3: Frontend wiring** `useSessionTools` / right drawer passes the world's template as `style`; the per-use `style` field becomes optional (keep it for one-off overrides).
+- [x] **Step 4: Verify** `cargo build` clean; `npx tsc --noEmit` clean; vitest **91 passed**; `bindings.ts` regenerated with `image_style_template`. Chat + drawer both resolve the template via `load_vault_settings` with `"Fantasy Portrait"` fallback. Committed: `f6e884a`.
 
 ### Task 4: Note → image flow
 
