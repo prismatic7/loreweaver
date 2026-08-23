@@ -48,6 +48,7 @@ pub mod agent;
 mod bundles;
 mod db;
 mod ingest;
+mod memory;
 mod pdf;
 mod plugins;
 pub mod providers;
@@ -1629,6 +1630,81 @@ async fn summarize_session(
     .await
 }
 
+/// Extracts durable facts from a chat transcript and stores them in the
+/// active world's `session_memory` table (deduped, capped). Best-effort:
+/// returns the count inserted; a failed extraction never affects the chat.
+#[tauri::command]
+async fn extract_session_memories(
+    state: State<'_, AppState>,
+    messages_json: &str,
+    provider: &str,
+    model: &str,
+    api_key: Option<&str>,
+    base_url: Option<&str>,
+) -> Result<usize, String> {
+    let allow_local;
+    let sampling_params;
+    {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        allow_local = db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(true);
+        sampling_params = crate::providers::llm::SamplingParams {
+            temperature: db::get_setting(&conn, "llm_temperature")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.8),
+            top_p: db::get_setting(&conn, "llm_top_p")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(1.0),
+            max_tokens: db::get_setting(&conn, "llm_max_tokens")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(4096),
+            seed: db::get_setting(&conn, "llm_seed")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok()),
+        };
+    }
+
+    if let Some(base) = base_url {
+        validate_provider_url(base, allow_local)?;
+    }
+
+    let messages_owned = messages_json.to_string();
+    let provider_owned = provider.to_string();
+    let model_owned = model.to_string();
+    let api_key_owned = api_key.map(|k| k.to_string());
+    let base_url_owned = base_url.map(|b| b.to_string());
+
+    let conn_arc = state.conn.lock().await;
+    let conn_inner = Arc::clone(&conn_arc);
+
+    run_blocking(move || {
+        let facts = memory::extract_facts(
+            &messages_owned,
+            &provider_owned,
+            &model_owned,
+            api_key_owned.as_deref(),
+            base_url_owned.as_deref(),
+            allow_local,
+            sampling_params,
+            &crate::providers::http_client(),
+        )?;
+        let conn = conn_inner.lock().map_err(|e| e.to_string())?;
+        memory::insert_facts_deduped(&conn, facts)
+    })
+    .await
+}
+
 /// Runs a blocking synchronous computation on Tauri's blocking thread pool.
 ///
 /// This keeps long-running HTTP or CPU-bound work out of the async runtime,
@@ -2804,6 +2880,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             list_session_memory,
             delete_session_memory,
             summarize_session,
+            extract_session_memories,
             list_sources,
             save_source,
             delete_source,

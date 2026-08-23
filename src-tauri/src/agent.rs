@@ -88,10 +88,15 @@ pub fn build_system_context(
     };
 
     // 3. Assemble System Prompt
+    // Isolation boundary: worlds are vaults with separate databases, so this
+    // is true by construction — but stating it makes the invariant explicit to
+    // the model and guards against a future shared-context refactor.
     let system_prompt = format!(
         "{}\n\n\
         {}\n\
         --- RULES & LORE CONTEXT ---\n{}{}{}\n----------------------------\n\n\
+        You have no memory of any other world or campaign. All context above \
+        belongs to the current world only.\n\n\
         Respond in clean Markdown. Be creative and detail-oriented.",
         persona_opening,
         bible_context,
@@ -421,6 +426,22 @@ mod tests {
         assert!(
             !context.system_prompt.contains("expert RPG Campaign Architect"),
             "hardcoded opening should be replaced when persona is set"
+        );
+    }
+
+    #[test]
+    fn test_build_system_context_states_world_isolation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        let db_path = vault.join("test.db");
+        let conn = crate::db::init_db(db_path.to_str().unwrap()).unwrap();
+
+        let context = build_system_context(&conn, "hello", None, vault.to_str().unwrap()).unwrap();
+        assert!(
+            context
+                .system_prompt
+                .contains("You have no memory of any other world or campaign"),
+            "isolation boundary should be present in the system prompt"
         );
     }
 
