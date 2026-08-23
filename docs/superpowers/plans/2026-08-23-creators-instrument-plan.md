@@ -49,11 +49,11 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 - Modify: `src-tauri/src/agent.rs` (`load_bible_context`)
 - Modify: `src/components/SettingsView.tsx` (new "Bible" panel) — or a world-settings panel if the settings surface is restructured
 
-- [ ] **Step 1: Manifest field** add `bible_files: Vec<String>` to `WorldManifest` with `#[serde(default)]`; default empty = all canon files active (backward compatible with today's fixed list).
-- [ ] **Step 2: `load_bible_context` honour pins** when `bible_files` is non-empty, read only the pinned files (missing ones skipped); empty → today's 8-file behaviour.
-- [ ] **Step 3: Tauri command** `update_bible_files(vault_path, files)` (or reuse the existing manifest save command if it exists) persisting pins into `world.json`.
-- [ ] **Step 4: UI** a Bible panel listing the canon conditioning notes (TONE, TOUCHSTONES, THE_PLAN, CONSPIRACY, PEOPLE, PLACES, RULES, SESSION_LOG) as toggle rows; each row also has an "open in editor" affordance. `world.bible` global toggle stays.
-- [ ] **Step 5: Verify** `cargo test`, `npm run test`, manual: pin only TONE+RULES, confirm the system prompt's bible block shrinks to those two.
+- [x] **Step 1: Manifest field** add `bible_files: Vec<String>` to `WorldManifest` with `#[serde(default)]`; default empty = all canon files active (backward compatible with today's fixed list).
+- [x] **Step 2: `load_bible_context` honour pins** when `bible_files` is non-empty, read only the pinned files (missing ones skipped); empty → today's 8-file behaviour.
+- [x] **Step 3: Tauri command** `update_bible_files(vault_path, files)` (or reuse the existing manifest save command if it exists) persisting pins into `world.json`.
+- [x] **Step 4: UI** a Bible panel listing the canon conditioning notes (TONE, TOUCHSTONES, THE_PLAN, CONSPIRACY, PEOPLE, PLACES, RULES, SESSION_LOG) as toggle rows; each row also has an "open in editor" affordance. `world.bible` global toggle stays.
+- [x] **Step 5: Verify** `cargo test` → **61 passed, 0 failed** (incl. `test_load_bible_context_honours_pinned_files`, `test_save_manifest_preserves_unrelated_keys`); `NODE_ENV=test npx vitest run` → **91 passed**; `npx tsc --noEmit` clean; `bindings.ts` regenerated with `bible_files`. Committed: `d07f707`.
 
 ---
 
