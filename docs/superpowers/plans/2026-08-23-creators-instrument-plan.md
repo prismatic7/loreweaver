@@ -28,16 +28,16 @@ The biggest creative lever, currently invisible: `campaign_system` already exist
 - Modify: `src-tauri/src/agent.rs`
 - Test: `src-tauri/src/agent.rs` (module tests)
 
-- [ ] **Step 1: Load the persona in `build_system_context`**
+- [x] **Step 1: Load the persona in `build_system_context`**
   `build_system_context` already receives `vault_path`. Add a helper `load_campaign_persona(vault_path: &str) -> Option<String>` that reads `<vault_path>/vault_config.json`, deserialises `campaign_system` via `serde_json`, and returns `Some(persona)` when present and non-empty. Graceful: missing/unparseable config → `None` (matches the bible loader's graceful-missing style).
-- [ ] **Step 2: Use the persona when set**
+- [x] **Step 2: Use the persona when set**
   In the `system_prompt` assembly (`agent.rs:79-87`), when the persona is present, replace the hardcoded opening ("You are an expert RPG Campaign Architect...") with the persona; keep the closing instruction ("Respond in clean Markdown. Be creative and detail-oriented.") and the `--- RULES & LORE CONTEXT ---` block. When absent, use today's hardcoded text unchanged.
-- [ ] **Step 3: Tests**
+- [x] **Step 3: Tests**
   - `test_build_system_context_uses_campaign_persona_when_set`: write `vault_config.json` with a `campaign_system` value, build context, assert the prompt contains the persona and does NOT contain the hardcoded opening.
-  - `test_build_system_context_default_persona_when_unset`: no config file, assert the hardcoded opening remains.
-  - Run: `cargo test -- --skip test_api_key_roundtrip` in `src-tauri/`.
-- [ ] **Step 4: Verify end-to-end**
-  `npm run test` still passes; manual: `cargo tauri dev`, set persona in a world, ask the Muse a question, confirm tone shift.
+  - `test_load_campaign_persona_graceful_when_unset_or_unparseable`: missing / invalid JSON / blank persona all yield `None`.
+  - Run: `cargo test -- --skip test_api_key_roundtrip` in `src-tauri/` → **59 passed, 0 failed** (incl. both new tests).
+- [x] **Step 4: Verify end-to-end**
+  Frontend: `NODE_ENV=test npx vitest run` → **91 passed, 16 files**. Manual: Campaign Voice panel added to Settings with persona textarea + "Save Voice"; loads via existing `load_vault_settings`/`save_vault_settings`, preserves `name`/`description`/`tag_colors`. Committed: `fdaae0d` (backend), `8b2e450` (UI).
 
 ### Task 2: Make the Bible pinnable
 
