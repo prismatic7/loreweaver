@@ -1553,6 +1553,7 @@ async fn summarize_session(
     base_url: Option<&str>,
 ) -> Result<String, String> {
     let allow_local;
+    let sampling_params;
     {
         let conn_arc = state.conn.lock().await;
         let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
@@ -1561,6 +1562,27 @@ async fn summarize_session(
             .flatten()
             .map(|v| v == "true")
             .unwrap_or(true);
+        sampling_params = crate::providers::llm::SamplingParams {
+            temperature: db::get_setting(&conn, "llm_temperature")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.8),
+            top_p: db::get_setting(&conn, "llm_top_p")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(1.0),
+            max_tokens: db::get_setting(&conn, "llm_max_tokens")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(4096),
+            seed: db::get_setting(&conn, "llm_seed")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok()),
+        };
     }
 
     if let Some(base) = base_url {
@@ -1596,6 +1618,7 @@ async fn summarize_session(
             api_key_owned.as_deref(),
             base_url_owned.as_deref(),
             allow_local,
+            sampling_params,
             &crate::providers::http_client(),
         )
     })
@@ -1629,6 +1652,7 @@ async fn orchestrate_agent(
 ) -> Result<String, String> {
     let allow_local;
     let system_context;
+    let sampling_params;
     {
         let vault_path = state.vault_path.lock().await;
         let conn_arc = state.conn.lock().await;
@@ -1638,6 +1662,27 @@ async fn orchestrate_agent(
             .flatten()
             .map(|v| v == "true")
             .unwrap_or(true);
+        sampling_params = crate::providers::llm::SamplingParams {
+            temperature: db::get_setting(&conn, "llm_temperature")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.8),
+            top_p: db::get_setting(&conn, "llm_top_p")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(1.0),
+            max_tokens: db::get_setting(&conn, "llm_max_tokens")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(4096),
+            seed: db::get_setting(&conn, "llm_seed")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok()),
+        };
         system_context = agent::build_system_context(&conn, prompt, active_note_id, &vault_path)?;
     }
 
@@ -1660,6 +1705,7 @@ async fn orchestrate_agent(
             api_key_owned.as_deref(),
             base_url_owned.as_deref(),
             allow_local,
+            sampling_params,
         )
     })
     .await
@@ -1867,6 +1913,25 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
     let llm_base_url = db::get_setting(&conn, "llm_base_url")
         .unwrap_or(None)
         .unwrap_or_else(|| "http://localhost:11434".to_string());
+    let llm_temperature = db::get_setting(&conn, "llm_temperature")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.8);
+    let llm_top_p = db::get_setting(&conn, "llm_top_p")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(1.0);
+    let llm_max_tokens = db::get_setting(&conn, "llm_max_tokens")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(4096);
+    let llm_seed = db::get_setting(&conn, "llm_seed")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i64>().ok());
 
     let embed_provider = db::get_setting(&conn, "embed_provider")
         .unwrap_or(None)
@@ -1942,6 +2007,10 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
         llm_model,
         llm_api_key,
         llm_base_url,
+        llm_temperature,
+        llm_top_p,
+        llm_max_tokens,
+        llm_seed,
         embed_provider,
         embed_model,
         embed_api_key,
@@ -1986,6 +2055,17 @@ async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Res
     )
     .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_base_url", &settings.llm_base_url).map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "llm_temperature", &settings.llm_temperature.to_string())
+        .map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "llm_top_p", &settings.llm_top_p.to_string())
+        .map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "llm_max_tokens", &settings.llm_max_tokens.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(seed) = settings.llm_seed {
+        db::set_setting(&conn, "llm_seed", &seed.to_string()).map_err(|e| e.to_string())?;
+    } else {
+        db::set_setting(&conn, "llm_seed", "").map_err(|e| e.to_string())?;
+    }
 
     db::set_setting(&conn, "embed_provider", &settings.embed_provider)
         .map_err(|e| e.to_string())?;

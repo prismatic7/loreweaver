@@ -1,4 +1,4 @@
-use crate::providers::llm::{self, SystemContext};
+use crate::providers::llm::SystemContext;
 use crate::search;
 
 /// AI Agent & RAG Context Orchestration
@@ -217,9 +217,10 @@ pub fn generate_response(
     api_key: Option<&str>,
     base_url: Option<&str>,
     allow_local: bool,
+    params: crate::providers::llm::SamplingParams,
 ) -> Result<String, String> {
     let agent = crate::providers::http_client();
-    llm::generate_response(
+    crate::providers::llm::generate_response(
         system_context,
         prompt,
         provider,
@@ -227,6 +228,7 @@ pub fn generate_response(
         api_key,
         base_url,
         allow_local,
+        params,
         &agent,
     )
 }

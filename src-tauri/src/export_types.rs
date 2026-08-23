@@ -62,6 +62,10 @@ pub struct AppSettings {
     pub llm_model: String,
     pub llm_api_key: String,
     pub llm_base_url: String,
+    pub llm_temperature: f64,
+    pub llm_top_p: f64,
+    pub llm_max_tokens: i64,
+    pub llm_seed: Option<i64>,
 
     pub embed_provider: String,
     pub embed_model: String,

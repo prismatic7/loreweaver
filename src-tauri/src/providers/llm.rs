@@ -14,6 +14,27 @@ pub struct SystemContext {
     pub active_note_context: String,
 }
 
+/// User-facing sampling parameters (the "Temper").
+/// Values mirror the AppSettings defaults so omitted params behave as before.
+#[derive(Clone, Copy, Debug)]
+pub struct SamplingParams {
+    pub temperature: f64,
+    pub top_p: f64,
+    pub max_tokens: i64,
+    pub seed: Option<i64>,
+}
+
+impl Default for SamplingParams {
+    fn default() -> Self {
+        Self {
+            temperature: 0.8,
+            top_p: 1.0,
+            max_tokens: 4096,
+            seed: None,
+        }
+    }
+}
+
 /// Orchestrates a call to the configured LLM backend using pre-computed context.
 ///
 /// This function performs blocking HTTP I/O and must be invoked inside
@@ -27,6 +48,7 @@ pub fn generate_response(
     api_key: Option<&str>,
     base_url: Option<&str>,
     allow_local: bool,
+    params: SamplingParams,
     agent: &Agent,
 ) -> Result<String, String> {
     match provider {
@@ -37,7 +59,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_ollama(model, &system_context.system_prompt, prompt, base, agent)
+            call_ollama(model, &system_context.system_prompt, prompt, base, params, agent)
         }
         "openai" | "openai-compatible" | "openrouter" | "copilot" | "z-ai" | "kilo"
         | "huggingface" => {
@@ -58,7 +80,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_openai_compatible(model, key, &system_context.system_prompt, prompt, base, provider, agent)
+            call_openai_compatible(model, key, &system_context.system_prompt, prompt, base, provider, params, agent)
         }
         "gemini" => {
             let key = api_key
@@ -70,7 +92,7 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_gemini(model, key, &system_context.system_prompt, prompt, base, agent)
+            call_gemini(model, key, &system_context.system_prompt, prompt, base, params, agent)
         }
         "anthropic" => {
             let key = api_key
@@ -82,21 +104,37 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_anthropic(model, key, &system_context.system_prompt, prompt, base, agent)
+            call_anthropic(model, key, &system_context.system_prompt, prompt, base, params, agent)
         }
         other => Err(format!("Unsupported LLM provider: {}", other)),
     }
 }
 
-fn call_ollama(model: &str, system: &str, prompt: &str, base_url: &str, agent: &Agent) -> Result<String, String> {
+fn call_ollama(
+    model: &str,
+    system: &str,
+    prompt: &str,
+    base_url: &str,
+    params: SamplingParams,
+    agent: &Agent,
+) -> Result<String, String> {
     let url = format!("{}/api/chat", base_url);
+    let mut options = serde_json::json!({
+        "temperature": params.temperature,
+        "top_p": params.top_p,
+        "num_predict": params.max_tokens,
+    });
+    if let Some(seed) = params.seed {
+        options["seed"] = serde_json::json!(seed);
+    }
     let body = json!({
         "model": model,
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": prompt }
         ],
-        "stream": false
+        "stream": false,
+        "options": options
     });
 
     println!("Calling Ollama API (Model: {}) at {}...", model, url);
@@ -129,16 +167,23 @@ fn call_openai_compatible(
     prompt: &str,
     base_url: &str,
     provider: &str,
+    params: SamplingParams,
     agent: &Agent,
 ) -> Result<String, String> {
     let url = format!("{}/v1/chat/completions", base_url);
-    let body = json!({
+    let mut body = serde_json::json!({
         "model": model,
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": prompt }
-        ]
+        ],
+        "temperature": params.temperature,
+        "top_p": params.top_p,
+        "max_tokens": params.max_tokens,
     });
+    if let Some(seed) = params.seed {
+        body["seed"] = serde_json::json!(seed);
+    }
 
     println!("Calling {} API (Model: {}) at {}...", provider, model, url);
     let response = agent
@@ -166,12 +211,15 @@ fn call_anthropic(
     system: &str,
     prompt: &str,
     base_url: &str,
+    params: SamplingParams,
     agent: &Agent,
 ) -> Result<String, String> {
     let url = format!("{}/v1/messages", base_url);
     let body = json!({
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": params.max_tokens,
+        "temperature": params.temperature,
+        "top_p": params.top_p,
         "system": system,
         "messages": [
             { "role": "user", "content": prompt }
@@ -205,6 +253,7 @@ fn call_gemini(
     system: &str,
     prompt: &str,
     base_url: &str,
+    params: SamplingParams,
     agent: &Agent,
 ) -> Result<String, String> {
     let url = format!("{}/v1beta/models/{}:generateContent", base_url, model);
@@ -217,7 +266,12 @@ fn call_gemini(
     let body = json!({
         "contents": [{
             "parts": [{ "text": full_prompt }]
-        }]
+        }],
+        "generationConfig": {
+            "temperature": params.temperature,
+            "topP": params.top_p,
+            "maxOutputTokens": params.max_tokens,
+        }
     });
 
     println!("Calling Google Gemini API (Model: {})...", model);
@@ -259,6 +313,7 @@ mod tests {
             None,
             None,
             false,
+            SamplingParams::default(),
             &agent,
         );
         assert!(res.is_err());
@@ -275,6 +330,7 @@ mod tests {
             active_note_context: String::new(),
         };
         let agent = crate::providers::http_client();
+        let params = SamplingParams::default();
 
         // OpenAI missing key
         let res_openai = generate_response(
@@ -285,6 +341,7 @@ mod tests {
             None,
             None,
             false,
+            params,
             &agent,
         );
         assert!(res_openai.is_err());
@@ -299,6 +356,7 @@ mod tests {
             None,
             None,
             false,
+            params,
             &agent,
         );
         assert!(res_gemini.is_err());
@@ -313,6 +371,7 @@ mod tests {
             None,
             None,
             false,
+            params,
             &agent,
         );
         assert!(res_anthropic.is_err());
