@@ -105,6 +105,11 @@ pub struct VaultSettings {
     pub campaign_system: Option<String>,
     pub description: Option<String>,
     pub tag_colors: Option<HashMap<String, String>>,
+    /// Per-world image style template: a small block of prompt text that
+    /// sets the world's aesthetics and tone. Prepended server-side by
+    /// `image.rs` when generating images for this world.
+    #[serde(default)]
+    pub image_style_template: Option<String>,
 }
 
 // --- Tauri Commands ---

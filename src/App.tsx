@@ -425,6 +425,7 @@ function App() {
   const sessionTools = useSessionTools({
     pluginsList,
     alert,
+    vaultPath,
     imageProvider,
     imageModel,
     imageApiKey,

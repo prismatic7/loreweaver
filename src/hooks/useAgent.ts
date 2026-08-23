@@ -266,33 +266,48 @@ export function useAgent(
     if (!chatInput.trim() || isGeneratingChatImage) return;
     setIsGeneratingChatImage(true);
     setChatImageUrl("");
-    invoke<string>("generate_image", {
-      prompt: chatInput,
-      style: "Fantasy Portrait",
-      provider: settings.imageProvider,
-      model: settings.imageModel,
-      apiKey: settings.imageApiKey || null,
-      baseUrl: settings.imageBaseUrl || null,
-    })
-      .then((dataUrl) => {
-        setChatImageUrl(dataUrl);
-        updateVaultChatMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            text: "Here is the image I generated:",
-            imageUrl: dataUrl,
-          },
-        ]);
+
+    // Use the world's style template when set; fall back to the classic default.
+    const resolveStyle = async (): Promise<string> => {
+      try {
+        const vs = await invoke<{ image_style_template?: string | null }>(
+          "load_vault_settings",
+        );
+        return vs?.image_style_template?.trim() || "Fantasy Portrait";
+      } catch {
+        return "Fantasy Portrait";
+      }
+    };
+
+    resolveStyle().then((style) =>
+      invoke<string>("generate_image", {
+        prompt: chatInput,
+        style,
+        provider: settings.imageProvider,
+        model: settings.imageModel,
+        apiKey: settings.imageApiKey || null,
+        baseUrl: settings.imageBaseUrl || null,
       })
-      .catch((err) => {
-        console.error("Chat image error:", err);
-        updateVaultChatMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: `Image generation failed: ${err}` },
-        ]);
-      })
-      .finally(() => setIsGeneratingChatImage(false));
+        .then((dataUrl) => {
+          setChatImageUrl(dataUrl);
+          updateVaultChatMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              text: "Here is the image I generated:",
+              imageUrl: dataUrl,
+            },
+          ]);
+        })
+        .catch((err) => {
+          console.error("Chat image error:", err);
+          updateVaultChatMessages((prev) => [
+            ...prev,
+            { role: "assistant", text: `Image generation failed: ${err}` },
+          ]);
+        })
+        .finally(() => setIsGeneratingChatImage(false))
+    );
   }, [
     chatInput,
     isGeneratingChatImage,

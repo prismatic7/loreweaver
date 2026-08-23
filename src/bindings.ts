@@ -108,6 +108,12 @@ export type VaultSettings = {
 	campaign_system: string | null,
 	description: string | null,
 	tag_colors: { [key in string]: string } | null,
+	/**
+	 *  Per-world image style template: a small block of prompt text that
+	 *  sets the world's visual aesthetics and tone. Prepended server-side
+	 *  by `image.rs` when generating images for this world.
+	 */
+	image_style_template?: string | null,
 };
 
 /**

@@ -5,6 +5,7 @@ import { fallbackRoll } from "../utils/dice";
 interface SessionToolsDeps {
   pluginsList: Array<{ id: string; name: string; active?: boolean }>;
   alert: (message: string) => void;
+  vaultPath?: string;
   imageProvider: string;
   imageModel: string;
   imageApiKey: string;
@@ -21,6 +22,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
   const {
     pluginsList,
     alert,
+    vaultPath,
     imageProvider,
     imageModel,
     imageApiKey,
@@ -53,6 +55,26 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
   const [imageStyle, setImageStyle] = useState("Fantasy Portrait");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string>("");
+
+  // Seed the drawer's style with the world's template when a vault is active,
+  // so generated images carry the world's voice unless the GM overrides.
+  useEffect(() => {
+    if (!vaultPath) return;
+    let cancelled = false;
+    invoke<{ image_style_template?: string | null }>("load_vault_settings")
+      .then((vs) => {
+        const template = vs?.image_style_template?.trim();
+        if (!cancelled && template) {
+          setImageStyle(template);
+        }
+      })
+      .catch(() => {
+        // Ignore — keep the current style.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultPath]);
 
   const [ttsText, setTtsText] = useState("");
   const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);

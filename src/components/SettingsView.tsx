@@ -71,6 +71,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     campaign_system: string | null;
     description: string | null;
     tag_colors: Record<string, string> | null;
+    image_style_template: string | null;
   } | null>(null);
   const [vaultSettingsSaved, setVaultSettingsSaved] = useState(false);
   const [vaultSettingsError, setVaultSettingsError] = useState<string | null>(
@@ -88,6 +89,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       campaign_system: string | null;
       description: string | null;
       tag_colors: Record<string, string> | null;
+      image_style_template: string | null;
     }>("load_vault_settings")
       .then((settings) => {
         if (!cancelled) setVaultSettings(settings);
@@ -455,6 +457,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 )
               }
               placeholder="e.g. You are the Keeper of the Gate, a sardonic cosmic-horror narrator who answers in dry, measured prose."
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: 12,
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                color: "var(--fg)",
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          {/* Style template */}
+          <div
+            className="settings-item"
+            style={{
+              borderTop: "1px solid var(--border)",
+              paddingTop: "12px",
+              marginTop: "12px",
+            }}
+          >
+            <div
+              className="settings-label"
+              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "6px" }}
+            >
+              Image Style Template
+            </div>
+            <div
+              className="settings-desc"
+              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "6px" }}
+            >
+              How images in this world look — aesthetics and tone, prepended
+              to every generated image prompt.
+            </div>
+            <textarea
+              rows={2}
+              value={vaultSettings?.image_style_template ?? ""}
+              onChange={(e) =>
+                setVaultSettings((prev) =>
+                  prev
+                    ? { ...prev, image_style_template: e.target.value }
+                    : prev
+                )
+              }
+              placeholder="e.g. Grainy cold-war espionage photo, muted green-grey palette, harsh practical lighting, 1970s intelligence dossier."
               style={{
                 width: "100%",
                 padding: "8px 10px",
