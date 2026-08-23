@@ -70,9 +70,9 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 4: Note → image flow
 
-- [ ] **Step 1: Entry point** an "Illustrate this note" affordance on note sheets (character/location/item). `handleGenerateImage` is called with the note's title + content.
-- [ ] **Step 2: Prompt assembly** `template + "depicting {note title}: {note content}" + optional per-use prompt`. The note's own words are the source (same vault-is-source principle as the Bible).
-- [ ] **Step 3: Verify** generate from an open character note; confirm the image reflects the note's described details.
+- [x] **Step 1: Entry point** an "Illustrate this note" affordance on note sheets (character/location/item). `handleGenerateImage` is called with the note's title + content.
+- [x] **Step 2: Prompt assembly** `template + "depicting {note title}: {note content}" + optional per-use prompt`. The note's own words are the source (same vault-is-source principle as the Bible).
+- [x] **Step 3: Verify** `npx tsc --noEmit` clean; vitest **91 passed**; "Illustrate" button on note editor saves the note, assembles prompt from style template + note content, generates into the drawer. Committed: `797a790`.
 
 ### Task 5: Quality, not knobs (image)
 
