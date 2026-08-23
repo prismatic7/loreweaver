@@ -75,15 +75,29 @@ pub fn build_system_context(
         }
     }
 
+    // 2c. Load the campaign persona (per-world voice override).
+    let persona = load_campaign_persona(vault_path);
+    let persona_opening = match &persona {
+        Some(p) => p.clone(),
+        None => {
+            "You are an expert RPG Campaign Architect and Game Master assistant. \
+        Help the user run, develop, and balance their campaign. \
+        Answer questions regarding rules and lore accurately based on the campaign materials provided below."
+                .to_string()
+        }
+    };
+
     // 3. Assemble System Prompt
     let system_prompt = format!(
-        "You are an expert RPG Campaign Architect and Game Master assistant. \
-        Help the user run, develop, and balance their campaign. \
-        Answer questions regarding rules and lore accurately based on the campaign materials provided below.\n\n\
+        "{}\n\n\
         {}\n\
-        --- RULES & LORE CONTEXT ---\n{}\n{}\n{}\n----------------------------\n\n\
+        --- RULES & LORE CONTEXT ---\n{}{}{}\n----------------------------\n\n\
         Respond in clean Markdown. Be creative and detail-oriented.",
-        bible_context, context_text, active_note_context, memory_context
+        persona_opening,
+        bible_context,
+        context_text,
+        active_note_context,
+        memory_context
     );
 
     Ok(SystemContext {
@@ -100,6 +114,22 @@ fn world_bible_enabled(vault_path: &str) -> bool {
     crate::worlds::load_manifest(vault_path)
         .map(|m| m.bible)
         .unwrap_or(true)
+}
+
+/// Loads the campaign persona from `<vault_path>/vault_config.json`.
+///
+/// The persona (`campaign_system`) is the world's voice: when set, it
+/// replaces the hardcoded opening of the system prompt so the Muse speaks
+/// as the campaign intends. Missing/unparseable config yields `None`
+/// (default persona preserved).
+fn load_campaign_persona(vault_path: &str) -> Option<String> {
+    let config_file = std::path::Path::new(vault_path).join("vault_config.json");
+    let content = std::fs::read_to_string(&config_file).ok()?;
+    let settings: crate::VaultSettings = serde_json::from_str(&content).ok()?;
+    settings
+        .campaign_system
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Reads the campaign bible files from `<vault_path>/bible/` and concatenates them
@@ -258,6 +288,65 @@ mod tests {
         assert!(
             !context.system_prompt.contains("CAMPAIGN BIBLE"),
             "bible should be skipped when manifest bible=false"
+        );
+    }
+
+    #[test]
+    fn test_build_system_context_uses_campaign_persona_when_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        let db_path = vault.join("test.db");
+        let conn = crate::db::init_db(db_path.to_str().unwrap()).unwrap();
+
+        // No config → default persona.
+        let context = build_system_context(&conn, "hello", None, vault.to_str().unwrap()).unwrap();
+        assert!(
+            context.system_prompt.contains("expert RPG Campaign Architect"),
+            "default persona should be used when no vault_config.json exists"
+        );
+
+        // Write a config with a persona → it replaces the default opening.
+        std::fs::write(
+            vault.join("vault_config.json"),
+            r#"{ "campaign_system": "You are the Keeper of the Gate, a sardonic cosmic-horror narrator." }"#,
+        )
+        .unwrap();
+        let context = build_system_context(&conn, "hello", None, vault.to_str().unwrap()).unwrap();
+        assert!(
+            context
+                .system_prompt
+                .contains("Keeper of the Gate, a sardonic cosmic-horror narrator"),
+            "campaign persona should appear in the system prompt"
+        );
+        assert!(
+            !context.system_prompt.contains("expert RPG Campaign Architect"),
+            "hardcoded opening should be replaced when persona is set"
+        );
+    }
+
+    #[test]
+    fn test_load_campaign_persona_graceful_when_unset_or_unparseable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path();
+        assert!(
+            load_campaign_persona(vault.to_str().unwrap()).is_none(),
+            "missing config should yield None"
+        );
+
+        std::fs::write(vault.join("vault_config.json"), "not json").unwrap();
+        assert!(
+            load_campaign_persona(vault.to_str().unwrap()).is_none(),
+            "unparseable config should yield None"
+        );
+
+        std::fs::write(
+            vault.join("vault_config.json"),
+            r#"{ "campaign_system": "   " }"#,
+        )
+        .unwrap();
+        assert!(
+            load_campaign_persona(vault.to_str().unwrap()).is_none(),
+            "blank persona should yield None"
         );
     }
 }
