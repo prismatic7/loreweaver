@@ -98,20 +98,20 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 8: Sampling parameters — backend
 
-- [ ] **Step 1: Schema** `AppSettings` gains `llm_temperature: f64` (default 0.8), `llm_top_p: f64` (default 1.0), `llm_max_tokens: i64` (default 4096), `llm_seed: Option<i64>` (default None). Plus zod + `DEFAULT_SETTINGS` + `useSettings` merge/save.
-- [ ] **Step 2: Thread through `generate_response`** `agent.rs:157` and `llm::generate_response` gain the four params; each `call_*` adds them to the request body (Ollama `options`, OpenAI-compatible `temperature`/`top_p`/`max_tokens`/`seed`, Anthropic `max_tokens` (already hardcoded 4096 — use the setting), Gemini `generationConfig`).
-- [ ] **Step 3: Verify** unit test that a provider body contains the overridden temperature; manual with Ollama local.
+- [x] **Step 1: Schema** `AppSettings` gains `llm_temperature: f64` (default 0.8), `llm_top_p: f64` (default 1.0), `llm_max_tokens: i64` (default 4096), `llm_seed: Option<i64>` (default None). Plus zod + `DEFAULT_SETTINGS` + `useSettings` merge/save.
+- [x] **Step 2: Thread through `generate_response`** `agent.rs:157` and `llm::generate_response` gain the four params; each `call_*` adds them to the request body (Ollama `options`, OpenAI-compatible `temperature`/`top_p`/`max_tokens`/`seed`, Anthropic `max_tokens` (already hardcoded 4096 — use the setting), Gemini `generationConfig`).
+- [x] **Step 3: Verify** unit test that a provider body contains the overridden temperature; manual with Ollama local.
 
 ### Task 9: Firm ↔ Wild UI (global default)
 
-- [ ] **Step 1: Settings control** in the LLM tab: a slider labelled **Firm ↔ Wild** (0.0–2.0, default 0.8) with live preview of the numeric value; secondary `top_p` and `max_tokens` advanced fields (advanced options tucked away).
-- [ ] **Step 2: Verify** save → reload → generation reflects the saved value.
+- [x] **Step 1: Settings control** in the LLM tab: a slider labelled **Firm ↔ Wild** (0.0–2.0, default 0.8) with live preview of the numeric value; secondary `top_p` and `max_tokens` advanced fields (advanced options tucked away).
+- [x] **Step 2: Verify** save → reload → generation reflects the saved value.
 
 ### Task 10: Per-world override + per-session quick toggle (the cascade)
 
-- [ ] **Step 1: Per-world** `VaultSettings` gains `firm_wild: Option<f64>` (per world, in `vault_config.json`). `generate_response` resolves: session toggle → world override → global default.
-- [ ] **Step 2: Per-session quick toggle** a small Firm ↔ Wild control in the session header, ephemeral (resets at session close; optional "make this the world default" affordance). Lives in app state, not DB.
-- [ ] **Step 3: Verify** flip the toggle mid-session, confirm behaviour shifts without opening settings.
+- [x] **Step 1: Per-world** `VaultSettings` gains `firm_wild: Option<f64>` (per world, in `vault_config.json`). `generate_response` resolves: session toggle → world override → global default.
+- [x] **Step 2: Per-session quick toggle** a small Firm ↔ Wild control in the session header, ephemeral (resets at session close; optional "make this the world default" affordance). Lives in app state, not DB.
+- [x] **Step 3: Verify** flip the toggle mid-session, confirm behaviour shifts without opening settings.
 
 ---
 
@@ -119,6 +119,6 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 11: Dead code + tone fixes
 
-- [ ] **Step 1: `setTheme`/`theme`** — either wire a real light/dark toggle (Design.md has a light palette) or delete the dead prop threading (`SettingsView.tsx` receives `theme` as `_theme`).
-- [ ] **Step 2: `alert()` for save/reindex** — replace native dialogs with in-app toast/inline feedback (Ledger's calm).
-- [ ] **Step 3: Verify** `npm run test` + manual save/reindex without native dialogs.
+- [x] **Step 1: `setTheme`/`theme`** — either wire a real light/dark toggle (Design.md has a light palette) or delete the dead prop threading (`SettingsView.tsx` receives `theme` as `_theme`).
+- [x] **Step 2: `alert()` for save/reindex** — replace native dialogs with in-app toast/inline feedback (Ledger's calm).
+- [x] **Step 3: Verify** `npm run test` + manual save/reindex without native dialogs.
