@@ -191,7 +191,13 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
     <div
       className="view-container"
       data-od-id="character-sheets-view"
-      style={{ padding: "40px 32px", overflowY: "auto" }}
+      style={{
+        padding: "40px 32px",
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100%",
+      }}
     >
       <div
         style={{
@@ -243,6 +249,8 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
           gap: "12px",
           marginBottom: "20px",
           alignItems: "center",
+          width: "100%",
+          maxWidth: "720px",
         }}
       >
         <select
@@ -294,10 +302,20 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
       {templates.length === 0 ? (
         <div
           style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingBottom: "48px",
+          }}
+        >
+        <div
+          style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderRadius: 0,
             padding: "32px 24px",
+            width: "100%",
             maxWidth: "720px",
             display: "flex",
             flexDirection: "column",
@@ -324,13 +342,23 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
             frontmatter, then reload.
           </p>
         </div>
+        </div>
       ) : currentTemplate ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            paddingBottom: "48px",
+          }}
+        >
         <div
           style={{
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderRadius: 0,
             padding: "20px",
+            width: "100%",
             maxWidth: "720px",
           }}
         >
@@ -429,6 +457,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
               </div>
             </div>
           )}
+        </div>
         </div>
       ) : null}
     </div>

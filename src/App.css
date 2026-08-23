@@ -833,9 +833,33 @@
 .plugin-tab:focus-visible,
 .asset-card:focus-visible,
 .search-bar input:focus-visible,
-.chat-input-row input:focus-visible {
+.chat-input-row input:focus-visible,
+.world-shelf-trigger:focus-visible,
+.world-shelf-popover [role="menuitem"]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.world-shelf-trigger:hover {
+  color: var(--fg);
+}
+.world-shelf-trigger:hover svg {
+  color: var(--fg);
+}
+.world-shelf-row {
+  background: transparent;
+}
+.world-shelf-row[aria-current="true"] {
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+}
+.world-shelf-row:hover {
+  background: var(--border);
+}
+.world-shelf-row[aria-current="true"]:hover {
+  background: color-mix(in oklab, var(--accent) 18%, var(--surface));
+}
+.world-shelf-row-liminal:hover {
+  background: var(--border);
 }
 
 .btn:hover {

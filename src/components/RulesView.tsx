@@ -291,11 +291,12 @@ export const RulesView: React.FC<RulesViewProps> = ({
                   {!isCollapsed && (
                     <div
                       style={{
-                        paddingLeft: "16px",
+                        paddingLeft: "26px",
                         display: "flex",
                         flexDirection: "column",
                         gap: "2px",
                         marginTop: "2px",
+                        borderLeft: "1px solid var(--border)",
                       }}
                     >
                       {folderRules.map((rule) => (

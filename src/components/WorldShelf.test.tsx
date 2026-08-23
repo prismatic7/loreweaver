@@ -37,28 +37,35 @@ function makeProps(overrides: Partial<WorldShelfProps> = {}): WorldShelfProps {
 }
 
 describe("WorldShelf", () => {
-  it("renders worlds and the liminal entry", () => {
+  it("renders the active world identity and the liminal button", () => {
     render(<WorldShelf {...makeProps()} />);
     expect(screen.getByText(/FATE of Cthulhu/)).toBeTruthy();
-    expect(screen.getByText(/Pulp Noir/)).toBeTruthy();
-    expect(screen.getByText(/The Liminal/)).toBeTruthy();
+    expect(screen.getByTitle("Open the Liminal")).toBeTruthy();
   });
 
-  it("calls onSwitchWorld when a world is selected", () => {
+  it("shows every world with its identity in the shelf", () => {
+    render(<WorldShelf {...makeProps()} />);
+    fireEvent.click(screen.getByLabelText("World shelf"));
+    expect(screen.getAllByText(/FATE of Cthulhu/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Pulp Noir/)).toBeTruthy();
+    expect(screen.getByText(/The Liminal/)).toBeTruthy();
+    expect(screen.getByText(/2003 espionage-horror\./)).toBeTruthy();
+    expect(screen.getByText(/Warm paper and rust\./)).toBeTruthy();
+  });
+
+  it("calls onSwitchWorld when a world is chosen from the shelf", () => {
     const onSwitchWorld = vi.fn();
     render(<WorldShelf {...makeProps({ onSwitchWorld })} />);
-    fireEvent.change(screen.getByLabelText("World shelf"), {
-      target: { value: "/vaults/pulp" },
-    });
+    fireEvent.click(screen.getByLabelText("World shelf"));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Pulp Noir/ }));
     expect(onSwitchWorld).toHaveBeenCalledWith("/vaults/pulp");
   });
 
-  it("calls onOpenLiminal when the liminal entry is selected", () => {
+  it("calls onOpenLiminal when the liminal entry is chosen", () => {
     const onOpenLiminal = vi.fn();
     render(<WorldShelf {...makeProps({ onOpenLiminal })} />);
-    fireEvent.change(screen.getByLabelText("World shelf"), {
-      target: { value: "LIMINAL_TRIGGER" },
-    });
+    fireEvent.click(screen.getByLabelText("World shelf"));
+    fireEvent.click(screen.getByRole("menuitem", { name: /The Liminal/ }));
     expect(onOpenLiminal).toHaveBeenCalled();
   });
 

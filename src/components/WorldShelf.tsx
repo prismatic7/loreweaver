@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Plus, Download, Upload, Inbox, Sparkles } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Plus, Download, Upload, Inbox, Sparkles, Check, ChevronDown } from "lucide-react";
 import { WorldInfo } from "../types";
 
 /**
@@ -8,6 +8,13 @@ import { WorldInfo } from "../types";
  * The world switcher — a first-class shelf of worlds (icon, name, description,
  * last-opened) plus the Liminal entry and new-world/export/import actions.
  * Replaces the plain folder dropdown as the primary world-switching surface.
+ *
+ * The trigger is a compact chip showing the active world's identity (icon +
+ * name). It opens a popover menu in which each world row carries its full
+ * identity — icon, name, description, last-opened — so switching is a
+ * deliberate act of choosing a world, not picking a value off a folder list.
+ * Actions (new / import / export / liminal) live beside the chip as buttons,
+ * never inside the switcher itself.
  */
 
 export interface WorldShelfProps {
@@ -31,11 +38,15 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
   onImportWorld,
   onMakeWorldFromLiminal,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showNewWorld, setShowNewWorld] = useState(false);
   const [newWorldName, setNewWorldName] = useState("");
   const [scaffoldFrom, setScaffoldFrom] = useState<string>("");
   const [showLiminalBirth, setShowLiminalBirth] = useState(false);
   const [liminalName, setLiminalName] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const active = worlds.find((w) => w.path === activeWorldPath);
 
   const handleCreate = async () => {
     const name = newWorldName.trim();
@@ -58,30 +69,43 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
     await onImportWorld();
   };
 
+  const formatLastOpened = (iso: string | null): string => {
+    if (!iso) return "Never opened";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Never opened";
+    return `Opened ${d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })}`;
+  };
+
   return (
     <div
       className="world-shelf"
       data-od-id="world-shelf"
+      ref={containerRef}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: "8px",
+        gap: "6px",
         position: "relative",
       }}
     >
-      <select
-        value={activeWorldPath}
-        onChange={(e) => {
-          const val = e.target.value;
-          if (val === "NEW_WORLD_TRIGGER") {
-            setShowNewWorld(true);
-          } else if (val === "LIMINAL_TRIGGER") {
-            onOpenLiminal();
-          } else if (val) {
-            onSwitchWorld(val);
-          }
-        }}
+      {/* Switcher chip — shows the active world's identity and opens the shelf */}
+      <button
+        className="world-shelf-trigger"
+        data-od-id="world-shelf-trigger"
+        onClick={() => setMenuOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-label="World shelf"
+        title={active ? `${active.name} — switch world` : "Select a world"}
         style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          maxWidth: "240px",
           background: "transparent",
           border: "none",
           color: "var(--fg)",
@@ -89,34 +113,31 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
           fontWeight: 600,
           cursor: "pointer",
           outline: "none",
-          paddingRight: "8px",
-          maxWidth: "220px",
+          padding: "2px 4px",
         }}
-        aria-label="World shelf"
       >
-        {worlds.map((w) => (
-          <option
-            key={w.path}
-            value={w.path}
-            style={{ background: "var(--surface)", color: "var(--fg)" }}
-          >
-            {w.icon} {w.name}
-          </option>
-        ))}
-        <option
-          value="LIMINAL_TRIGGER"
-          style={{ background: "var(--surface)", color: "var(--accent)" }}
+        <span style={{ fontSize: "13px", lineHeight: 1 }}>{active?.icon ?? "◌"}</span>
+        <span
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
         >
-          ⬛ The Liminal
-        </option>
-        <option
-          value="NEW_WORLD_TRIGGER"
-          style={{ background: "var(--surface)", color: "var(--accent)" }}
-        >
-          + New World...
-        </option>
-      </select>
+          {active?.name ?? "No world"}
+        </span>
+        <ChevronDown
+          size={12}
+          style={{
+            color: "var(--muted)",
+            transform: menuOpen ? "rotate(180deg)" : "none",
+            transition: "transform 0.15s ease",
+            flexShrink: 0,
+          }}
+        />
+      </button>
 
+      {/* Action buttons — creating/importing/exporting are actions, not switches */}
       <button
         className="btn btn-sm"
         onClick={() => setShowNewWorld(true)}
@@ -138,7 +159,6 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
       <button
         className="btn btn-sm"
         onClick={() => {
-          const active = worlds.find((w) => w.path === activeWorldPath);
           if (active) onExportWorld(active);
         }}
         title="Export active world"
@@ -156,6 +176,165 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
       >
         <Inbox size={13} />
       </button>
+
+      {/* Shelf popover — every world carries its full identity */}
+      {menuOpen && (
+        <div
+          className="world-shelf-popover"
+          data-od-id="world-shelf-menu"
+          role="menu"
+          aria-label="Worlds"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            zIndex: 20,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 0,
+            padding: "6px",
+            minWidth: "300px",
+            maxWidth: "360px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          }}
+        >
+          {worlds.map((w) => {
+            const isActive = w.path === activeWorldPath;
+            return (
+              <button
+                key={w.path}
+                role="menuitem"
+                className="world-shelf-row"
+                data-od-id={`world-shelf-item-${w.id}`}
+                onClick={() => {
+                  onSwitchWorld(w.path);
+                  setMenuOpen(false);
+                }}
+                aria-current={isActive}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "10px",
+                  width: "100%",
+                  textAlign: "left",
+                  border: "none",
+                  borderRadius: 0,
+                  padding: "8px 8px",
+                  cursor: "pointer",
+                  color: "var(--fg)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "16px",
+                    lineHeight: 1,
+                    width: "18px",
+                    flexShrink: 0,
+                    marginTop: "1px",
+                  }}
+                >
+                  {w.icon}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "var(--fg)",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {w.name}
+                  </span>
+                  {w.description && (
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: "11px",
+                        color: "var(--muted)",
+                        marginTop: "2px",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {w.description}
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: "10px",
+                      color: "var(--muted)",
+                      letterSpacing: "0.02em",
+                      marginTop: "4px",
+                      opacity: 0.8,
+                    }}
+                  >
+                    {formatLastOpened(w.last_opened)}
+                  </span>
+                </span>
+                {isActive && (
+                  <Check
+                    size={14}
+                    style={{ color: "var(--accent)", flexShrink: 0, marginTop: "2px" }}
+                  />
+                )}
+              </button>
+            );
+          })}
+
+          <div
+            role="separator"
+            style={{
+              height: "1px",
+              background: "var(--border)",
+              margin: "6px 0",
+            }}
+          />
+
+          <button
+            role="menuitem"
+            className="world-shelf-row world-shelf-row-liminal"
+            data-od-id="world-shelf-item-liminal"
+            onClick={() => {
+              onOpenLiminal();
+              setMenuOpen(false);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              width: "100%",
+              textAlign: "left",
+              border: "none",
+              borderRadius: 0,
+              padding: "8px 8px",
+              cursor: "pointer",
+              color: "var(--accent)",
+            }}
+          >
+            <span style={{ fontSize: "16px", lineHeight: 1, width: "18px", flexShrink: 0 }}>
+              ⬛
+            </span>
+            <span style={{ flex: 1 }}>
+              <span style={{ display: "block", fontSize: "12px", fontWeight: 600 }}>
+                The Liminal
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  color: "var(--muted)",
+                  marginTop: "2px",
+                  lineHeight: 1.4,
+                }}
+              >
+                The in-between — where scraps gather before they become notes
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
 
       {showNewWorld && (
         <div
@@ -215,10 +394,7 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             ))}
           </select>
           <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
-            <button
-              className="btn btn-sm"
-              onClick={() => setShowNewWorld(false)}
-            >
+            <button className="btn btn-sm" onClick={() => setShowNewWorld(false)}>
               Cancel
             </button>
             <button
@@ -277,10 +453,7 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             }}
           />
           <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
-            <button
-              className="btn btn-sm"
-              onClick={() => setShowLiminalBirth(false)}
-            >
+            <button className="btn btn-sm" onClick={() => setShowLiminalBirth(false)}>
               Cancel
             </button>
             <button

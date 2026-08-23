@@ -378,11 +378,12 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                   {!isCollapsed && (
                     <div
                       style={{
-                        paddingLeft: "16px",
+                        paddingLeft: "26px",
                         display: "flex",
                         flexDirection: "column",
                         gap: "2px",
                         marginTop: "2px",
+                        borderLeft: "1px solid var(--border)",
                       }}
                     >
                       {folderNotes.map((note) => {

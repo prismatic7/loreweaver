@@ -443,7 +443,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   fontWeight: 600,
                 }}
               >
-                Campaign Voice
+                This World
               </h3>
               <p
                 style={{
@@ -452,8 +452,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   margin: "4px 0 0 0",
                 }}
               >
-                Who the Muse is in this world. Overrides the default
-                assistant persona when set.
+                The Muse's personality for this world — voice, image, temper,
+                and pinned Bible. Each sits on the cascade: global default,
+                per-world here, per-session in the Architect header.
               </p>
             </div>
             {vaultSettings && (
@@ -490,6 +491,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{ fontSize: "13px", fontWeight: 500, marginBottom: "6px" }}
             >
               Persona
+            </div>
+            <div
+              className="settings-desc"
+              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "6px" }}
+            >
+              Who the Muse believes it is in this world. When set, it replaces
+              the default assistant opening; leave blank to use the default
+              persona.
             </div>
             <textarea
               rows={4}
@@ -576,14 +585,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="settings-label"
               style={{ fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}
             >
-              World Predictability
+              Predictability
             </div>
             <div
               className="settings-desc"
               style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "8px" }}
             >
-              This world's Firm ↔ Wild default. Leave blank to follow the global
-              default; the session toggle overrides this while you play.
+              This world's Firm ↔ Wild position. Leave unset to follow the
+              global default; the session toggle in the Architect header
+              overrides it while you play.
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <input
@@ -1243,12 +1253,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       marginBottom: "4px",
                     }}
                   >
-                    Predictability — Firm ↔ Wild
+                    Predictability — Firm ↔ Wild (global default)
                   </label>
                   <input
                     type="range"
                     min="0"
-                    max="1"
+                    max="2"
                     step="0.05"
                     {...register("llm_temperature", { valueAsNumber: true })}
                     style={{ width: "100%", accentColor: "var(--accent)" }}
@@ -1266,7 +1276,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <span>Wild</span>
                   </div>
 
-                  <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+                  <div
+                    style={{
+                      fontSize: "10px",
+                      color: "var(--muted)",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginTop: "16px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Advanced Sampling
+                  </div>
+                  <div style={{ display: "flex", gap: "10px", marginTop: "0px" }}>
                     <div style={{ flex: 1 }}>
                       <label
                         style={{
@@ -1602,8 +1625,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       marginBottom: "6px",
                     }}
                   >
-                    <CheckCircle2 size={12} /> Connected Successfully! Available Models (Click to
-                    select):
+                    <CheckCircle2 size={12} /> Connected. Pick a model below to
+                    select it:
                   </div>
                   <div
                     style={{

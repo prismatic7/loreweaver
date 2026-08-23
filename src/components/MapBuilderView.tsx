@@ -167,6 +167,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   const [namingToken, setNamingToken] = useState(false);
   const [tokenName, setTokenName] = useState("");
   const [tokenShape, setTokenShape] = useState<TokenShape>("circle");
+  const [tokenColor, setTokenColor] = useState(TOKEN_COLORS[0]);
   const [currentLine, setCurrentLine] = useState<{ x: number; y: number }[]>([]);
   const [placingAnnotation, setPlacingAnnotation] = useState<{ x: number; y: number } | null>(null);
   const [annotationText, setAnnotationText] = useState("");
@@ -272,16 +273,16 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   const addToken = () => {
     setTokenName("");
     setTokenShape("circle");
+    setTokenColor(TOKEN_COLORS[0]);
     setNamingToken(true);
   };
 
   const commitTokenName = () => {
     const label = tokenName.trim() || "Token";
     setNamingToken(false);
-    const color = TOKEN_COLORS[tokens.length % TOKEN_COLORS.length];
     setTokens((prev) => [
       ...prev,
-      { id: `token-${Date.now()}`, label, x: 120, y: 120, color, shape: tokenShape },
+      { id: `token-${Date.now()}`, label, x: 120, y: 120, color: tokenColor, shape: tokenShape },
     ]);
   };
 
@@ -1152,7 +1153,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                     </text>
                   )}
                   <g
-                    transform="translate(12, -12)"
+                    transform="translate(11, -11)"
                     role="button"
                     aria-label="Delete token"
                     onClick={(e) => {
@@ -1161,14 +1162,22 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                     }}
                     style={{ cursor: "pointer" }}
                   >
-                    <rect width="24" height="24" x="-12" y="-12" rx="0" fill="var(--surface)" stroke="var(--danger)" strokeWidth="1" />
-                    <g transform="translate(0, 0)">
-                      <g transform="scale(0.5)">
-                        <g fill="none" stroke="var(--danger)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 6 6 18" />
-                          <path d="m6 6 12 12" />
-                        </g>
-                      </g>
+                    <circle
+                      r="8"
+                      fill="var(--surface)"
+                      stroke="var(--danger)"
+                      strokeWidth="1.5"
+                    />
+                    <g
+                      fill="none"
+                      stroke="var(--danger)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      transform="translate(-3.5, -3.5)"
+                    >
+                      <path d="M0 0 7 7" />
+                      <path d="M7 0 0 7" />
                     </g>
                   </g>
                 </g>
@@ -1414,6 +1423,41 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                     <CircleIcon size={12} />
                   )}
                 </button>
+              ))}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                marginBottom: "12px",
+              }}
+            >
+              <span style={{ fontSize: "10px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Colour
+              </span>
+              {TOKEN_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title={`Use ${c}`}
+                  data-od-id={`map-token-color-picker-${c}`}
+                  onClick={() => setTokenColor(c)}
+                  aria-label={`Set token colour ${c}`}
+                  aria-pressed={tokenColor === c}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    padding: 0,
+                    borderRadius: "50%",
+                    border:
+                      tokenColor === c
+                        ? "2px solid var(--fg)"
+                        : "1px solid var(--border)",
+                    background: c,
+                    cursor: "pointer",
+                  }}
+                />
               ))}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
