@@ -29,6 +29,7 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 - `ingest.rs` converts Markdown SRD text into rule rows and vector chunks.
 - `agent.rs` assembles RAG context, runs the streaming agent loop (`run_agent_turn`), and executes vault tools (`roll_dice`, `search_vault`, `read_note`, `list_notes`, `save_note`) bounded to `MAX_TOOL_ROUNDS`; it delegates provider calls to `providers/llm.rs`.
 - `plugins.rs` loads plugin manifests and runs Boa-based hook functions.
+- `event_bus.rs` fans app events (image generated, note saved, world state changed) out to plugins as named hook calls (`on_<event>`), reusing the plugin host's permission guard, payload cap, and 5 s timeout.
 - `providers/` centralizes AI provider HTTP logic: `llm.rs` (chat), `image.rs` (image generation), `speech.rs` (TTS), `models.rs` (model listing).
 
 ## Provenance, Bible Conditioning, and Capture (phase 2)
@@ -140,7 +141,11 @@ The plugin system is manifest-driven and script-based:
 
 - each plugin directory needs `manifest.json` and an entry script;
 - the manifest declares `id`, `name`, `version`, `description`, and `entry`;
-- plugin scripts are evaluated in Boa and hook functions are called by name.
+- plugin scripts are evaluated in Boa and hook functions are called by name;
+- `event_bus.rs` fans app events out to every active plugin as `on_<event>`
+  hooks (`image_generated`, `note_saved`, `world_state_changed`);
+- plugin `__state` persists across restarts under `<plugins_dir>/.state/<sanitized-vault>/<plugin_id>.json`
+  (outside the vault so the watcher never indexes plugin runtime state).
 
 ## Intent vs Reality
 
@@ -156,5 +161,6 @@ The plugin system is manifest-driven and script-based:
 - [src-tauri/src/ingest.rs](/Users/chris/Development/loreweaver/src-tauri/src/ingest.rs)
 - [src-tauri/src/agent.rs](/Users/chris/Development/loreweaver/src-tauri/src/agent.rs)
 - [src-tauri/src/plugins.rs](/Users/chris/Development/loreweaver/src-tauri/src/plugins.rs)
+- [src-tauri/src/event_bus.rs](/Users/chris/Development/loreweaver/src-tauri/src/event_bus.rs)
 - [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
 - [README.md](/Users/chris/Development/loreweaver/README.md)

@@ -65,6 +65,11 @@ static ACTIVE_PLUGINS: OnceLock<Mutex<HashMap<String, PluginInfo>>> = OnceLock::
 /// Thread-safe process-wide storage for vault-scoped plugin state maps (`vault_path -> (plugin_id -> state_json)`).
 static PLUGIN_STATES: OnceLock<Mutex<HashMap<String, HashMap<String, String>>>> = OnceLock::new();
 
+/// Process-wide plugins directory, captured at load time so state files can be
+/// persisted under `<plugins_dir>/.state/<sanitized-vault>/` — deliberately
+/// OUTSIDE the vault so the notify watcher never sees plugin runtime state.
+static PLUGINS_DIR: OnceLock<Mutex<String>> = OnceLock::new();
+
 /// Accessor for global active plugins registry.
 fn active_plugins() -> &'static Mutex<HashMap<String, PluginInfo>> {
     ACTIVE_PLUGINS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -73,6 +78,75 @@ fn active_plugins() -> &'static Mutex<HashMap<String, PluginInfo>> {
 /// Accessor for global vault-scoped plugin state storage.
 fn plugin_states() -> &'static Mutex<HashMap<String, HashMap<String, String>>> {
     PLUGIN_STATES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Accessor for the process-wide plugins directory.
+fn plugins_dir() -> &'static Mutex<String> {
+    PLUGINS_DIR.get_or_init(|| Mutex::new(String::new()))
+}
+
+/// Serializes tests that mutate the process-global plugin registries.
+///
+/// `ACTIVE_PLUGINS` / `PLUGIN_STATES` / `PLUGINS_DIR` are process-wide statics;
+/// `load_all_plugins` clears and repopulates them, so tests that register
+/// plugins or run hooks concurrently can observe each other's state (cargo runs
+/// tests in parallel by default). Every test that touches the plugin globals
+/// must hold this guard for its whole body.
+#[cfg(test)]
+pub(crate) static PLUGIN_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Acquires the plugin-globals test serialization guard (see `PLUGIN_TEST_LOCK`).
+#[cfg(test)]
+pub(crate) fn plugin_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    PLUGIN_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Returns the ids of all currently active plugins (cloned; the caller may hold no lock).
+///
+/// Used by the event bus to fan an event out to every loaded plugin.
+pub fn active_plugin_ids() -> Vec<String> {
+    let guard = active_plugins().lock().unwrap_or_else(|e| e.into_inner());
+    guard.keys().cloned().collect()
+}
+
+/// Returns the serialized state JSON for `(vault_path, plugin_id)`, if any.
+///
+/// Test/observability accessor; the event bus tests use it to assert that a
+/// plugin hook mutated `globalThis.__state`.
+#[cfg(test)]
+pub fn plugin_state(vault_path: &str, plugin_id: &str) -> Option<String> {
+    let states = plugin_states().lock().unwrap_or_else(|e| e.into_inner());
+    states
+        .get(vault_path)
+        .and_then(|vault_states| vault_states.get(plugin_id))
+        .cloned()
+}
+
+/// Resolves the on-disk state file for a `(vault_path, plugin_id)` pair.
+///
+/// Layout: `<plugins_dir>/.state/<sanitized-vault>/<plugin_id>.json`. The vault
+/// path is sanitized (separators replaced with `_`) so a nested vault path maps
+/// to a single flat state directory. If no plugins dir was captured (no load
+/// happened yet) the file lives under a `.loreweaver-plugin-state` temp dir.
+fn plugin_state_file(vault_path: &str, plugin_id: &str) -> std::path::PathBuf {
+    let sanitized_vault: String = vault_path
+        .chars()
+        .map(|c| if c == '/' || c == '\\' || c == ':' { '_' } else { c })
+        .collect();
+    let base = {
+        let dir = plugins_dir().lock().unwrap_or_else(|e| e.into_inner());
+        if dir.is_empty() {
+            std::env::temp_dir().join(".loreweaver-plugin-state")
+        } else {
+            std::path::PathBuf::from(dir.clone())
+        }
+    };
+    base.join(".state")
+        .join(sanitized_vault)
+        .join(format!("{}.json", plugin_id))
 }
 
 /// Maximum allowed size for a single plugin entry script (1 MiB).
@@ -110,19 +184,24 @@ pub fn load_all_plugins(
     vault_path: &str,
     plugins_dir_str: &str,
 ) -> Result<Vec<PluginInfo>, String> {
-    let plugins_dir = Path::new(plugins_dir_str);
-    if !plugins_dir.exists() {
-        fs::create_dir_all(plugins_dir).map_err(|e| e.to_string())?;
+    let plugins_dir_path = Path::new(plugins_dir_str);
+    if !plugins_dir_path.exists() {
+        fs::create_dir_all(plugins_dir_path).map_err(|e| e.to_string())?;
     }
 
     let mut loaded_plugins = Vec::new();
     let mut active_plugins_guard = active_plugins().lock().unwrap_or_else(|e| e.into_inner());
     active_plugins_guard.clear();
 
+    {
+        let mut dir_guard = plugins_dir().lock().unwrap_or_else(|e| e.into_inner());
+        *dir_guard = plugins_dir_str.to_string();
+    }
+
     let mut states_guard = plugin_states().lock().unwrap_or_else(|e| e.into_inner());
     states_guard.entry(vault_path.to_string()).or_default();
 
-    for entry in fs::read_dir(plugins_dir).map_err(|e| e.to_string())? {
+    for entry in fs::read_dir(plugins_dir_path).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
 
@@ -145,11 +224,18 @@ pub fn load_all_plugins(
                         }
 
                         active_plugins_guard.insert(info.id.clone(), info.clone());
+                        // Restore persisted state from disk (survives restarts), falling
+                        // back to an empty object when no state file exists yet.
+                        let persisted_state = fs::read_to_string(plugin_state_file(
+                            vault_path,
+                            &info.id,
+                        ))
+                        .unwrap_or_else(|_| "{}".to_string());
                         states_guard
                             .entry(vault_path.to_string())
                             .or_default()
                             .entry(info.id.clone())
-                            .or_insert_with(|| "{}".to_string());
+                            .or_insert(persisted_state);
                         loaded_plugins.push(info);
                     }
                     Err(e) => eprintln!("Failed to load plugin at {:?}: {}", path, e),
@@ -352,9 +438,25 @@ pub fn run_plugin_hook(
         if let Ok((response, new_state)) = &result {
             let mut states = plugin_states().lock().unwrap_or_else(|e| e.into_inner());
             states
-                .entry(vault_path_owned)
+                .entry(vault_path_owned.clone())
                 .or_default()
-                .insert(plugin_id_owned, new_state.clone());
+                .insert(plugin_id_owned.clone(), new_state.clone());
+            // Best-effort on-disk persistence so state survives restarts. A write
+            // failure must never fail the hook itself — log and move on.
+            let state_file = plugin_state_file(&vault_path_owned, &plugin_id_owned);
+            if let Some(parent) = state_file.parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    eprintln!(
+                        "Failed to create plugin state dir {:?}: {}",
+                        parent, e
+                    );
+                } else if let Err(e) = fs::write(&state_file, new_state) {
+                    eprintln!(
+                        "Failed to persist plugin state for {}: {}",
+                        plugin_id_owned, e
+                    );
+                }
+            }
             let _ = tx.send(Ok(response.clone()));
         } else if let Err(e) = &result {
             let _ = tx.send(Err(e.clone()));
@@ -465,6 +567,8 @@ mod tests {
 
     #[test]
     fn test_plugin_hook_execution() {
+        // Serialize against other tests mutating the process-global plugin registries.
+        let _guard = plugin_test_guard();
         let plugin_id = "test-plugin";
         let script = r#"
             function on_dice_roll(payload) {
@@ -518,6 +622,7 @@ mod tests {
 
     #[test]
     fn test_plugin_state_injection_cannot_break_out() {
+        let _guard = plugin_test_guard();
         let script = r#"
             function on_test(payload) {
                 __state.injected = payload;
@@ -533,6 +638,7 @@ mod tests {
 
     #[test]
     fn test_plugin_timeout_kills_infinite_loop() {
+        let _guard = plugin_test_guard();
         let script = r#"
             function on_loop(payload) {
                 while (true) {}
@@ -550,6 +656,7 @@ mod tests {
 
     #[test]
     fn test_plugin_recursion_limit_fires() {
+        let _guard = plugin_test_guard();
         // Deep recursion must be rejected by the explicit recursion limit rather
         // than exhausting the native stack. 10,000 frames is far beyond the 256 cap.
         let script = r#"

@@ -101,3 +101,47 @@ function on_note_save(payload) {
     return "Processed note: " + note.title;
 }
 ```
+
+---
+
+## 7. Event Hooks (Event Bus)
+
+Loreweaver's event bus fans app events out to every loaded plugin by calling the
+hook named `on_<event>`. Plugins that do not define the hook are skipped
+silently — defining a listener is purely opt-in.
+
+### Available Events
+
+| Event | Hook | Payload |
+|---|---|---|
+| `image_generated` | `on_image_generated` | `{ "prompt", "style", "provider", "model" }` — a **summary**; the image bytes are never delivered |
+| `note_saved` | `on_note_saved` | `{ "id", "title", "path", "word_count" }` |
+| `world_state_changed` | `on_world_state_changed` | `{ "world_id", "name", "bible_files" }` |
+
+> [!IMPORTANT]
+> **Payloads are summaries, never artifacts.** The plugin host caps hook payloads
+> at 32 KiB. `image_generated` carries the prompt/style/provider/model so plugins
+> can react (log, tag, roll a follow-up) without receiving the base64 image.
+
+```javascript
+// index.js — react to image generation
+function on_image_generated(payload) {
+    let evt = JSON.parse(payload);
+    __state.images = __state.images || [];
+    __state.images.push({ provider: evt.provider, prompt: evt.prompt, at: Date.now() });
+    return "logged";
+}
+```
+
+### State Persistence Across Restarts
+
+`__state` is not just in-memory. After every hook execution Loreweaver writes
+the serialized state to:
+
+```
+<plugins_dir>/.state/<sanitized-vault>/<plugin-id>.json
+```
+
+and restores it the next time plugins are loaded, so counters, logs, and world
+state accumulated by plugins survive an app restart. State files live outside
+the vault on purpose — the vault file watcher never sees plugin runtime state.

@@ -35,6 +35,8 @@
 - Plugins are loaded from directories that contain a `manifest.json` and an entry script.
 - `boa_engine` evaluates plugin scripts and executes named hook functions.
 - The repo includes `character-roller` and `threat-evaluator` plugins, and the backend seeds a `dice-bonus` plugin at runtime.
+- `event_bus.rs` fans app events out to every active plugin as `on_<event>` hooks (`image_generated`, `note_saved`, `world_state_changed`); event payloads are summaries (never image bytes) so they stay well under the 32 KiB hook payload cap.
+- Plugin `__state` is persisted to disk after every hook execution under `<plugins_dir>/.state/<sanitized-vault>/<plugin_id>.json` and restored on the next `load_all_plugins`, so state survives restarts. State files live outside the vault so the watcher never sees them.
 
 ## Future Integrations Status
 
@@ -48,6 +50,7 @@
 - [src-tauri/src/search.rs](/Users/chris/Development/loreweaver/src-tauri/src/search.rs)
 - [src-tauri/src/agent.rs](/Users/chris/Development/loreweaver/src-tauri/src/agent.rs)
 - [src-tauri/src/plugins.rs](/Users/chris/Development/loreweaver/src-tauri/src/plugins.rs)
+- [src-tauri/src/event_bus.rs](/Users/chris/Development/loreweaver/src-tauri/src/event_bus.rs)
 - [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
 - [plugins/character-roller/index.js](/Users/chris/Development/loreweaver/plugins/character-roller/index.js)
 - [plugins/threat-evaluator/index.js](/Users/chris/Development/loreweaver/plugins/threat-evaluator/index.js)

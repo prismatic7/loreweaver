@@ -48,6 +48,7 @@ pub mod agent;
 mod bundles;
 mod db;
 mod dice;
+mod event_bus;
 mod ingest;
 mod memory;
 mod pdf;
@@ -381,15 +382,30 @@ async fn save_note(state: State<'_, AppState>, note: CampaignNote) -> Result<(),
     write_note_to_disk(&file_path, &note.content, &note.frontmatter)?;
 
     // Also upsert directly into the DB so load_notes immediately reflects changes
-    let conn_guard = state.conn.lock().await;
-    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
-    let _ = db::upsert_note(
-        &conn,
-        &note.path,
-        &note.title,
-        &note.content,
-        &note.frontmatter,
-        Some(&note.id),
+    {
+        let conn_guard = state.conn.lock().await;
+        let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+        let _ = db::upsert_note(
+            &conn,
+            &note.path,
+            &note.title,
+            &note.content,
+            &note.frontmatter,
+            Some(&note.id),
+        );
+    }
+
+    // Fire the note_saved event so plugins can react (e.g. word-count tracking).
+    // Fire-and-forget: plugin execution never blocks the save path.
+    event_bus::emit(
+        &vault_path,
+        event_bus::EVENT_NOTE_SAVED,
+        serde_json::json!({
+            "id": note.id,
+            "title": note.title,
+            "path": note.path,
+            "word_count": note.content.split_whitespace().count(),
+        }),
     );
 
     Ok(())
@@ -1319,6 +1335,15 @@ async fn update_bible_files(
     let mut manifest = worlds::ensure_manifest(&vault_path)?;
     manifest.bible_files = files;
     worlds::save_manifest(&vault_path, &manifest)?;
+
+    // Fire the world_state_changed event so plugins can react to world updates.
+    let event_payload = serde_json::json!({
+        "world_id": manifest.id,
+        "name": manifest.name,
+        "bible_files": manifest.bible_files,
+    });
+    event_bus::emit(&vault_path, event_bus::EVENT_WORLD_STATE_CHANGED, event_payload);
+
     Ok(manifest)
 }
 
@@ -2041,6 +2066,7 @@ async fn generate_image(
     let model_owned = model.to_string();
     let api_key_owned = api_key.map(|k| k.to_string());
     let base_url_owned = base_url.map(|b| b.to_string());
+    let vault_path_owned = state.vault_path.lock().await.clone();
 
     // Quality / fixed-seed resolve from the command args when supplied,
     // otherwise fall back to persisted settings (fast/standard/high).
@@ -2068,7 +2094,7 @@ async fn generate_image(
 
     run_blocking(move || {
         let agent = crate::providers::http_client();
-        crate::providers::image::generate_image(
+        let result = crate::providers::image::generate_image(
             &prompt_owned,
             &style_owned,
             &provider_owned,
@@ -2080,7 +2106,24 @@ async fn generate_image(
             fixed_seed,
             image_size_owned.as_deref(),
             &agent,
-        )
+        );
+
+        // Fire the image_generated event on success so plugins can react.
+        // The payload is a SUMMARY — never the base64 image bytes (payloads are
+        // capped at 32 KiB inside the plugin host).
+        if result.is_ok() {
+            event_bus::emit(
+                &vault_path_owned,
+                event_bus::EVENT_IMAGE_GENERATED,
+                serde_json::json!({
+                    "prompt": prompt_owned,
+                    "style": style_owned,
+                    "provider": provider_owned,
+                    "model": model_owned,
+                }),
+            );
+        }
+        result
     })
     .await
 }
