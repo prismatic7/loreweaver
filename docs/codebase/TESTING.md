@@ -18,11 +18,19 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**14 Vitest suites / 52 tests** pass (measured 2026-08-11). Note: `npm run test`
+**17 Vitest suites / 100 tests** pass (measured 2026-08-27). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
 load its production build (no `React.act`), breaking `@testing-library/react`.
+
+### Coverage Gate
+
+Coverage is gated in CI via `npm run coverage` (`@vitest/coverage-v8`). Thresholds
+are set to the measured baseline (2026-08-27: lines 48.35%, statements 47.08%,
+functions 40.64%, branches 40.4%) minus a small buffer — see `vite.config.ts`.
+Tighten thresholds in follow-up increments as coverage grows; do not set
+aspirational numbers that fail on day one.
 
 ### Coverage
 - [App.test.tsx](file:///Users/chris/Development/loreweaver/src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
@@ -55,7 +63,7 @@ cd src-tauri
 cargo test
 ```
 
-Currently **57 Rust tests** (56 pass; `test_api_key_round_trip` is excluded — it blocks indefinitely when the macOS Keychain is locked, a pre-existing flake). Measured 2026-08-11: 43 baseline + 10 webclip + 3 `list_liminal_notes` + 1 keychain round-trip. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
+Currently **86 Rust tests** pass (measured 2026-08-27). `test_api_key_round_trip` self-skips when the OS keyring is unavailable (headless/CI environments) — see `lib.rs:3314`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
 
 ### Coverage
 - **Database (`db.rs`):** Validates CRUD queries for campaign notes, rulebooks, and settings.
@@ -65,6 +73,16 @@ Currently **57 Rust tests** (56 pass; `test_api_key_round_trip` is excluded — 
 - **Search Similarity (`search.rs`):** Tests text chunking math and cosine similarity dot products.
 - **Providers (`providers/llm.rs`):** Tests unsupported-provider rejection and missing-API-key handling.
 - **Commands (`lib.rs`):** Covers command handler integration, including note trash/restore, symlink-escape rejection, API-key round-trip, provider-URL private-range blocking, wiki-link escaping, folder listing excluding trash/assets, rule save/load/delete, `search_vault`, system-context compilation, `orchestrate_agent` provider rejection, and template-list parsing.
+
+---
+
+## 2.5 Continuous Integration
+
+CI runs on every push/PR via [`.github/workflows/ci.yml`](file:///Users/chris/Development/loreweaver/.github/workflows/ci.yml) (added 2026-08-27, Increment F):
+
+- **Frontend job** (Node 22, `npm ci`): `npm run lint` → `npm run build` (tsc strict + vite) → `npm run test` → `npm run coverage` → `npm run verify-docs`.
+- **Backend job** (Rust stable, `cargo test --locked` from `src-tauri/`). `test_api_key_round_trip` self-skips headless (no OS keyring), so plain `cargo test` is expected to pass on runners.
+- **Coverage policy:** thresholds live in `vite.config.ts`, set to the measured baseline minus a small buffer. They block PRs that drop coverage; they are tightened in follow-up increments, not loosened.
 
 ---
 

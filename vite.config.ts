@@ -13,6 +13,19 @@ export default defineConfig(async () => ({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      // Baseline measured 2026-08-27 (Increment F). Thresholds start at the
+      // measured baseline minus a small buffer so day-one CI is green; tighten
+      // in follow-up increments as coverage grows.
+      thresholds: {
+        lines: 46,
+        functions: 38,
+        branches: 38,
+        statements: 45,
+      },
+    },
   },
   build: {
     rollupOptions: {
