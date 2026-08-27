@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOnClickOutside } from "usehooks-ts";
 import "./App.css";
 
@@ -373,12 +373,14 @@ function App() {
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
+  }, [refreshVaultData, loadVaults, loadNotes, loadFolders]);
+
+  const { initVaultChat } = agent;
 
   useEffect(() => {
     if (!vaultPath) return;
-    agent.initVaultChat();
-  }, [vaultPath]);
+    initVaultChat();
+  }, [vaultPath, initVaultChat]);
 
   useEffect(() => {
     if (!contextMenu) return;

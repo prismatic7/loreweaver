@@ -482,6 +482,7 @@ export function useAgent(
     npcVoiceName,
     settings.ttsProvider,
     settings.ttsApiKey,
+    settings.ttsBaseUrl,
   ]);
 
   // --- P10: Image-in-Chat ---

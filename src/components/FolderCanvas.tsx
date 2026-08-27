@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye, Zap, Maximize2 } from "lucide-react";
 
@@ -241,8 +241,8 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
     });
   }, [notes, currentFolder]);
 
-  const findTargetNote = (target: string) => {
-    const cleanTarget = target.replace(/[\[\]]/g, "").trim().toLowerCase();
+  const findTargetNote = useCallback((target: string) => {
+    const cleanTarget = target.replace(/[[]]/g, "").trim().toLowerCase();
     if (!cleanTarget) return null;
 
     const normalize = (str: string) => str.replace(/[\s\-_]/g, "").toLowerCase();
@@ -258,7 +258,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
       }
       return false;
     });
-  };
+  }, [notes]);
 
   useEffect(() => {
     const derivedEdges: EdgeConnection[] = [];
@@ -302,7 +302,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
     });
 
     setDynamicEdges(derivedEdges);
-  }, [notes, currentFolder]);
+  }, [notes, currentFolder, findTargetNote, folderNotes]);
 
   useEffect(() => {
     const derivedContainers: ContainerBox[] = [];
@@ -416,7 +416,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
         setContainers(data.containers || []);
       })
       .catch((err) => console.error("Error loading canvas file:", err));
-  }, [currentFolder, canvasRelPath, notes.length]);
+  }, [currentFolder, canvasRelPath, folderNotes]);
 
   const saveCanvas = () => {
     const data: CanvasData = { nodes, edges, containers };

@@ -144,7 +144,7 @@ export default function MarkdownEditor({
         },
       }),
     ],
-    [notes],
+    [notes, fuse],
   );
 
   return (

@@ -123,9 +123,9 @@ function layoutGraph(
       for (let j = i + 1; j < N; j++) {
         const b = nodes[j];
         const pb = pos.get(b.id)!;
-        let dx = pa.x - pb.x;
-        let dy = pa.y - pb.y;
-        let dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const dx = pa.x - pb.x;
+        const dy = pa.y - pb.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
         const repulsion = kSq / dist;
         const fx = (dx / dist) * repulsion;
         const fy = (dy / dist) * repulsion;
@@ -140,9 +140,9 @@ function layoutGraph(
     edges.forEach((e) => {
       const pa = pos.get(e.from)!;
       const pb = pos.get(e.to)!;
-      let dx = pa.x - pb.x;
-      let dy = pa.y - pb.y;
-      let dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      const dx = pa.x - pb.x;
+      const dy = pa.y - pb.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
       const attraction = (dist * dist) / k;
       const fx = (dx / dist) * attraction;
       const fy = (dy / dist) * attraction;
@@ -163,7 +163,7 @@ function layoutGraph(
     nodes.forEach((n) => {
       const p = pos.get(n.id)!;
       const d = disp.get(n.id)!;
-      let dist = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01;
+      const dist = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01;
       const limited = Math.min(dist, temp);
       p.x += (d.x / dist) * limited;
       p.y += (d.y / dist) * limited;
@@ -180,9 +180,9 @@ function layoutGraph(
     for (let j = i + 1; j < N; j++) {
       const pa = pos.get(nodes[i].id)!;
       const pb = pos.get(nodes[j].id)!;
-      let dx = pb.x - pa.x;
-      let dy = pb.y - pa.y;
-      let dist = Math.sqrt(dx * dx + dy * dy);
+      const dx = pb.x - pa.x;
+      const dy = pb.y - pa.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < minSep) {
         const push = (minSep - dist) / 2;
         const nx = dx / (dist || 0.01);

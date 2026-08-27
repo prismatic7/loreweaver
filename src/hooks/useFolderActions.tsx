@@ -122,7 +122,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
     } catch (err) {
       console.error("Failed to create new folder note:", err);
     }
-  }, [saveNote, setSelectedNoteId, showPrompt]);
+  }, [saveNote, setSelectedNoteId, showPrompt, activeEditingNoteIdRef, setActiveView, setEditContent, setEditFrontmatter, setEditTitle, setIsEditingNote]);
 
   const handleCreateItemInFolder = useCallback(
     async (
@@ -207,7 +207,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
         }, 50);
       }
     },
-    [saveNote, handleNewNote, handleNewRule, handleNewFolder],
+    [saveNote, handleNewNote, handleNewRule, handleNewFolder, activeEditingNoteIdRef, alert, setActiveView, setCurrentCanvasFolder, setEditContent, setEditFrontmatter, setEditTitle, setIsEditingRule, setSelectedNoteId, setSelectedRuleId],
   );
 
   const handleAssetFileSelected = useCallback(
@@ -341,7 +341,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
       setPendingAssetTarget(null);
       if (e.target) e.target.value = "";
     },
-    [pendingAssetTarget, saveNote, showPrompt],
+    [pendingAssetTarget, saveNote, showPrompt, setActiveView, setIsEditingNote, setIsEditingRule, setRules, setSelectedNoteId, setSelectedRuleId],
   );
 
   const handleCreatePluginAsset = useCallback(
@@ -393,7 +393,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
         }
       }
     },
-    [saveNote, showPrompt, alert],
+    [saveNote, showPrompt, alert, setActiveView, setIsEditingNote, setIsEditingRule, setRules, setSelectedNoteId, setSelectedRuleId],
   );
 
   const handleTrashFolder = useCallback(
@@ -428,7 +428,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
         },
       );
     },
-    [confirm, deleteRulesFolder, trashFolder, currentRule, currentNote, notes],
+    [confirm, deleteRulesFolder, trashFolder, currentRule, currentNote, notes, setIsEditingNote, setIsEditingRule, setSelectedNoteId, setSelectedRuleId],
   );
 
   const renderFolderDropdown = useCallback(

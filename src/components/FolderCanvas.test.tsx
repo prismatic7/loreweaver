@@ -3,7 +3,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FolderCanvas } from "./FolderCanvas";
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(async () => []),
+  invoke: vi.fn(async (cmd: string) => {
+    if (cmd === "load_canvas_file") {
+      return JSON.stringify({ nodes: [], edges: [], containers: [] });
+    }
+    return [];
+  }),
 }));
 
 import { invoke } from "@tauri-apps/api/core";

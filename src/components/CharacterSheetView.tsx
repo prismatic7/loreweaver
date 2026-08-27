@@ -65,7 +65,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
 
   useEffect(() => {
     loadTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [vaultPath]);
 
   const currentTemplate = templates.find((t) => t.name === selectedTemplate);

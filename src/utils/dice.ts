@@ -44,7 +44,7 @@ export const fallbackRoll = (notation: string): string => {
 
     if (explanation.length === 0) return `Invalid notation: ${notation}`;
     return `${notation}: ${explanation.join(" ")} = ${total}`;
-  } catch (e) {
+  } catch {
     return `Error rolling ${notation}`;
   }
 };

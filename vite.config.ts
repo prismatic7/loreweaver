@@ -33,6 +33,48 @@ export default defineConfig(async () => ({
           if (lezerMatch) {
             return `editor-lezer-${lezerMatch[1]}`;
           }
+
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/")
+          ) {
+            return "vendor-react";
+          }
+
+          if (id.includes("node_modules/@tauri-apps/")) {
+            return "vendor-tauri";
+          }
+
+          if (id.includes("node_modules/pdfjs-dist/")) {
+            return "vendor-pdf";
+          }
+
+          // Markdown rendering ecosystem (react-markdown + remark/unified deps)
+          if (
+            id.includes("node_modules/react-markdown/") ||
+            id.includes("node_modules/remark-") ||
+            id.includes("node_modules/mdast-") ||
+            id.includes("node_modules/unist-") ||
+            id.includes("node_modules/micromark") ||
+            id.includes("node_modules/hast-") ||
+            id.includes("node_modules/parse-entities") ||
+            id.includes("node_modules/character-entities") ||
+            id.includes("node_modules/character-reference-invalid") ||
+            id.includes("node_modules/trim-lines") ||
+            id.includes("node_modules/ccount") ||
+            id.includes("node_modules/escape-string-regexp") ||
+            id.includes("node_modules/space-separated-tokens") ||
+            id.includes("node_modules/comma-separated-tokens") ||
+            id.includes("node_modules/property-information") ||
+            id.includes("node_modules/html-void-elements") ||
+            id.includes("node_modules/web-namespaces") ||
+            id.includes("node_modules/zwitch") ||
+            id.includes("node_modules/decode-named-character-reference") ||
+            id.includes("node_modules/stringify-entities")
+          ) {
+            return "vendor-markdown";
+          }
         },
       },
     },
