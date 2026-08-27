@@ -47,7 +47,7 @@ Rules for adding selectors:
 
 ## Code Quality & Conventions
 
-- **Formatting:** Frontend files use ESLint and Prettier for automated checks. Backend Rust files follow `rustfmt` standard style conventions.
+- **Formatting:** Frontend files use ESLint (flat config, `eslint.config.js`, wired 2026-08-27) for automated checks; run `npm run lint`. Backend Rust files follow `rustfmt` standard style conventions.
 - **Strict Typing:** All new React components and functions should declare explicit interfaces and avoid using the `any` type to ensure type safety.
 - **Component Splitting:** Rather than expanding the monolithic `App.tsx` sheet, new features (like canvas variants or settings panels) should be placed in dedicated sub-files under `src/components/`.
 

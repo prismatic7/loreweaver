@@ -2,7 +2,7 @@
 
 Loreweaver is a Tauri v2 desktop app: a React 19 + TypeScript frontend (`src/`) talks over Tauri IPC to a Rust backend (`src-tauri/src/`) that owns SQLite persistence, vault file watching, hybrid semantic search, AI provider calls, and a Boa-based JS plugin runtime.
 
-Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it and its siblings in `docs/codebase/` are the source of truth for how this repo actually works today (as opposed to aspirational claims in [README.md](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md), which describe some not-yet-built features like real image generation and a stronger plugin sandbox).
+Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it and its siblings in `docs/codebase/` are the source of truth for how this repo actually works today (as opposed to aspirational claims in [README.md](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md), which describe some not-yet-built features like a stronger plugin sandbox).
 
 ## Doc precedence (read before making claims about the codebase)
 
@@ -22,7 +22,7 @@ Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it
 | [docs/codebase/CONVENTIONS.md](docs/codebase/CONVENTIONS.md)   | Naming, command patterns, data shapes                                               |
 | [docs/codebase/INTEGRATIONS.md](docs/codebase/INTEGRATIONS.md) | Filesystem, SQLite, search/embeddings, AI providers, plugins                        |
 | [docs/codebase/CONCERNS.md](docs/codebase/CONCERNS.md)         | Known risk areas — read before touching plugins or search                           |
-| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (14 Vitest suites / 52 tests + 57 Rust tests (56 pass, 1 keychain flake skipped); `npm run test` and `cargo test` from `src-tauri/` are real verification paths) |
+| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (17 Vitest suites / 100 tests + 86 Rust tests; `npm run test`, `npm run lint`, and `cargo test` from `src-tauri/` are real verification paths) |
 
 Keep these docs current: if you change architecture, conventions, or a risk area meaningfully, update the relevant file in the same change.
 
@@ -42,7 +42,7 @@ npm run build         # vite build; also the de-facto TypeScript type-check gate
 npm run tauri dev     # full app dev loop (Rust + frontend)
 ```
 
-- Tests exist: 14 Vitest suites / 52 tests (`npm run test`) and 57 Rust tests (`cargo test` from `src-tauri/`, 56 pass + 1 keychain flake skipped via `--skip test_api_key_round_trip`). Both are real verification paths — run them before claiming work passes.
+- Tests exist: 17 Vitest suites / 100 tests (`npm run test`) and 86 Rust tests (`cargo test` from `src-tauri/`). Both are real verification paths — run them before claiming work passes. `npm run lint` (ESLint, wired 2026-08-27) is a third gate.
 - Cargo/rustc may not be available in every terminal environment here; if `cargo check` isn't runnable, say so rather than assuming the Rust side compiles.
 
 ## Cross-Cutting Conventions
@@ -54,6 +54,6 @@ npm run tauri dev     # full app dev loop (Rust + frontend)
 
 ## Known Gaps (do not paper over these — flag them if relevant to a task)
 
-- Image generation in the UI is a timed placeholder, not a real backend call.
+- Image generation is real (ComfyUI / OpenAI / Stability via `src-tauri/src/providers/image.rs`); the UI flow is the right-drawer prompt + note-illustrate. No placeholder remains.
 - The plugin system runs arbitrary JS in Boa with no strong sandbox/isolation beyond the permission allow-list.
 - Search embeddings are hardcoded to 384 dimensions; changing embedding providers requires a full reindex with no automatic compatibility check.

@@ -169,9 +169,33 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 
 ### `generate_image`
 
-- **Arguments:** `prompt: &str`
+- **Arguments:** `prompt: &str`, `style: &str`, `provider: &str`, `model: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`, `quality: Option<&str>`, `fixed_seed: Option<f64>`
 - **Returns:** `Result<String, String>`
-- **Description:** Scaffolding command for generating image assets (currently returns timed static path in UI).
+- **Description:** Generates an image via ComfyUI (local), OpenAI-compatible, or Stability providers and returns a base64 PNG data URL. Runs in `spawn_blocking`.
+
+### `orchestrate_agent_stream`
+
+- **Arguments:** `run_id: &str`, `prompt: &str`, `provider: &str`, `model: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`, `active_note_id: Option<&str>`, `session_temperature: Option<f64>`, `history: Vec<ChatTurn>`, `context_items: Vec<ContextItem>`, `on_event: Channel<AgentEvent>`
+- **Returns:** `Result<String, String>`
+- **Description:** Streaming agent loop. Emits `AgentEvent`s over a Tauri IPC channel (token deltas, tool calls, `tool_approval_required`). Cooperative cancellation via `cancel_agent_stream`; pending write tools block on `approve_agent_tool` / `reject_agent_tool`.
+
+### `approve_agent_tool`
+
+- **Arguments:** `run_id: &str`, `tool_call_id: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Approves a pending agent write tool, unblocking the agent loop to execute it.
+
+### `reject_agent_tool`
+
+- **Arguments:** `run_id: &str`, `tool_call_id: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Rejects a pending agent write tool, unblocking the agent loop without executing it.
+
+### `cancel_agent_stream`
+
+- **Arguments:** `run_id: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Flips the cooperative cancellation flag for a running `orchestrate_agent_stream`; the loop checks it between events and stops cleanly. Also resolves any pending approval as rejected.
 
 ### `generate_speech`
 
@@ -260,6 +284,12 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Arguments:** None.
 - **Returns:** `Result<WorldManifest, String>`
 - **Description:** Returns the manifest (`world.json`) of the active world campaign, creating a default manifest if none exists.
+
+### `update_bible_files`
+
+- **Arguments:** `files: Vec<String>`
+- **Returns:** `Result<WorldManifest, String>`
+- **Description:** Persists the pinned Bible conditioning files into the world manifest (`world.json`). Empty list = all canon files active (backward compatible).
 
 ### `list_worlds`
 
@@ -364,6 +394,12 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Arguments:** `messages_json: &str`, `provider: &str`, `model: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`
 - **Returns:** `Result<String, String>`
 - **Description:** Passes a chat transcript to the LLM to generate a concise summary (what happened, decisions, followups).
+
+### `extract_session_memories`
+
+- **Arguments:** `messages_json: &str`, `provider: &str`, `model: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`
+- **Returns:** `Result<usize, String>`
+- **Description:** Extracts durable facts from a chat transcript (NPCs, factions, decisions, threads, world state) and inserts them into the world-scoped `session_memory` table, deduped. Best-effort: failures never break the chat turn.
 
 ### `transcribe_speech`
 
