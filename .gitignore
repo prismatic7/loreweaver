@@ -33,3 +33,4 @@ coverage
 
 # OpenCode agent tooling (session memory, node_modules)
 .opencode/
+docs/superpowers/plans/HANDOFF.md
