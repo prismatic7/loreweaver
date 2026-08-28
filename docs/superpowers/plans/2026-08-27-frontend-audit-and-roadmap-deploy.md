@@ -178,8 +178,15 @@ The remaining IMPLEMENTATION_PLAN phases, re-sequenced by dependency and value, 
 - **Gate:** every PR passes CI.
 
 ### Increment G — Docs & marketplace (Phase 8)
-- Plugin template generator, marketplace site, submission workflow.
+- [x] Plugin template generator, marketplace site, submission workflow.
 - **Gate:** `bb plugin init mygame` produces a publishable skeleton.
+  ✅ Landed `132a525`. Loreweaver-native `scaffold_plugin` command + `+ New
+  Plugin` UI affordance produce a publishable skeleton (manifest.json +
+  starter index.js with an `on_dice_roll` hook). Note: the gate referenced
+  the bb ecosystem's `bb plugin init`; Loreweaver has its own plugin
+  contract (Boa runtime, `hooks` permission), so the deliverable is the
+  native generator. Marketplace site + submission workflow remain unscoped
+  (deferred — needs a hosting decision).
 
 ### Sequencing rationale
 - **A before B** (plugins can contribute search hooks), **B before C** (search feeds tag/backlink surfaces), **C/D** are UI-layer and can swap, **E** depends on the event bus from A, **F** should land before any of A-E grows the surface, **G** last (needs a stable plugin contract from A).
