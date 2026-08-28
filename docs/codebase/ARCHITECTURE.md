@@ -154,13 +154,13 @@ The plugin system is manifest-driven and script-based:
 
 ## Evidence
 
-- [src-tauri/src/lib.rs](/Users/chris/Development/loreweaver/src-tauri/src/lib.rs)
-- [src-tauri/src/db.rs](/Users/chris/Development/loreweaver/src-tauri/src/db.rs)
-- [src-tauri/src/watcher.rs](/Users/chris/Development/loreweaver/src-tauri/src/watcher.rs)
-- [src-tauri/src/search.rs](/Users/chris/Development/loreweaver/src-tauri/src/search.rs)
-- [src-tauri/src/ingest.rs](/Users/chris/Development/loreweaver/src-tauri/src/ingest.rs)
-- [src-tauri/src/agent.rs](/Users/chris/Development/loreweaver/src-tauri/src/agent.rs)
-- [src-tauri/src/plugins.rs](/Users/chris/Development/loreweaver/src-tauri/src/plugins.rs)
-- [src-tauri/src/event_bus.rs](/Users/chris/Development/loreweaver/src-tauri/src/event_bus.rs)
-- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
-- [README.md](/Users/chris/Development/loreweaver/README.md)
+- [src-tauri/src/lib.rs](src-tauri/src/lib.rs)
+- [src-tauri/src/db.rs](src-tauri/src/db.rs)
+- [src-tauri/src/watcher.rs](src-tauri/src/watcher.rs)
+- [src-tauri/src/search.rs](src-tauri/src/search.rs)
+- [src-tauri/src/ingest.rs](src-tauri/src/ingest.rs)
+- [src-tauri/src/agent.rs](src-tauri/src/agent.rs)
+- [src-tauri/src/plugins.rs](src-tauri/src/plugins.rs)
+- [src-tauri/src/event_bus.rs](src-tauri/src/event_bus.rs)
+- [src/App.tsx](src/App.tsx)
+- [README.md](README.md)

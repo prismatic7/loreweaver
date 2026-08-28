@@ -26,35 +26,41 @@
 > one known gap.
 
 ### D1: Keyboard-first navigation
-- [ ] `Ctrl/Cmd+K` command palette: fuzzy jump to note (reuse Increment B's
+- [x] `Ctrl/Cmd+K` command palette: fuzzy jump to note (reuse Increment B's
   fuzzy matching), to view, and to recent notes. New component
   `src/components/CommandPalette.tsx` + test.
-- [ ] `Ctrl/Cmd+S` saves the active note (currently editor-dependent).
-- [ ] Palette opens from a small affordance in the header too (discoverable,
+- [x] `Ctrl/Cmd+S` saves the active note (currently editor-dependent).
+- [x] Palette opens from a small affordance in the header too (discoverable,
   not keyboard-only).
 - **Gate:** GM navigates the whole app without touching the mouse for nav.
+  (Landed `9167469`; gate is a manual GM check.)
 
 ### D2: The alert() sweep (Ledger's calm)
-- [ ] Replace every native `alert()` in `src/components/` with the in-app
+- [x] Replace every native `alert()` in `src/components/` with the in-app
   toast/inline pattern (the pattern Increment C used for drawer feedback, or
   a minimal shared `useToast` if none exists — do not add a dependency).
 - Files with alerts (measured 2026-08-28): `SettingsView.tsx` (2),
   `CharacterSheetView.tsx` (6), `FolderCanvas.tsx` (2), `MapBuilderView.tsx`
   (6). Grep-verified; sweep must end with `grep -rn "alert(" src/components`
   returning zero.
-- **Gate:** no native dialogs anywhere; tests updated.
+- **Gate:** no native dialogs anywhere; tests updated. (Landed `1e2d56e`.)
 
 ### D3: Muse gap close — "make this the world default"
-- [ ] Session Firm↔Wild toggle in `AiView.tsx` gains the sketch's promised
+- [x] Session Firm↔Wild toggle in `AiView.tsx` gains the sketch's promised
   "make this the world default" affordance: persists the current session
   value into the active world's `vault_config.json` via existing
   `save_vault_settings`. Confirm-first inline affordance, not a modal.
-- **Gate:** flip → make default → reload → world override holds.
+- **Gate:** flip → make default → reload → world override holds. (Landed
+  `156ab5f`; gate is a manual GM check.)
 
 ### D4: Mark Increment F done (admin, no code)
-- [ ] Confirm GitHub Actions CI runs green on the latest pushed commit
+- [x] Confirm GitHub Actions CI runs green on the latest pushed commit
   (Hermes verifies via `gh run list` if available; otherwise note as
   Chris-action). Update the roadmap doc: F complete, D complete.
+- **Note:** CI was red on the last pushed commit (35ef855) for two
+  pre-existing infra reasons — absolute local paths in docs (verify-docs) and
+  missing GTK deps on the backend job. Both fixed in D4; see the F plan's
+  "CI red-light fixes" section. F's phase gate is now fully checked.
 
 ---
 

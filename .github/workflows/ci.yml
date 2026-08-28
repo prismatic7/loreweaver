@@ -54,6 +54,13 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Install Tauri Linux system deps
+        # Tauri v2 needs GTK/webkit dev libraries to build on Linux runners.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libgtk-3-dev
+
       - name: Test
         # test_api_key_round_trip self-skips when the OS keyring is unavailable
         # (headless CI), so plain `cargo test` is expected to pass.

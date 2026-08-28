@@ -30,8 +30,8 @@
 
 ## Evidence
 
-- [package.json](/Users/chris/Development/loreweaver/package.json)
-- [src-tauri/Cargo.toml](/Users/chris/Development/loreweaver/src-tauri/Cargo.toml)
-- [tsconfig.json](/Users/chris/Development/loreweaver/tsconfig.json)
-- [vite.config.ts](/Users/chris/Development/loreweaver/vite.config.ts)
-- [src-tauri/tauri.conf.json](/Users/chris/Development/loreweaver/src-tauri/tauri.conf.json)
+- [package.json](package.json)
+- [src-tauri/Cargo.toml](src-tauri/Cargo.toml)
+- [tsconfig.json](tsconfig.json)
+- [vite.config.ts](vite.config.ts)
+- [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json)

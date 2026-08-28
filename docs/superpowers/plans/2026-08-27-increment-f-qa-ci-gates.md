@@ -71,12 +71,29 @@ The plan doc lists "performance overlay" under Increment F. It is a dev-tool UI 
 
 ## Phase gate
 
-- [ ] `.github/workflows/ci.yml` exists with frontend + backend jobs
-- [ ] Every command in the workflow passes on the current tree (verified locally before push)
-- [ ] `npm run coverage` passes with thresholds at measured baseline
-- [ ] TESTING.md reflects measured reality (17/100 + 86) and documents CI
-- [ ] `npm run verify-docs` passes
-- [ ] No command signatures changed; no permission surface widened; no vault writes added
+- [x] `.github/workflows/ci.yml` exists with frontend + backend jobs
+- [x] Every command in the workflow passes on the current tree (verified locally before push)
+- [x] `npm run coverage` passes with thresholds at measured baseline
+- [x] TESTING.md reflects measured reality (17/100 + 86) and documents CI
+- [x] `npm run verify-docs` passes
+- [x] No command signatures changed; no permission surface widened; no vault writes added
+
+### CI red-light fixes (2026-08-28, D4)
+
+Two pre-existing CI failures were found and fixed while verifying F's gate:
+
+1. **verify-docs portability** — `docs/codebase/ARCHITECTURE.md` and `STACK.md`
+   linked to absolute local paths (`/Users/chris/Development/loreweaver/...`),
+   which don't exist on the CI runner. Rewrote the hrefs to repo-relative
+   paths (display text was already relative). Passes locally and on CI.
+2. **Backend missing GTK deps** — the `cargo test` job never installed Tauri's
+   Linux system libraries (`gobject-2.0` / webkit), so the build failed with
+   `gobject-sys` not found. Added an "Install Tauri Linux system deps" step
+   (`libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+   libgtk-3-dev`) to the backend job.
+
+These were infrastructure gaps, not caused by the D2/D3/D1 increments. The
+next push (after D1) will exercise both fixes on CI.
 
 ## Quality Checklist
 
