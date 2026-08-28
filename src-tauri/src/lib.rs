@@ -1039,13 +1039,20 @@ async fn run_schedule_now(state: State<'_, AppState>) -> Result<Vec<String>, Str
 /// and the total. Malformed input is a clean error — the parser computes
 /// numbers and nothing else.
 #[tauri::command]
-async fn evaluate_expression(expr: &str) -> Result<serde_json::Value, String> {
+async fn evaluate_expression(
+    state: State<'_, AppState>,
+    expr: &str,
+) -> Result<serde_json::Value, String> {
     let result = expr::roll(expr)?;
-    Ok(serde_json::json!({
+    let payload = serde_json::json!({
         "expression": result.expression,
         "rolls": result.rolls,
         "total": result.total,
-    }))
+    });
+    // Fan the roll out to plugins (Increment E3) so they can react to dice.
+    let vault_path = state.vault_path.lock().await.clone();
+    event_bus::emit(&vault_path, event_bus::EVENT_DICE_ROLL, payload.clone());
+    Ok(payload)
 }
 
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).

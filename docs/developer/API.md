@@ -417,6 +417,18 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<(), String>`
 - **Description:** Force-rebuilds the local database search index by parsing all Markdown files in the active vault.
 
+### `run_schedule_now`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<String>, String>` — the list of event names emitted.
+- **Description:** Manually triggers the world scheduler: loads `<vault>/schedule.yaml`, fires every due entry through the plugin event bus, and returns the emitted event names.
+
+### `evaluate_expression`
+
+- **Arguments:** `expr: &str`
+- **Returns:** `Result<Value, String>` — `{ "expression", "rolls", "total" }`.
+- **Description:** Evaluates a dice/arithmetic expression (`3d6+2`, `d%`, `max(2d4, 6)`, comparisons) with a hand-rolled, numbers-only parser. Fires a `dice_roll` event through the plugin event bus. Malformed input is a clean error; the parser has no file, network, or plugin reach.
+
 ### `convert_pdf_to_markdown`
 
 - **Arguments:** `base64_pdf: &str`

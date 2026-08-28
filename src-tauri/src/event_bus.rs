@@ -42,6 +42,12 @@ pub const EVENT_NOTE_SAVED: &str = "note_saved";
 /// Payload: `{ world_id, name, bible_files }`.
 pub const EVENT_WORLD_STATE_CHANGED: &str = "world_state_changed";
 
+/// Fired after a `/roll` expression is evaluated (`evaluate_expression`).
+///
+/// Payload: `{ expression, rolls, total }` — the same shape returned to the
+/// chat. Lets plugins react to dice (e.g. a weather plugin keyed to a roll).
+pub const EVENT_DICE_ROLL: &str = "dice_roll";
+
 /// Maps an event name to the plugin hook that listens for it (`on_<event>`).
 ///
 /// Event names must be ASCII alphanumeric + underscore (the same character set
@@ -254,9 +260,63 @@ mod tests {
             hook_name_for_event("world_state_changed").as_deref(),
             Some("on_world_state_changed")
         );
+        assert_eq!(
+            hook_name_for_event("dice_roll").as_deref(),
+            Some("on_dice_roll")
+        );
         // Invalid names are rejected.
         assert!(hook_name_for_event("bad name").is_none());
         assert!(hook_name_for_event("").is_none());
         assert!(hook_name_for_event("image-generated").is_none());
+    }
+
+    /// The Increment E3 gate: a plugin receives a `dice_roll` event (the
+    /// `/roll` affordance) and can react to the rolled total.
+    #[test]
+    fn test_plugin_receives_dice_roll_event() {
+        // Serialize against other tests mutating the process-global plugin registries.
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path().join("dice-world");
+        fs::create_dir_all(&vault).unwrap();
+        let plugins_dir = tmp.path().join("plugins");
+
+        write_test_plugin(
+            &plugins_dir,
+            "dice-watcher",
+            r#"
+            function on_dice_roll(payload) {
+                let evt = JSON.parse(payload);
+                __state.last_expression = evt.expression;
+                __state.last_total = evt.total;
+                __state.roll_count = (__state.roll_count || 0) + 1;
+                return "ok";
+            }
+            "#,
+        );
+
+        let vault_str = vault.to_str().unwrap();
+        let plugins_str = plugins_dir.to_str().unwrap();
+        let loaded = load_all_plugins(vault_str, plugins_str).unwrap();
+        assert_eq!(loaded.len(), 1, "test plugin should load");
+
+        let payload = serde_json::json!({
+            "expression": "3d6+2",
+            "rolls": [4, 5, 3],
+            "total": 14,
+        });
+
+        let errors = emit_sync(vault_str, EVENT_DICE_ROLL, payload);
+        assert!(
+            errors.is_empty(),
+            "dice_roll fan-out should succeed, got: {:?}",
+            errors
+        );
+
+        let state = plugin_state(vault_str, "dice-watcher").unwrap_or_default();
+        let state: Value = serde_json::from_str(&state).unwrap();
+        assert_eq!(state["last_expression"], "3d6+2");
+        assert_eq!(state["last_total"], 14);
+        assert_eq!(state["roll_count"], 1);
     }
 }

@@ -117,6 +117,8 @@ silently — defining a listener is purely opt-in.
 | `image_generated` | `on_image_generated` | `{ "prompt", "style", "provider", "model" }` — a **summary**; the image bytes are never delivered |
 | `note_saved` | `on_note_saved` | `{ "id", "title", "path", "word_count" }` |
 | `world_state_changed` | `on_world_state_changed` | `{ "world_id", "name", "bible_files" }` |
+| `dice_roll` | `on_dice_roll` | `{ "expression", "rolls", "total" }` — fired by the `/roll` chat affordance |
+| *schedule events* | `on_<event>` | any JSON payload from `schedule.yaml` `emit_event` entries |
 
 > [!IMPORTANT]
 > **Payloads are summaries, never artifacts.** The plugin host caps hook payloads
