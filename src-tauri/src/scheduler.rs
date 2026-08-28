@@ -220,7 +220,10 @@ pub fn dispatch_entry(vault_path: &str, entry: &ScheduleEntry) -> Result<String,
         validate_safe_path(vault_path, target)?;
     }
 
-    let mut payload = entry.payload.clone().unwrap_or(Value::Object(Default::default()));
+    let mut payload = entry
+        .payload
+        .clone()
+        .unwrap_or(Value::Object(Default::default()));
     if let Some(obj) = payload.as_object_mut() {
         obj.insert("entry_id".to_string(), Value::String(entry.id.clone()));
         if let Some(p) = &entry.prompt {
@@ -238,7 +241,11 @@ pub fn dispatch_entry(vault_path: &str, entry: &ScheduleEntry) -> Result<String,
 /// Run a full scheduler tick: load the schedule, find due entries, dispatch.
 ///
 /// Returns the list of events emitted this tick.
-pub fn tick(vault_path: &str, clock: &dyn Clock, last_fired: &mut HashMap<String, u64>) -> Vec<String> {
+pub fn tick(
+    vault_path: &str,
+    clock: &dyn Clock,
+    last_fired: &mut HashMap<String, u64>,
+) -> Vec<String> {
     let schedule = match load_schedule(vault_path) {
         Ok(s) => s,
         Err(e) => {
@@ -378,21 +385,33 @@ entries:
         let mut last_fired = HashMap::new();
 
         // Before 21:00 on day 0 → not due.
-        let clock = FakeClock { hhmm: (20, 59), secs: 0 };
+        let clock = FakeClock {
+            hhmm: (20, 59),
+            secs: 0,
+        };
         assert!(due_entries(&sched, &clock, &mut last_fired).is_empty());
 
         // At 21:00 on day 0 → due once.
-        let clock = FakeClock { hhmm: (21, 0), secs: 0 };
+        let clock = FakeClock {
+            hhmm: (21, 0),
+            secs: 0,
+        };
         let due = due_entries(&sched, &clock, &mut last_fired);
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].id, "nightly");
 
         // Same day, later → not due again (already fired).
-        let clock = FakeClock { hhmm: (22, 0), secs: 0 };
+        let clock = FakeClock {
+            hhmm: (22, 0),
+            secs: 0,
+        };
         assert!(due_entries(&sched, &clock, &mut last_fired).is_empty());
 
         // Next day → due again.
-        let clock = FakeClock { hhmm: (21, 0), secs: 86400 };
+        let clock = FakeClock {
+            hhmm: (21, 0),
+            secs: 86400,
+        };
         let due = due_entries(&sched, &clock, &mut last_fired);
         assert_eq!(due.len(), 1);
     }
@@ -414,15 +433,24 @@ entries:
         let mut last_fired = HashMap::new();
 
         // First tick at t=0 → due (no prior fire).
-        let clock = FakeClock { hhmm: (0, 0), secs: 0 };
+        let clock = FakeClock {
+            hhmm: (0, 0),
+            secs: 0,
+        };
         assert_eq!(due_entries(&sched, &clock, &mut last_fired).len(), 1);
 
         // 30 min later → not due.
-        let clock = FakeClock { hhmm: (0, 30), secs: 1800 };
+        let clock = FakeClock {
+            hhmm: (0, 30),
+            secs: 1800,
+        };
         assert!(due_entries(&sched, &clock, &mut last_fired).is_empty());
 
         // 1h later → due again.
-        let clock = FakeClock { hhmm: (1, 0), secs: 3600 };
+        let clock = FakeClock {
+            hhmm: (1, 0),
+            secs: 3600,
+        };
         assert_eq!(due_entries(&sched, &clock, &mut last_fired).len(), 1);
     }
 
@@ -466,7 +494,10 @@ entries:
 "#,
         );
         let mut last_fired = HashMap::new();
-        let clock = FakeClock { hhmm: (21, 0), secs: 0 };
+        let clock = FakeClock {
+            hhmm: (21, 0),
+            secs: 0,
+        };
         let emitted = tick(vault.to_str().unwrap(), &clock, &mut last_fired);
         assert_eq!(emitted, vec!["weather_change".to_string()]);
     }

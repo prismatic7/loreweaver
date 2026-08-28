@@ -49,13 +49,14 @@ mod bundles;
 mod db;
 mod dice;
 mod event_bus;
+mod expr;
 mod ingest;
 mod memory;
 mod pdf;
 mod plugins;
 pub mod providers;
-mod search;
 mod scheduler;
+mod search;
 mod watcher;
 mod webclip;
 mod worlds;
@@ -1030,6 +1031,21 @@ async fn run_schedule_now(state: State<'_, AppState>) -> Result<Vec<String>, Str
         &scheduler::SystemClock,
         &mut last_fired,
     ))
+}
+
+/// Evaluate a dice/arithmetic expression (Increment E2).
+///
+/// Returns a structured result: the expression, the individual die rolls,
+/// and the total. Malformed input is a clean error — the parser computes
+/// numbers and nothing else.
+#[tauri::command]
+async fn evaluate_expression(expr: &str) -> Result<serde_json::Value, String> {
+    let result = expr::roll(expr)?;
+    Ok(serde_json::json!({
+        "expression": result.expression,
+        "rolls": result.rolls,
+        "total": result.total,
+    }))
 }
 
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).
@@ -3205,6 +3221,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             list_templates,
             reindex_vault,
             run_schedule_now,
+            evaluate_expression,
             convert_pdf_to_markdown,
             save_session_memory,
             list_session_memory,

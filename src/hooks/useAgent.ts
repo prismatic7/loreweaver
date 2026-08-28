@@ -182,6 +182,52 @@ export function useAgent(
   const handleSendChatMessage = useCallback(() => {
     if (!chatInput.trim() || isAgentStreaming) return;
     const userMsg = chatInput;
+
+    // Slash affordance: `/roll <expr>` evaluates dice/arithmetic locally via
+    // the expression engine (Increment E2) instead of hitting the LLM.
+    const rollMatch = userMsg.trim().match(/^\/roll\s+(.+)$/i);
+    if (rollMatch) {
+      const expr = rollMatch[1].trim();
+      updateVaultChatMessages((prev) => [
+        ...prev,
+        { role: "user", text: userMsg },
+        { role: "assistant", text: "Rolling…", isStreaming: true },
+      ]);
+      setChatInput("");
+      invoke("evaluate_expression", { expr })
+        .then((res) => {
+          const r = res as { expression: string; rolls: number[]; total: number };
+          const rollsText = r.rolls.join(", ");
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                text: `🎲 **${r.expression}** → ${rollsText} = **${r.total}**`,
+                isStreaming: false,
+              };
+            }
+            return next;
+          });
+        })
+        .catch((err) => {
+          updateVaultChatMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant" && last.isStreaming) {
+              next[next.length - 1] = {
+                ...last,
+                text: `⚠️ Couldn't roll \`${expr}\`: ${String(err)}`,
+                isStreaming: false,
+              };
+            }
+            return next;
+          });
+        });
+      return;
+    }
+
     const priorMessages = chatMessagesByVault[vaultPath] || defaultChatMessages;
     // History sent to the backend: prior turns only (the new user turn is the
     // `prompt` argument). Streaming placeholders are excluded.
