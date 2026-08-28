@@ -60,6 +60,8 @@ export interface AppShellProps {
   rightPanel: React.ReactNode;
   onLoadTrash: () => void;
   onClipUrl: () => void;
+  /** Opens the Ctrl/Cmd+K command palette (Increment D1 header affordance). */
+  onOpenCommandPalette: () => void;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -87,6 +89,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   rightPanel,
   onLoadTrash,
   onClipUrl,
+  onOpenCommandPalette,
 }) => {
   return (
     <div className="app-container">
@@ -257,6 +260,24 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
 
           <div className="toolbar-actions">
+            <button
+              className="btn btn-sm"
+              onClick={onOpenCommandPalette}
+              title="Command palette (Ctrl/Cmd+K)"
+              aria-label="Open command palette"
+              data-od-id="toolbar-command-palette"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "6px 10px",
+                fontSize: "11px",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Compass size={13} /> Jump to… <span style={{ color: "var(--muted)" }}>⌘K</span>
+            </button>
             <button
               className="btn btn-sm"
               onClick={onClipUrl}

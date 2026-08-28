@@ -47,9 +47,27 @@ import { useCaptureInbox } from "./hooks/useCaptureInbox";
 import { findBacklinks } from "./utils/links";
 
 import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
+import { CommandPalette, type PaletteSelection } from "./components/CommandPalette";
+
+// Views offered by the Ctrl/Cmd+K palette, in nav order.
+const PALETTE_VIEWS: Array<{ id: AppView; label: string }> = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "vault", label: "Vault" },
+  { id: "rules", label: "Rules" },
+  { id: "ai", label: "AI & Generations" },
+  { id: "canvas", label: "Folder Canvas" },
+  { id: "character-sheets", label: "Character Sheets" },
+  { id: "map", label: "Map Builder" },
+  { id: "graph", label: "Entity Graph" },
+  { id: "timeline", label: "Timeline" },
+  { id: "trash", label: "Trash" },
+  { id: "settings", label: "Settings" },
+];
 
 function App() {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [recentNoteIds, setRecentNoteIds] = useState<string[]>([]);
 
   const { vaultPath, vaults, switchVault, refreshVaultPath, getVaultLabel, loadVaults } = useVault();
   const { noteTypes, provenanceTaxonomy } = useWorld(vaultPath);
@@ -256,6 +274,43 @@ function App() {
     setShowMapGuard(false);
     setPendingMapNav(null);
   };
+
+  // --- Increment D1: keyboard-first navigation ---
+  // Track recently opened notes for the palette's empty-query list.
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    setRecentNoteIds((prev) => [selectedNoteId, ...prev.filter((id) => id !== selectedNoteId)].slice(0, 8));
+  }, [selectedNoteId]);
+
+  const handlePaletteSelect = useCallback(
+    (selection: PaletteSelection) => {
+      if (selection.kind === "view") {
+        requestViewChange(selection.id as AppView);
+      } else {
+        const note = notes.find((n) => n.id === selection.id);
+        if (note) {
+          guardedSetSelectedNoteId(note.id);
+          guardedSetActiveView("vault");
+        }
+      }
+    },
+    [requestViewChange, notes, guardedSetSelectedNoteId, guardedSetActiveView],
+  );
+
+  // Global shortcuts: Ctrl/Cmd+K palette, Ctrl/Cmd+S save.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        immediateSave();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [immediateSave]);
 
   const { renderMarkdown } = useMarkdownRender({
     notes,
@@ -588,6 +643,7 @@ function App() {
   }, [loadWorlds]);
 
   return (
+    <>
     <AppShell
       activeView={activeView}
       setActiveView={requestViewChange}
@@ -613,6 +669,7 @@ function App() {
       searchRef={searchRef}
       onLoadTrash={loadTrashNotes}
       onClipUrl={handleToolbarClipUrl}
+      onOpenCommandPalette={() => setPaletteOpen(true)}
       rightPanel={
         !liminalOpen && activeView !== "settings" ? (
           <RightDrawer
@@ -1090,7 +1147,16 @@ function App() {
         }
         onChange={handleAssetFileSelected}
       />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        views={PALETTE_VIEWS}
+        notes={notes.map((n) => ({ id: n.id, title: n.title, path: n.path }))}
+        recentNoteIds={recentNoteIds}
+        onSelect={handlePaletteSelect}
+      />
     </AppShell>
+    </>
   );
 }
 
