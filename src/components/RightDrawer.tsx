@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PenLine, Brain, Layers, Link2, Swords, Map, Image as ImageIcon, Square, ShieldAlert, Check, Ban } from "lucide-react";
+import { PenLine, Brain, Layers, Link2, Tags, Swords, Map, Image as ImageIcon, Square, ShieldAlert, Check, Ban } from "lucide-react";
 import {
   CampaignNote,
   DEFAULT_PROVENANCE_TAXONOMY,
@@ -9,12 +9,15 @@ import {
 import type { ChatMessage } from "../hooks/useAgent";
 import type { ContextItem, PendingToolApproval } from "../bindings";
 import { AgentMessageBlock } from "./AgentMessageBlock";
+import { TagTree } from "./TagTree";
+import { NotePreviewTooltip } from "./NotePreviewTooltip";
 
 export type RightDrawerTab =
   | "search"
   | "ai"
   | "scratchpad"
   | "backlinks"
+  | "tags"
   | "asset"
   | "voice";
 
@@ -48,7 +51,7 @@ export interface RightDrawerProps {
   contextItems: ContextItem[];
   addContextItem: (item: ContextItem) => void;
   removeContextItem: (id: string) => void;
-  notes: Array<{ id: string; title: string; content: string }>;
+  notes: CampaignNote[];
   rules: Array<{ id: string; title: string; content: string }>;
   renderMarkdown: (markdown: string) => React.ReactNode;
   vaultPath: string;
@@ -167,6 +170,12 @@ export const RightDrawer: React.FC<RightDrawerProps> = (props) => {
           title="Open Backlinks"
           {...props}
         />
+        <CollapsedButton
+          targetTab="tags"
+          icon={<Tags size={18} />}
+          title="Open Tag Hierarchy"
+          {...props}
+        />
       </div>
     );
   }
@@ -191,6 +200,7 @@ export const RightDrawer: React.FC<RightDrawerProps> = (props) => {
         {props.tab === "asset" && <AssetTab {...props} />}
         {props.tab === "voice" && <VoiceTab {...props} />}
         {props.tab === "backlinks" && <BacklinksTab {...props} />}
+        {props.tab === "tags" && <TagsTab {...props} />}
       </div>
     </div>
   );
@@ -270,6 +280,7 @@ const TabBar: React.FC<RightDrawerProps> = ({
     <TabButton tab={tab} setTab={setTab} target="asset" label="Image" />
     <TabButton tab={tab} setTab={setTab} target="voice" label="Voice" />
     <TabButton tab={tab} setTab={setTab} target="backlinks" label="Links" />
+    <TabButton tab={tab} setTab={setTab} target="tags" label="Tags" />
     <button
       onClick={() => setIsOpen(false)}
       style={{
@@ -1884,23 +1895,51 @@ const BacklinksTab: React.FC<
         </div>
       ) : (
         backlinks.map((note) => (
-          <button
-            key={note.id}
-            className="nav-item"
-            onClick={() => setSelectedNoteId(note.id)}
-            style={{
-              padding: "6px 8px",
-              fontSize: "12px",
-              textAlign: "left",
-              justifyContent: "flex-start",
-              cursor: "pointer",
-            }}
-            type="button"
-          >
-            {note.title}
-          </button>
+          <NotePreviewTooltip key={note.id} note={note}>
+            <button
+              className="nav-item"
+              onClick={() => setSelectedNoteId(note.id)}
+              style={{
+                padding: "6px 8px",
+                fontSize: "12px",
+                textAlign: "left",
+                justifyContent: "flex-start",
+                cursor: "pointer",
+                width: "100%",
+              }}
+              type="button"
+            >
+              {note.title}
+            </button>
+          </NotePreviewTooltip>
         ))
       )}
     </div>
+  </div>
+);
+
+const TagsTab: React.FC<
+  Pick<RightDrawerProps, "notes" | "setSelectedNoteId">
+> = ({ notes, setSelectedNoteId }) => (
+  <div
+    style={{
+      padding: "16px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px",
+    }}
+  >
+    <span
+      style={{
+        fontSize: "11px",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.08em",
+        color: "var(--accent)",
+      }}
+    >
+      Tag Hierarchy
+    </span>
+    <TagTree notes={notes} setSelectedNoteId={setSelectedNoteId} />
   </div>
 );

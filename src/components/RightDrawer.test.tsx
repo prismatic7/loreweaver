@@ -186,3 +186,81 @@ describe("Architect chat markdown", () => {
     expect(renderMarkdown).not.toHaveBeenCalled();
   });
 });
+
+describe("Tag Hierarchy tab", () => {
+  it("renders the tag tree for notes with nested tags", () => {
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "tags",
+          notes: [
+            {
+              id: "n1",
+              title: "Act 3 Opening",
+              path: "Worldbuilding/Act_3.md",
+              content: "# Act 3",
+              frontmatter: { tags: ["campaign/arc1/act3"] },
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("Tag Hierarchy")).toBeInTheDocument();
+    expect(screen.getByText("campaign")).toBeInTheDocument();
+    expect(screen.getByText("arc1")).toBeInTheDocument();
+    expect(screen.getByText("act3")).toBeInTheDocument();
+    expect(screen.getByText("Act 3 Opening")).toBeInTheDocument();
+  });
+
+  it("calls setSelectedNoteId when a tag leaf note is clicked", () => {
+    const setSelectedNoteId = vi.fn();
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "tags",
+          setSelectedNoteId,
+          notes: [
+            {
+              id: "n1",
+              title: "Boss",
+              path: "Worldbuilding/Boss.md",
+              content: "# Boss",
+              frontmatter: { tags: ["npc"] },
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByText("Boss"));
+    expect(setSelectedNoteId).toHaveBeenCalledWith("n1");
+  });
+});
+
+describe("Backlinks tab preview", () => {
+  it("shows a preview snippet when hovering a backlink row", () => {
+    const backlinks = [
+      {
+        id: "n2",
+        title: "The City",
+        path: "Worldbuilding/The_City.md",
+        content: "A sprawling port city at the edge of the bay.",
+        frontmatter: {},
+      },
+    ];
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "backlinks",
+          backlinks,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Incoming Backlinks")).toBeInTheDocument();
+    expect(screen.queryByTestId("note-preview")).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(screen.getByText("The City"));
+    expect(screen.getByTestId("note-preview")).toBeInTheDocument();
+    expect(screen.getByText(/sprawling port city/)).toBeInTheDocument();
+  });
+});

@@ -94,15 +94,15 @@
 
 ---
 
-### Phase 4 – Vault & Organization Enhancements (2 weeks)  
+### Phase 4 – Vault & Organization Enhancements (2 weeks)
 | Feature | Files | Steps |
 |---------|-------|-------|
-| Tag Hierarchies | `src/vault/tags.rs`, `vault/tags.json` | Store tags as array; resolve nested paths (`#campaign/arc1/act3`). |
-| Backlink Preview | `src/components/NoteView.tsx` | On hover of `[[link]]`, fetch metadata, show tooltip. |
-| Dynamic Outliner | `src/components/Outline.tsx` | Parse headings (`##`, `###`) → tree; expose via `get_outline` command. |
-| UI Tree Component | `src/components/TagTree.tsx` | Render collapsible tag tree in Settings/Sidebar. |
+| Tag Hierarchies | `src/utils/tags.ts`, `src/components/TagTree.tsx` | ✅ Increment C (`2026-08-28-increment-c-tags-outliner-backlinks.md`) — READ-ONLY parsing of `frontmatter.tags` (`#campaign/arc1/act3` → nested tree); Tags tab in the right drawer. The roadmap's `vault/tags.json` store is deferred (vault writes are red-lined overnight). |
+| Backlink Preview | `src/components/NotePreviewTooltip.tsx` (Backlinks tab) | ✅ Increment C — hover preview (title + snippet) on backlink rows. In-body `[[link]]` hover remains future work (needs shared-markdown-renderer plumbing). |
+| Dynamic Outliner | `src/utils/outline.ts`, `src/components/NoteOutline.tsx` | ✅ Increment C — client-side heading parse (fences ignored) → collapsible tree beside read-mode note view. The roadmap's `get_outline` command is deferred (no new IPC needed). |
+| UI Tree Component | `src/components/TagTree.tsx` | ✅ Increment C — collapsible tag tree in the right drawer Tags tab. |
 
-**Milestone**: Campaign files can be organized with nested tags; hovering a wiki link shows a concise preview.
+**Milestone**: Campaign files can be organized with nested tags; hovering a backlink shows a concise preview.
 
 ---
 

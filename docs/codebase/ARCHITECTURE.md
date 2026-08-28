@@ -132,8 +132,8 @@ agent activity over a Tauri `Channel<AgentEvent>`:
 
 - `src/App.tsx` is the top-level orchestrator that composes domain hooks and renders shell components.
 - `src/hooks/` contains domain hooks that encapsulate Tauri IPC calls and local state.
-- `src/components/` contains shell components (`AppShell`, `RightDrawer`, `Modals`) and feature views (`CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`, `EntityGraphView`).
-- `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`).
+- `src/components/` contains shell components (`AppShell`, `RightDrawer`, `Modals`) and feature views (`CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`, `EntityGraphView`). Organisation helpers: `TagTree` (collapsible tag hierarchy), `NoteOutline` (heading outline beside read-mode notes), `NotePreviewTooltip` (backlink hover preview).
+- `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`, `tags.ts` — read-only `frontmatter.tags` → tree parsing, `outline.ts` — markdown heading → tree parsing).
 
 ## Plugin Model
 

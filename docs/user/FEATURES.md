@@ -10,6 +10,9 @@ The Campaign Vault acts as your primary repository for lore, locations, and char
 
 - **Wikilinks:** Connecting notes is as simple as typing `[[Note Name]]`. A CodeMirror autocompletion popover suggests candidates based on note titles and declared aliases.
 - **YAML Frontmatter:** Note headers contain a metadata drawer (e.g. `type: Character`, `tags: [npc/friendly]`). These properties are parsed by the Rust core and indexable.
+- **Tag Hierarchy:** Nested tags (`#campaign/arc1/act3`) are parsed from frontmatter into a collapsible tree in the right drawer's **Tags** tab; clicking a tagged note jumps to it.
+- **Backlink Preview:** Hovering a row in the **Links** tab shows the linked note's title and a content snippet.
+- **Note Outline:** Notes with headings (`#`, `##`, `###`…) show a collapsible **Outline** beside the read-mode view.
 - **Auto-Save:** All modifications made in the editor automatically commit back to disk and database within 250ms of typing inactivity.
 
 ---

@@ -18,7 +18,7 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**17 Vitest suites / 100 tests** pass (measured 2026-08-27). Note: `npm run test`
+**24 Vitest suites / 138 tests** pass (measured 2026-08-28 after Increment C). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will

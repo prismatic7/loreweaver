@@ -19,6 +19,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../types";
+import { NoteOutline } from "./NoteOutline";
 
 export interface TemplateProperty {
   type: "number" | "boolean" | "string";
@@ -1211,8 +1212,11 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           </span>
                         ))}
                     </div>
-                    <div className="doc-body">
-                      {renderMarkdown(currentNote.content)}
+                    <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+                      <div className="doc-body" style={{ flex: 1, minWidth: 0 }}>
+                        {renderMarkdown(currentNote.content)}
+                      </div>
+                      <NoteOutline content={currentNote.content} />
                     </div>
                   </div>
                 )}
