@@ -70,37 +70,41 @@ Unblocked: the Increment A event bus (`event_bus.rs`, events emitted at
 `lib.rs:400,1351,2121`) is live. This increment is backend-heavy Rust.
 
 ### E1: World scheduler (`schedule.yaml` + cron-style dispatch)
-- [ ] New module `src-tauri/src/scheduler.rs`: reads `<vault>/schedule.yaml`
+- [x] New module `src-tauri/src/scheduler.rs`: reads `<vault>/schedule.yaml`
   (schema documented in the module header), checks due entries on app
   launch + on a timer, dispatches world-event hooks through the plugin
   event bus (`emit`).
-- [ ] Entries carry `on:` (interval or daily time), `action: emit_event`
+- [x] Entries carry `on:` (interval or daily time), `action: emit_event`
   (name + payload) and, if the Muse arc's persona is set, an optional
   `prompt:` that requests one nightly generation into a target note via
   `validate_safe_path`-guarded write.
-- [ ] Manual trigger: a `run_schedule_now` command (dev/testing affordance
+- [x] Manual trigger: a `run_schedule_now` command (dev/testing affordance
   and GM "roll tonight's events" button).
-- [ ] No new dependency beyond `serde_yaml` if not already present.
+- [x] No new dependency beyond `serde_yaml` if not already present.
 - **Gate:** a test vault with a nightly hook produces the event without
   manual steps (integration test, clock-injected, no real waiting).
+  ✅ Landed `9a8cefe`; 8 scheduler tests + 98 lib tests green.
 
 ### E2: Expression engine (dice + values)
-- [ ] New module `src-tauri/src/expr.rs`: a SMALL, safe expression evaluator
+- [x] New module `src-tauri/src/expr.rs`: a SMALL, safe expression evaluator
   (dice notation `3d6+2`, arithmetic, `max/min`, comparison). NO `exprtk`
   dependency — hand-rolled parser with unit tests, same style as
   Increment B's hand-rolled levenshtein. No filesystem, no network, no
   plugin access — it computes numbers, nothing else.
-- [ ] Exposed as a Tauri command `evaluate_expression(vault_path, expr)` and
+- [x] Exposed as a Tauri command `evaluate_expression(expr)` and
   surfaced in the session UI as a `/roll` chat affordance.
 - **Gate:** `/roll 3d6+2` in session chat returns a roll; malformed input is
   a clean error; the parser cannot be tricked into anything but numbers.
+  ✅ Landed `ce82ca1`; 8 expr tests + 171 frontend tests green.
 
 ### E3: World-event hook for plugins
-- [ ] Scheduler emissions and `/roll` results go through `event_bus::emit`
+- [x] Scheduler emissions and `/roll` results go through `event_bus::emit`
   so plugins can subscribe (e.g. a weather plugin reacting to a nightly
   event). Document the two new event names in the plugin authoring guide.
 - **Gate:** a test plugin hook receives a schedule event (integration test
   in the existing plugin test style).
+  ✅ Landed `5cbe32d`; `dice_roll` event + `on_dice_roll` hook, plugin
+  integration test green, API.md + PLUGIN_AUTHORING.md updated.
 
 ---
 
