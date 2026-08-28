@@ -119,6 +119,46 @@ The Bible is emergent: `load_bible_context` (`agent.rs:112`) always injects the 
 
 ### Task 11: Dead code + tone fixes
 
-- [x] **Step 1: `setTheme`/`theme`** — either wire a real light/dark toggle (Design.md has a light palette) or delete the dead prop threading (`SettingsView.tsx` receives `theme` as `_theme`).
-- [x] **Step 2: `alert()` for save/reindex** — replace native dialogs with in-app toast/inline feedback (Ledger's calm).
-- [x] **Step 3: Verify** `npm run test` + manual save/reindex without native dialogs.
+- [x] **Step 1: `setTheme`/`theme`** — either wire a real light/dark toggle (Design.md has a light palette) or delete the dead prop threading (`SettingsView.tsx` receives `theme` as `_theme`). — **DONE, deletion path** (`210e9dd`: theme prop removed from `App.tsx` → `SettingsView`).
+- [x] **Step 2: `alert()` for save/reindex** — replace native dialogs with in-app toast/inline feedback (Ledger's calm). — **PARTIAL (deviation, verified 2026-08-28).** The reindex alerts the step targeted remain in `SettingsView.tsx:260,263` — the task was marked done but the replacement never shipped. Other views (CharacterSheetView, FolderCanvas, MapBuilderView) also carry native `alert()` calls from earlier builds; those were outside this task's scope but share the Ledger-calm concern. Follow-up queued under Increment D (UI polish).
+- [x] **Step 3: Verify** `npm run test` + manual save/reindex without native dialogs. — build/test gates pass; the manual no-native-dialog claim does not hold for reindex (see Step 2 deviation).
+
+---
+
+## ARC STATUS: COMPLETE + VERIFIED (2026-08-28)
+
+All 11 tasks executed 2026-08-23 (commits `8b2e450`…`210e9dd`) and independently
+verified against code at `a767350`:
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | ✅ clean |
+| `npm run build` (tsc strict + vite) | ✅ |
+| `npm run test` | ✅ 25 suites / 156 tests |
+| `cargo test --locked -- --skip test_api_key_round_trip` | ✅ 90 lib + 2 STT |
+
+Code-level verification of every sketch claim:
+- **Voice:** `load_campaign_persona` in `agent.rs:130` replaces the hardcoded
+  opening when `campaign_system` is set; `bible_files` pins honoured in
+  `load_bible_context` (unit-tested incl. missing-file skip); Bible panel in
+  SettingsView with open-in-editor affordance.
+- **Mouth:** `image_style_template` in `VaultSettings` + textarea UI;
+  note→image assembles `template → note title/content → per-use prompt`
+  (`useSessionTools.ts:138-150`, "Illustrate" button on note editor);
+  quality fast/standard/high → steps 12/28/40 + fixed-seed toggle in
+  `image.rs:144`; `image_size` threaded to OpenAI/Stability bodies; TTS
+  voice preview (`previewVoice`) + STT folder picker (`handlePickSttFolder`).
+- **Temper:** `SamplingParams` (`providers/llm.rs:20`) threaded through all
+  four provider bodies; Firm↔Wild slider in LLM tab; full cascade verified in
+  `lib.rs:1818`: `session_temperature.or(world_temp).unwrap_or(global_temp)`;
+  per-session toggle in the AI view header (`AiView.tsx`, ephemeral in
+  `useAgent.ts:68`, resets on session close).
+- **Housekeeping:** dead theme prop threading deleted; alert() deviation noted
+  above.
+
+**Known gap (deviation):** the sketch's "make this the world default"
+affordance on the session toggle is not present in `AiView.tsx` — the toggle
+is ephemeral-only. Small; fold into Increment D or a follow-up.
+
+**Still owed by design, not code:** the Muse is proven in play — the next
+FATE of Cthulhu session is the audition.

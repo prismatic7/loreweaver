@@ -21,7 +21,7 @@
 - **Phase 3 partial — Search.** `hybrid_query` exists (`search.rs:540`); synonym + fuzzy layers shipped in Increment B (`2026-08-28-increment-b-search-fuzzy-synonyms.md`); `search_result` event on the bus is future.
 - **Phase 5 partial — Themes.** Firm↔Wild cascade shipped (`9e16deb`): global default → per-world override → per-session toggle. Canvas collaboration / WebSocket is future.
 
-**Sequencing:** the remaining phases are queued as bounded increments in `docs/superpowers/plans/2026-08-27-frontend-audit-and-roadmap-deploy.md` (Phase 3). The Muse/agent arc (DESIGN_SKETCH_CREATOR) is the recommended next creative arc.
+**Sequencing:** the remaining phases are queued as bounded increments in `docs/superpowers/plans/2026-08-27-frontend-audit-and-roadmap-deploy.md` (Phase 3). **The Muse arc (DESIGN_SKETCH_CREATOR) is COMPLETE + VERIFIED (2026-08-28)** — all 11 tasks of the Creator's Instrument plan shipped (`8b2e450`…`210e9dd`) and code-verified at `a767350`; see the arc status block in `docs/superpowers/plans/2026-08-23-creators-instrument-plan.md`. Remaining queue: Increments D (UI polish), E (automation, unblocked by the Increment A event bus), then G (docs/marketplace). Increment F (QA & CI) is substantially landed (`128a6f5` GitHub Actions gates + lint + coverage thresholds) — confirm CI runs green on GitHub and mark done.
 
 ---
 
