@@ -837,7 +837,6 @@ function App() {
       {!liminalOpen && activeView === "character-sheets" && (
         <CharacterSheetView
           vaultPath={vaultPath}
-          alert={alert}
           onOpenNote={(noteId) => {
             guardedSetSelectedNoteId(noteId);
             guardedSetActiveView("vault");
@@ -849,7 +848,6 @@ function App() {
         <MapBuilderView
           vaultPath={vaultPath}
           mapRelPath="Maps/Active_Map.canvas"
-          alert={alert}
           onDirtyChange={setMapDirty}
           registerSave={setMapSave}
         />

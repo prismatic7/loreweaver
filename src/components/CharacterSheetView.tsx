@@ -7,6 +7,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { Toast, useToast } from "./Toast";
 
 interface TemplateProperty {
   type: string;
@@ -27,15 +28,14 @@ interface TemplateEntry {
 
 interface CharacterSheetViewProps {
   vaultPath: string;
-  alert: (message: string) => void;
   onOpenNote: (noteId: string) => void;
 }
 
 export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
   vaultPath,
-  alert,
   onOpenNote,
 }) => {
+  const { toast, showToast, dismissToast } = useToast();
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -111,9 +111,9 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
         };
         await invoke("save_note", { note: newNote });
         onOpenNote(newNote.id);
-        alert("PDF imported as a note. Review and edit before saving.");
+        showToast("PDF imported as a note. Review and edit before saving.");
       } catch (err) {
-        alert("PDF import failed: " + err);
+        showToast("PDF import failed: " + err);
       } finally {
         setIsImporting(false);
       }
@@ -156,10 +156,10 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
         content,
       };
       await invoke("save_note", { note: newNote });
-      alert(`Character sheet saved as "${title}".`);
+      showToast(`Character sheet saved as "${title}".`);
       onOpenNote(newNote.id);
     } catch (err) {
-      alert("Failed to save character sheet: " + err);
+      showToast("Failed to save character sheet: " + err);
     } finally {
       setIsSaving(false);
     }
@@ -178,10 +178,10 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
         payload,
       });
       if (result && result.trim()) {
-        alert(result);
+        showToast(result);
       }
     } catch (err) {
-      alert(`Action "${action.label}" failed: ${err}`);
+      showToast(`Action "${action.label}" failed: ${err}`);
     } finally {
       setRunningAction(null);
     }
@@ -460,6 +460,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
         </div>
         </div>
       ) : null}
+      {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </div>
   );
 };

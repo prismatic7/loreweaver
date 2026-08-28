@@ -19,6 +19,7 @@ import {
   Square as SquareIcon,
   Star as StarIcon,
 } from "lucide-react";
+import { Toast, useToast } from "./Toast";
 
 /**
  * MapBuilderView
@@ -98,7 +99,6 @@ interface MapData {
 interface MapBuilderViewProps {
   vaultPath: string;
   mapRelPath: string;
-  alert: (message: string) => void;
   /** Called whenever the map's dirty state changes (true = unsaved edits). */
   onDirtyChange?: (dirty: boolean) => void;
   /** Registers a save function so the parent can persist before navigating away. */
@@ -145,10 +145,10 @@ const resolveAssetUrl = (vaultPath: string, mapRelPath: string, relPath: string)
 export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   vaultPath,
   mapRelPath,
-  alert,
   onDirtyChange,
   registerSave,
 }) => {
+  const { toast, showToast, dismissToast } = useToast();
   const [isDirty, setIsDirty] = useState(false);
   const [tokens, setTokens] = useState<MapToken[]>([]);
   const [fog, setFog] = useState<FogRegion[]>([]);
@@ -243,9 +243,9 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     })
       .then(() => {
         setIsDirty(false);
-        alert("Map saved successfully!");
+        showToast("Map saved successfully!");
       })
-      .catch((err) => alert("Failed to save map: " + err));
+      .catch((err) => showToast("Failed to save map: " + err));
   };
 
   // Expose a save that resolves to success/failure so the parent can persist
@@ -263,12 +263,12 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             resolve(true);
           })
           .catch((err) => {
-            alert("Failed to save map: " + err);
+            showToast("Failed to save map: " + err);
             resolve(false);
           });
       }),
     );
-  }, [registerSave, tokens, fog, background, drawings, mapRelPath, alert]);
+  }, [registerSave, tokens, fog, background, drawings, mapRelPath, showToast]);
 
   const addToken = () => {
     setTokenName("");
@@ -478,15 +478,15 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
             width: img.naturalWidth || 800,
             height: img.naturalHeight || 600,
           });
-          alert("Background image added.");
+          showToast("Background image added.");
         };
         img.onerror = () => {
           setBackground({ relPath: assetRelPath, width: 800, height: 600 });
-          alert("Background image added (dimensions unknown).");
+          showToast("Background image added (dimensions unknown).");
         };
         img.src = dataUrl;
       } catch (err) {
-        alert("Failed to import background image: " + err);
+        showToast("Failed to import background image: " + err);
       }
     };
     reader.readAsDataURL(file);
@@ -1542,6 +1542,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         accept="image/*"
         onChange={handleBackgroundSelected}
       />
+      {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </div>
   );
 };

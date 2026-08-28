@@ -17,6 +17,7 @@ import {
   XCircle,
   CheckCircle2,
 } from "lucide-react";
+import { Toast, useToast } from "./Toast";
 import {
     FieldErrors,
     UseFormHandleSubmit,
@@ -52,6 +53,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   vaultPath,
   pluginsList = [],
 }) => {
+  const { toast, showToast, dismissToast } = useToast();
   const [activeConfigTab, setActiveConfigTab] = useState<
     "llm" | "embed" | "image" | "tts" | "stt"
   >("llm");
@@ -257,10 +259,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsReindexing(true);
     invoke("reindex_vault")
       .then(() => {
-        alert("Vault reindexed successfully!");
+        showToast("Vault reindexed successfully!");
       })
       .catch((err) => {
-        alert("Reindex failed: " + err);
+        showToast("Reindex failed: " + err);
       })
       .finally(() => {
         setIsReindexing(false);
@@ -1687,6 +1689,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
+      {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </form>
   );
 };

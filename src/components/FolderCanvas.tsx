@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, ZoomIn, ZoomOut, Save, Layers, Link as LinkIcon, Eye, Zap, Maximize2 } from "lucide-react";
+import { Toast, useToast } from "./Toast";
 
 /**
  * FolderCanvas Component
@@ -193,12 +194,10 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
 
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; noteId: string } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast: showToastRaw, dismissToast } = useToast();
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 8000);
-  };
+  // Shared-useToast adapter: keep the existing call sites (they never pass null).
+  const showToast = (msg: string) => showToastRaw(msg);
 
   const handleActionClick = (action: TemplateAction, note: Note) => {
     invoke<{ verdict?: string }>("execute_plugin_hook", {
@@ -421,8 +420,8 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
   const saveCanvas = () => {
     const data: CanvasData = { nodes, edges, containers };
     invoke("save_canvas_file", { relPath: canvasRelPath, content: JSON.stringify(data, null, 2) })
-      .then(() => alert("Canvas saved successfully!"))
-      .catch((err) => alert("Failed to save canvas: " + err));
+      .then(() => showToast("Canvas saved successfully!"))
+      .catch((err) => showToast("Failed to save canvas: " + err));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1168,46 +1167,8 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
         );
       })()}
 
-      {/* Canvas Rolling Results Toast */}
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "24px",
-            right: "24px",
-            zIndex: 1000,
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 0,
-            padding: "12px 16px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            maxWidth: "360px",
-            color: "var(--fg)",
-            fontSize: "13px",
-            lineHeight: "1.4",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-          }}
-        >
-          <span>{toast}</span>
-          <button
-            onClick={() => setToast(null)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--muted)",
-              cursor: "pointer",
-              fontSize: "14px",
-              lineHeight: 1,
-              padding: "2px",
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {/* Canvas feedback toast (shared Ledger-calm pattern) */}
+      {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </div>
   );
 };

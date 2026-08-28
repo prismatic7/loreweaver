@@ -24,7 +24,6 @@ function renderMap(overrides: Partial<Parameters<typeof MapBuilderView>[0]> = {}
   const props = {
     vaultPath: "/vault",
     mapRelPath: "Maps/Dungeon.map",
-    alert: vi.fn(),
     ...overrides,
   };
   return {
@@ -140,7 +139,7 @@ describe("MapBuilderView", () => {
     expect(screen.getByText("100 units")).toBeInTheDocument();
   });
 
-  it("saves the map and alerts on success", async () => {
+  it("saves the map and shows a toast on success", async () => {
     // Load resolves the saved map (Elira appears); save resolves null (success).
     // NB: mockResolvedValue replaces the default, so the load would get null too
     // unless sequenced with Once.
@@ -164,13 +163,13 @@ describe("MapBuilderView", () => {
     expect(saveArgs?.content).toContain("\"label\": \"Elira\"");
   });
 
-  it("alerts on save failure", async () => {
+  it("shows a toast on save failure", async () => {
     mockInvoke.mockRejectedValue(new Error("disk full"));
-    const { props } = renderMap();
+    renderMap();
     fireEvent.click(await screen.findByTitle("Save Map"));
-    await waitFor(() => {
-      expect(props.alert).toHaveBeenCalledWith(expect.stringContaining("Failed to save map"));
-    });
+    expect(
+      await screen.findByRole("status"),
+    ).toHaveTextContent("Failed to save map");
   });
 });
 

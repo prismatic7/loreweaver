@@ -42,7 +42,6 @@ describe("CharacterSheetView", () => {
     render(
       <CharacterSheetView
         vaultPath="/vault"
-        alert={vi.fn()}
         onOpenNote={vi.fn()}
       />,
     );
@@ -60,7 +59,6 @@ describe("CharacterSheetView", () => {
     render(
       <CharacterSheetView
         vaultPath="/vault"
-        alert={vi.fn()}
         onOpenNote={vi.fn()}
       />,
     );
@@ -72,7 +70,6 @@ describe("CharacterSheetView", () => {
     const { container } = render(
       <CharacterSheetView
         vaultPath="/vault"
-        alert={vi.fn()}
         onOpenNote={vi.fn()}
       />,
     );
@@ -94,12 +91,10 @@ describe("CharacterSheetView", () => {
   });
 
   it("saves the sheet as a note with frontmatter and content", async () => {
-    const alert = vi.fn();
     const onOpenNote = vi.fn();
     const { container } = render(
       <CharacterSheetView
         vaultPath="/vault"
-        alert={alert}
         onOpenNote={onOpenNote}
       />,
     );
@@ -130,7 +125,7 @@ describe("CharacterSheetView", () => {
         }),
       });
     });
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining("Elira"));
+    expect(await screen.findByRole("status")).toHaveTextContent("Elira");
     expect(onOpenNote).toHaveBeenCalled();
   });
 
@@ -140,11 +135,9 @@ describe("CharacterSheetView", () => {
       if (cmd === "execute_plugin_hook") return Promise.resolve("Rolled 12 HP");
       return Promise.resolve(null);
     });
-    const alert = vi.fn();
     const { container } = render(
       <CharacterSheetView
         vaultPath="/vault"
-        alert={alert}
         onOpenNote={vi.fn()}
       />,
     );
@@ -161,6 +154,6 @@ describe("CharacterSheetView", () => {
         payload: expect.stringContaining("Character"),
       });
     });
-    expect(alert).toHaveBeenCalledWith("Rolled 12 HP");
+    expect(await screen.findByRole("status")).toHaveTextContent("Rolled 12 HP");
   });
 });
