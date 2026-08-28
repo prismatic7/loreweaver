@@ -219,6 +219,12 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<Vec<PluginInfo>, String>`
 - **Description:** Scans the plugin folders and registers manifest declarations.
 
+### `scaffold_plugin`
+
+- **Arguments:** `id: &str`, `name: &str`
+- **Returns:** `Result<String, String>` — the absolute path to the new plugin folder.
+- **Description:** Creates a publishable plugin skeleton (`manifest.json` + starter `index.js` with an `on_dice_roll` hook) in the plugins directory. The id is normalised to lowercase alphanumeric + hyphen; the directory is refused if it already exists (no silent overwrite).
+
 ### `execute_plugin_hook`
 
 - **Arguments:** `plugin_id: &str`, `hook: &str`, `payload: &str`

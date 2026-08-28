@@ -45,6 +45,15 @@ export function usePlugins(vaultPath: string) {
     [],
   );
 
+  const scaffoldPlugin = useCallback(
+    async (id: string, name: string) => {
+      const path = await invoke<string>("scaffold_plugin", { id, name });
+      await loadPlugins();
+      return path;
+    },
+    [loadPlugins],
+  );
+
   const handleRollCharacterSheet = useCallback(
     async (alert: (message: string) => void, onCreated?: (note: any) => void) => {
       const name = prompt("Enter character name:", "Valerius");
@@ -209,6 +218,7 @@ export function usePlugins(vaultPath: string) {
     pluginsList,
     loadPlugins,
     executeHook,
+    scaffoldPlugin,
     handleRollCharacterSheet,
     handleEvaluateEncounterThreat,
     handleInitiativeTracker,

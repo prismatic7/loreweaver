@@ -38,6 +38,7 @@ export interface RightDrawerProps {
   handleEvaluateEncounterThreat: () => void;
   handleInitiativeTracker: () => void;
   handleEncounterBuilder: () => void;
+  scaffoldPlugin: (id: string, name: string) => Promise<string>;
   // AI tab
   currentChatMessages: ChatMessage[];
   chatInput: string;
@@ -313,6 +314,7 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
   handleEvaluateEncounterThreat,
   handleInitiativeTracker,
   handleEncounterBuilder,
+  scaffoldPlugin,
   captureTitle,
   setCaptureTitle,
   captureContent,
@@ -399,6 +401,7 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
       handleEvaluateEncounterThreat={handleEvaluateEncounterThreat}
       handleInitiativeTracker={handleInitiativeTracker}
       handleEncounterBuilder={handleEncounterBuilder}
+      scaffoldPlugin={scaffoldPlugin}
     />
   </div>
 );
@@ -738,6 +741,7 @@ const PluginButtons: React.FC<
     | "handleEvaluateEncounterThreat"
     | "handleInitiativeTracker"
     | "handleEncounterBuilder"
+    | "scaffoldPlugin"
   >
 > = ({
   pluginsList,
@@ -745,6 +749,7 @@ const PluginButtons: React.FC<
   handleEvaluateEncounterThreat,
   handleInitiativeTracker,
   handleEncounterBuilder,
+  scaffoldPlugin,
 }) => (
   <div
     style={{
@@ -765,6 +770,28 @@ const PluginButtons: React.FC<
     >
       GM Plugins
     </span>
+    <button
+      className="btn btn-sm"
+      style={{
+        width: "100%",
+        padding: "6px",
+        fontSize: "11px",
+        cursor: "pointer",
+        marginBottom: "8px",
+      }}
+      onClick={() => {
+        const id = prompt("Plugin id (lowercase, hyphenated):", "my-plugin");
+        if (!id) return;
+        const name = prompt("Display name:", id);
+        scaffoldPlugin(id, name || id)
+          .then((path) => alert(`Plugin created at ${path}`))
+          .catch((err) => alert("Failed to scaffold plugin: " + err));
+      }}
+      type="button"
+      data-od-id="plugin-scaffold"
+    >
+      + New Plugin
+    </button>
     {pluginsList.length > 0 ? (
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {pluginsList.map((plugin) => {

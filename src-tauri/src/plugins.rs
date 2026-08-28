@@ -544,6 +544,84 @@ fn execute_hook_in_context(
     Ok((response, new_state_str))
 }
 
+/// Scaffolds a new, publishable plugin skeleton into the plugins directory.
+///
+/// Creates `<plugins_dir>/<id>/` containing a valid `manifest.json` and a
+/// starter `index.js` with a commented `on_dice_roll` hook. The id is
+/// normalised to lowercase alphanumeric + hyphen (the same character set the
+/// manifest loader expects) and the directory is refused if it already exists
+/// (no silent overwrite). Returns the absolute path to the new plugin folder.
+pub fn scaffold_plugin(plugins_dir_str: &str, id: &str, name: &str) -> Result<String, String> {
+    // Normalise the id: lowercase, alphanumeric + hyphen only.
+    let normalised: String = id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else if c == '-' || c == '_' {
+                '-'
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let normalised = normalised.trim_matches('-').to_string();
+    if normalised.is_empty() {
+        return Err("Plugin id must contain at least one alphanumeric character".to_string());
+    }
+
+    let plugins_dir = Path::new(plugins_dir_str);
+    fs::create_dir_all(plugins_dir).map_err(|e| e.to_string())?;
+    let plugin_dir = plugins_dir.join(&normalised);
+    if plugin_dir.exists() {
+        return Err(format!(
+            "Plugin '{}' already exists at {}",
+            normalised,
+            plugin_dir.display()
+        ));
+    }
+    fs::create_dir_all(&plugin_dir).map_err(|e| e.to_string())?;
+
+    let display_name = if name.trim().is_empty() {
+        normalised.clone()
+    } else {
+        name.trim().to_string()
+    };
+
+    let manifest = serde_json::json!({
+        "id": normalised,
+        "name": display_name,
+        "version": "1.0.0",
+        "description": "Describe what this plugin does.",
+        "entry": "index.js",
+        "permissions": ["hooks"]
+    });
+    fs::write(
+        plugin_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let index_js = r#"// Loreweaver plugin — starter skeleton.
+// Hooks are global functions called by the event bus. Each receives a string
+// payload (JSON) and returns a string. State persists across calls via __state.
+//
+// Available events (see docs/developer/PLUGIN_AUTHORING.md):
+//   on_dice_roll, on_note_saved, on_image_generated, on_world_state_changed,
+//   plus any schedule.yaml emit_event names.
+
+function on_dice_roll(payload) {
+    let roll = JSON.parse(payload); // { expression, rolls, total }
+    __state.rolls = __state.rolls || [];
+    __state.rolls.push(roll.total);
+    return "logged roll: " + roll.total;
+}
+"#;
+    fs::write(plugin_dir.join("index.js"), index_js).map_err(|e| e.to_string())?;
+
+    Ok(plugin_dir.to_string_lossy().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,5 +748,35 @@ mod tests {
             "deep recursion should be rejected by the recursion limit, got: {:?}",
             result
         );
+    }
+
+    #[test]
+    fn test_scaffold_plugin_creates_publishable_skeleton() {
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let plugins_dir = tmp.path().join("plugins");
+
+        let path = scaffold_plugin(plugins_dir.to_str().unwrap(), "My Cool Roller", "My Cool Roller")
+            .expect("scaffold should succeed");
+        let plugin_dir = std::path::Path::new(&path);
+
+        // Manifest is valid and loadable.
+        let manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(plugin_dir.join("manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["id"], "my-cool-roller");
+        assert_eq!(manifest["name"], "My Cool Roller");
+        assert_eq!(manifest["permissions"][0], "hooks");
+
+        // The skeleton loads cleanly through the real loader (dry-run compile).
+        let loaded = load_all_plugins("/tmp/vault", plugins_dir.to_str().unwrap()).unwrap();
+        assert_eq!(loaded.len(), 1, "scaffolded plugin should load");
+        assert_eq!(loaded[0].id, "my-cool-roller");
+        assert!(loaded[0].script_content.contains("on_dice_roll"));
+
+        // Refusing to overwrite an existing plugin.
+        let dup = scaffold_plugin(plugins_dir.to_str().unwrap(), "my-cool-roller", "Dup");
+        assert!(dup.is_err(), "duplicate scaffold must be refused");
     }
 }

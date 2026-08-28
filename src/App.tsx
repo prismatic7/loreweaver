@@ -173,6 +173,7 @@ function App() {
     handleEvaluateEncounterThreat,
     handleInitiativeTracker,
     handleEncounterBuilder,
+    scaffoldPlugin,
   } = usePlugins(vaultPath);
 
   const {
@@ -689,6 +690,7 @@ function App() {
             handleEvaluateEncounterThreat={vaultActions.handleEvaluateEncounterThreatCb}
             handleInitiativeTracker={vaultActions.handleInitiativeTrackerCb}
             handleEncounterBuilder={vaultActions.handleEncounterBuilderCb}
+            scaffoldPlugin={scaffoldPlugin}
             currentChatMessages={agent.currentChatMessages}
             chatInput={agent.chatInput}
             setChatInput={agent.setChatInput}

@@ -2919,6 +2919,17 @@ async fn load_plugins(state: State<'_, AppState>) -> Result<Vec<PluginInfo>, Str
     plugins::load_all_plugins(&vault_path, &plugins_path)
 }
 
+/// Scaffolds a new, publishable plugin skeleton into the plugins directory.
+#[tauri::command]
+async fn scaffold_plugin(
+    state: State<'_, AppState>,
+    id: &str,
+    name: &str,
+) -> Result<String, String> {
+    let plugins_path = state.plugins_path.lock().await;
+    plugins::scaffold_plugin(&plugins_path, id, name)
+}
+
 /// Executes a callback hook in a specific loaded plugin sandbox.
 #[tauri::command]
 async fn execute_plugin_hook(
@@ -3206,6 +3217,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             generate_speech,
             transcribe_speech,
             load_plugins,
+            scaffold_plugin,
             execute_plugin_hook,
             load_settings,
             save_settings,

@@ -25,6 +25,7 @@ function makeProps(overrides: Partial<RightDrawerProps> = {}): RightDrawerProps 
     handleEvaluateEncounterThreat: vi.fn(),
     handleInitiativeTracker: vi.fn(),
     handleEncounterBuilder: vi.fn(),
+    scaffoldPlugin: vi.fn().mockResolvedValue("/tmp/plugins/my-plugin"),
     currentChatMessages: [],
     chatInput: "",
     setChatInput: vi.fn(),
