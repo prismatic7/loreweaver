@@ -92,7 +92,10 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         .any(|col_res| col_res.map(|name| name == "path").unwrap_or(false));
 
     if !has_path_col {
-        let _ = conn.execute("ALTER TABLE rules ADD COLUMN path TEXT NOT NULL DEFAULT '';", []);
+        let _ = conn.execute(
+            "ALTER TABLE rules ADD COLUMN path TEXT NOT NULL DEFAULT '';",
+            [],
+        );
     }
 
     // 6. Vector Chunk Storage Tables:
@@ -200,7 +203,9 @@ pub fn upsert_note(
     let note_id = if let Some(row) = rows.next()? {
         row.get::<_, String>(0)?
     } else {
-        note_id.map(|s| s.to_string()).unwrap_or_else(|| Uuid::new_v4().to_string())
+        note_id
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| Uuid::new_v4().to_string())
     };
 
     let now = chrono::Utc::now().timestamp();
@@ -522,11 +527,7 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
 }
 
 /// Inserts a new session memory fact.
-pub fn insert_session_memory(
-    conn: &Connection,
-    fact: &str,
-    category: &str,
-) -> Result<String> {
+pub fn insert_session_memory(conn: &Connection, fact: &str, category: &str) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp();
     conn.execute(
@@ -617,9 +618,8 @@ pub fn delete_source(conn: &Connection, id: &str) -> Result<()> {
 
 /// Fetches a single source row by id, if it exists.
 pub fn get_source(conn: &Connection, id: &str) -> Result<Option<super::SourceEntry>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, title, author, source_type, url, date FROM sources WHERE id = ?1",
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT id, title, author, source_type, url, date FROM sources WHERE id = ?1")?;
     let mut rows = stmt.query(params![id])?;
     if let Some(row) = rows.next()? {
         Ok(Some(super::SourceEntry {
@@ -831,8 +831,8 @@ mod tests {
         let mut frontmatter = HashMap::new();
         frontmatter.insert("type".to_string(), Value::String("Location".to_string()));
 
-        let note_id =
-            upsert_note(&conn, path, title, content, &frontmatter, None).expect("Failed to upsert note");
+        let note_id = upsert_note(&conn, path, title, content, &frontmatter, None)
+            .expect("Failed to upsert note");
 
         let notes = load_all_notes(&conn).expect("Failed to load notes");
         assert_eq!(notes.len(), 1);

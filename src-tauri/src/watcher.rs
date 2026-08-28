@@ -28,7 +28,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 
-
 /// Sanitizes note title strings by stripping markdown links (`[Label](loreweaver-note:Target)`),
 /// brackets, parentheses, and wiki-link pipe aliases (`Target|Label`).
 fn clean_title(title: &str) -> String {
@@ -300,7 +299,13 @@ pub fn start_directory_watcher(
             }
         };
         for (path, is_remove) in to_process {
-            process_file_event(&path, is_remove, &conn_guard, &vault_path_flush, &app_handle_flush);
+            process_file_event(
+                &path,
+                is_remove,
+                &conn_guard,
+                &vault_path_flush,
+                &app_handle_flush,
+            );
         }
     });
 

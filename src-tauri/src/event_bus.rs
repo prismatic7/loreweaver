@@ -182,7 +182,10 @@ mod tests {
             .replace('/', "_")
             .replace('\\', "_")
             .replace(':', "_");
-        let state_file = plugins_dir.join(".state").join(sanitized_vault).join("image-watcher.json");
+        let state_file = plugins_dir
+            .join(".state")
+            .join(sanitized_vault)
+            .join("image-watcher.json");
         assert!(
             state_file.exists(),
             "state file should be persisted: {}",

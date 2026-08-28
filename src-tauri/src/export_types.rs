@@ -268,9 +268,17 @@ pub enum AgentEvent {
     /// A reasoning/thinking fragment (streamed).
     Reasoning { delta: String },
     /// A tool call was requested by the model.
-    ToolCall { id: String, name: String, arguments: String },
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: String,
+    },
     /// A tool call completed with its result.
-    ToolResult { id: String, name: String, result: String },
+    ToolResult {
+        id: String,
+        name: String,
+        result: String,
+    },
     /// A text fragment of the final answer (streamed).
     Delta { text: String },
     /// The turn completed; `text` is the full final answer.

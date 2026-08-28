@@ -79,7 +79,15 @@ pub fn generate_image(
     };
 
     match provider {
-        "local" => generate_comfyui_image(prompt, style, image_model, base_url, quality, fixed_seed, agent),
+        "local" => generate_comfyui_image(
+            prompt,
+            style,
+            image_model,
+            base_url,
+            quality,
+            fixed_seed,
+            agent,
+        ),
         "openai" | "openai-compatible" => {
             let base = base_url
                 .unwrap_or("https://api.openai.com")
@@ -115,9 +123,15 @@ pub fn generate_image(
             let image_bytes = image_bytes_from_response(response_json)?;
             Ok(image_data_url_from_bytes(&image_bytes))
         }
-        "stability" => {
-            generate_stability_image(prompt, style, image_model, api_key, base_url, image_size, agent)
-        }
+        "stability" => generate_stability_image(
+            prompt,
+            style,
+            image_model,
+            api_key,
+            base_url,
+            image_size,
+            agent,
+        ),
         other => Err(format!("Unsupported image provider: {}", other)),
     }
 }

@@ -130,8 +130,8 @@ pub fn insert_facts_deduped(
         if is_duplicate(&fact, &existing) {
             continue;
         }
-        let id = crate::db::insert_session_memory(conn, &fact, &category)
-            .map_err(|e| e.to_string())?;
+        let id =
+            crate::db::insert_session_memory(conn, &fact, &category).map_err(|e| e.to_string())?;
         existing.push(fact);
         inserted += 1;
         // Keep `id` used — insert_session_memory returns the new id.
@@ -220,7 +220,10 @@ mod tests {
             "Queen Anara rules Eldoria".to_string(),
         ];
         // Exact (modulo case/whitespace).
-        assert!(is_duplicate("  THE RED   DRAGON ", &["The Red Dragon".to_string()]));
+        assert!(is_duplicate(
+            "  THE RED   DRAGON ",
+            &["The Red Dragon".to_string()]
+        ));
         // Substring with >= 90% overlap (adding one char: 49/50 = 98%).
         assert!(is_duplicate(
             "The party met the Red Dragon outside the old keep!",
@@ -242,16 +245,29 @@ mod tests {
         let text = r#"{"facts":[{"fact":"Queen Anara rules Eldoria","category":"faction"},{"fact":"The Red Dragon was slain","category":"world"}]}"#;
         let facts = parse_extraction_response(text);
         assert_eq!(facts.len(), 2);
-        assert_eq!(facts[0], ("Queen Anara rules Eldoria".to_string(), "faction".to_string()));
-        assert_eq!(facts[1], ("The Red Dragon was slain".to_string(), "world".to_string()));
+        assert_eq!(
+            facts[0],
+            (
+                "Queen Anara rules Eldoria".to_string(),
+                "faction".to_string()
+            )
+        );
+        assert_eq!(
+            facts[1],
+            ("The Red Dragon was slain".to_string(), "world".to_string())
+        );
     }
 
     #[test]
     fn test_parse_fenced_json() {
-        let text = "```json\n{\"facts\":[{\"fact\":\"NPC Zorak joined\",\"category\":\"npc\"}]}\n```";
+        let text =
+            "```json\n{\"facts\":[{\"fact\":\"NPC Zorak joined\",\"category\":\"npc\"}]}\n```";
         let facts = parse_extraction_response(text);
         assert_eq!(facts.len(), 1);
-        assert_eq!(facts[0], ("NPC Zorak joined".to_string(), "npc".to_string()));
+        assert_eq!(
+            facts[0],
+            ("NPC Zorak joined".to_string(), "npc".to_string())
+        );
     }
 
     #[test]
@@ -267,7 +283,13 @@ mod tests {
         let text = "- The party is heading north\n- Goblins control the pass\n\n```\nignored\n```";
         let facts = parse_extraction_response(text);
         assert!(facts.len() >= 2);
-        assert_eq!(facts[0], ("The party is heading north".to_string(), "general".to_string()));
+        assert_eq!(
+            facts[0],
+            (
+                "The party is heading north".to_string(),
+                "general".to_string()
+            )
+        );
         // No fact should be the fence marker.
         assert!(!facts.iter().any(|(f, _)| f.contains("```")));
     }
@@ -285,9 +307,15 @@ mod tests {
         let db_path = dir.join(format!("lw_mem_dedup_{}.db", std::process::id()));
         let conn = crate::db::init_db(&db_path.to_string_lossy()).unwrap();
         let facts = vec![
-            ("Queen Anara rules Eldoria".to_string(), "faction".to_string()),
+            (
+                "Queen Anara rules Eldoria".to_string(),
+                "faction".to_string(),
+            ),
             ("The Red Dragon was slain".to_string(), "world".to_string()),
-            ("Queen Anara rules Eldoria".to_string(), "faction".to_string()), // dup
+            (
+                "Queen Anara rules Eldoria".to_string(),
+                "faction".to_string(),
+            ), // dup
         ];
         let inserted = insert_facts_deduped(&conn, facts).unwrap();
         assert_eq!(inserted, 2);

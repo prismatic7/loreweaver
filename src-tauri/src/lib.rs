@@ -55,6 +55,7 @@ mod pdf;
 mod plugins;
 pub mod providers;
 mod search;
+mod scheduler;
 mod watcher;
 mod webclip;
 mod worlds;
@@ -106,7 +107,8 @@ pub struct AppState {
     /// blocked agent loop never hangs. `Arc` so the blocking agent thread can
     /// clone it (the `State` borrow is not `'static`). `std::sync::Mutex`
     /// because the agent loop locks it from a blocking thread (no awaits).
-    pub pending_approvals: Arc<Mutex<HashMap<(String, String), tokio::sync::oneshot::Sender<bool>>>>,
+    pub pending_approvals:
+        Arc<Mutex<HashMap<(String, String), tokio::sync::oneshot::Sender<bool>>>>,
 }
 
 // Shared command input/output data shapes. Included here and by build.rs for Specta export.
@@ -502,8 +504,7 @@ async fn resolve_wiki_link(
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
             }) {
                 for meta in meta_rows.flatten() {
-                    let val =
-                        serde_json::from_str(&meta.1).unwrap_or(Value::String(meta.1));
+                    let val = serde_json::from_str(&meta.1).unwrap_or(Value::String(meta.1));
                     frontmatter.insert(meta.0, val);
                 }
             }
@@ -778,8 +779,15 @@ fn restore_note_impl(
         .get("title")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let note_id = db::upsert_note(conn, &original_rel_path, title, &content, &frontmatter, None)
-        .unwrap_or_default();
+    let note_id = db::upsert_note(
+        conn,
+        &original_rel_path,
+        title,
+        &content,
+        &frontmatter,
+        None,
+    )
+    .unwrap_or_default();
 
     if watcher::should_ai_index(&original_file_path, &frontmatter) {
         let _ = search::index_note_vectors(conn, &note_id, &content);
@@ -1008,6 +1016,20 @@ async fn reindex_vault(state: State<'_, AppState>) -> Result<(), String> {
 
     search::invalidate_cache();
     Ok(())
+}
+
+/// Manually run the world scheduler now (dev/testing affordance and the GM's
+/// "roll tonight's events" button). Dispatches any due schedule entries
+/// through the plugin event bus and returns the events emitted.
+#[tauri::command]
+async fn run_schedule_now(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let vault_path_str = state.vault_path.lock().await;
+    let mut last_fired = std::collections::HashMap::new();
+    Ok(scheduler::tick(
+        &vault_path_str,
+        &scheduler::SystemClock,
+        &mut last_fired,
+    ))
 }
 
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).
@@ -1348,7 +1370,11 @@ async fn update_bible_files(
         "name": manifest.name,
         "bible_files": manifest.bible_files,
     });
-    event_bus::emit(&vault_path, event_bus::EVENT_WORLD_STATE_CHANGED, event_payload);
+    event_bus::emit(
+        &vault_path,
+        event_bus::EVENT_WORLD_STATE_CHANGED,
+        event_payload,
+    );
 
     Ok(manifest)
 }
@@ -1814,8 +1840,7 @@ async fn orchestrate_agent(
 
         // The Cascade for predictability: session toggle → world override → global default.
         let world_temp = agent::load_world_firm_wild(&vault_path);
-        sampling_params.temperature =
-            session_temperature.or(world_temp).unwrap_or(global_temp);
+        sampling_params.temperature = session_temperature.or(world_temp).unwrap_or(global_temp);
     }
 
     if let Some(base) = base_url {
@@ -1905,12 +1930,12 @@ async fn orchestrate_agent_stream(
                 .flatten()
                 .and_then(|v| v.parse::<i64>().ok()),
         };
-        system_context = agent::build_system_context(&conn, prompt, active_note_id, &vault_path_owned)?;
+        system_context =
+            agent::build_system_context(&conn, prompt, active_note_id, &vault_path_owned)?;
 
         // The Cascade for predictability: session toggle → world override → global default.
         let world_temp = agent::load_world_firm_wild(&vault_path_owned);
-        sampling_params.temperature =
-            session_temperature.or(world_temp).unwrap_or(global_temp);
+        sampling_params.temperature = session_temperature.or(world_temp).unwrap_or(global_temp);
     }
 
     if let Some(base) = base_url {
@@ -1944,7 +1969,9 @@ async fn orchestrate_agent_stream(
             }
             let _ = on_event.send(event);
         };
-        let conn_guard = conn_arc_owned.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        let conn_guard = conn_arc_owned
+            .lock()
+            .map_err(|_| "Mutex poisoned".to_string())?;
         agent::run_agent_turn(
             &conn_guard,
             &vault_path_owned,
@@ -1984,7 +2011,10 @@ async fn approve_agent_tool(
     run_id: &str,
     tool_call_id: &str,
 ) -> Result<(), String> {
-    let mut pending = state.pending_approvals.lock().map_err(|_| "Mutex poisoned".to_string())?;
+    let mut pending = state
+        .pending_approvals
+        .lock()
+        .map_err(|_| "Mutex poisoned".to_string())?;
     let sender = pending
         .remove(&(run_id.to_string(), tool_call_id.to_string()))
         .ok_or_else(|| "No pending approval for this tool call".to_string())?;
@@ -2000,7 +2030,10 @@ async fn reject_agent_tool(
     run_id: &str,
     tool_call_id: &str,
 ) -> Result<(), String> {
-    let mut pending = state.pending_approvals.lock().map_err(|_| "Mutex poisoned".to_string())?;
+    let mut pending = state
+        .pending_approvals
+        .lock()
+        .map_err(|_| "Mutex poisoned".to_string())?;
     let sender = pending
         .remove(&(run_id.to_string(), tool_call_id.to_string()))
         .ok_or_else(|| "No pending approval for this tool call".to_string())?;
@@ -2015,16 +2048,16 @@ async fn reject_agent_tool(
 /// Any pending tool approval for the run is resolved as rejected so a blocked
 /// agent loop never hangs.
 #[tauri::command]
-async fn cancel_agent_stream(
-    state: State<'_, AppState>,
-    run_id: &str,
-) -> Result<(), String> {
+async fn cancel_agent_stream(state: State<'_, AppState>, run_id: &str) -> Result<(), String> {
     let runs = state.agent_runs.lock().await;
     if let Some(flag) = runs.get(run_id) {
         flag.store(true, Ordering::Relaxed);
     }
     drop(runs);
-    let mut pending = state.pending_approvals.lock().map_err(|_| "Mutex poisoned".to_string())?;
+    let mut pending = state
+        .pending_approvals
+        .lock()
+        .map_err(|_| "Mutex poisoned".to_string())?;
     let keys: Vec<(String, String)> = pending
         .keys()
         .filter(|(rid, _)| rid == run_id)
@@ -2400,12 +2433,20 @@ async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Res
     )
     .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_base_url", &settings.llm_base_url).map_err(|e| e.to_string())?;
-    db::set_setting(&conn, "llm_temperature", &settings.llm_temperature.to_string())
-        .map_err(|e| e.to_string())?;
+    db::set_setting(
+        &conn,
+        "llm_temperature",
+        &settings.llm_temperature.to_string(),
+    )
+    .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_top_p", &settings.llm_top_p.to_string())
         .map_err(|e| e.to_string())?;
-    db::set_setting(&conn, "llm_max_tokens", &settings.llm_max_tokens.to_string())
-        .map_err(|e| e.to_string())?;
+    db::set_setting(
+        &conn,
+        "llm_max_tokens",
+        &settings.llm_max_tokens.to_string(),
+    )
+    .map_err(|e| e.to_string())?;
     if let Some(seed) = settings.llm_seed {
         db::set_setting(&conn, "llm_seed", &seed.to_string()).map_err(|e| e.to_string())?;
     } else {
@@ -2435,8 +2476,7 @@ async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Res
     .map_err(|e| e.to_string())?;
     db::set_setting(&conn, "image_base_url", &settings.image_base_url)
         .map_err(|e| e.to_string())?;
-    db::set_setting(&conn, "image_size", &settings.image_size)
-        .map_err(|e| e.to_string())?;
+    db::set_setting(&conn, "image_size", &settings.image_size).map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "tts_provider", &settings.tts_provider).map_err(|e| e.to_string())?;
     db::set_setting(
@@ -3101,6 +3141,10 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             // Ensure the default vault has a world.json manifest.
             let _ = worlds::ensure_manifest(&vault_path);
 
+            // Spawn the world scheduler loop (reads <vault>/schedule.yaml and
+            // dispatches due world-event hooks through the plugin event bus).
+            scheduler::spawn_scheduler_loop(vault_path.clone(), Arc::clone(&shutdown));
+
             app.manage(AppState {
                 db_path: TokioMutex::new(db_path),
                 vault_path: TokioMutex::new(vault_path),
@@ -3160,6 +3204,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             save_canvas_file,
             list_templates,
             reindex_vault,
+            run_schedule_now,
             convert_pdf_to_markdown,
             save_session_memory,
             list_session_memory,
@@ -3243,7 +3288,7 @@ mod tests {
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
             agent_runs: TokioMutex::new(HashMap::new()),
-                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+            pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {
@@ -3354,7 +3399,7 @@ mod tests {
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
             agent_runs: TokioMutex::new(HashMap::new()),
-                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+            pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {
@@ -3465,7 +3510,7 @@ mod tests {
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
             agent_runs: TokioMutex::new(HashMap::new()),
-                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+            pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {
@@ -3533,7 +3578,7 @@ mod tests {
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
             agent_runs: TokioMutex::new(HashMap::new()),
-                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+            pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -3673,7 +3718,11 @@ mod tests {
             assert!(
                 response.results.iter().any(|r| r.title == "Goblin Hoard"),
                 "expected a note titled 'Goblin Hoard' in results, got {:?}",
-                response.results.iter().map(|r| &r.title).collect::<Vec<_>>()
+                response
+                    .results
+                    .iter()
+                    .map(|r| &r.title)
+                    .collect::<Vec<_>>()
             );
 
             search::invalidate_cache();
@@ -3727,8 +3776,17 @@ mod tests {
 
         tauri::async_runtime::block_on(async {
             let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
-            let res =
-                orchestrate_agent(s, "hello", "nonexistent", "some-model", None, None, None, None).await;
+            let res = orchestrate_agent(
+                s,
+                "hello",
+                "nonexistent",
+                "some-model",
+                None,
+                None,
+                None,
+                None,
+            )
+            .await;
             assert!(
                 res.is_err(),
                 "unsupported provider should fail before any HTTP call"
@@ -3774,7 +3832,7 @@ mod template_tests {
             campaigns_root: temp_dir.parent().unwrap().to_path_buf(),
             shutdown: TokioMutex::new(Arc::new(AtomicBool::new(false))),
             agent_runs: TokioMutex::new(HashMap::new()),
-                pending_approvals: Arc::new(Mutex::new(HashMap::new())),
+            pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
 
         tauri::async_runtime::block_on(async {

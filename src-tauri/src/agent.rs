@@ -98,11 +98,7 @@ pub fn build_system_context(
         You have no memory of any other world or campaign. All context above \
         belongs to the current world only.\n\n\
         Respond in clean Markdown. Be creative and detail-oriented.",
-        persona_opening,
-        bible_context,
-        context_text,
-        active_note_context,
-        memory_context
+        persona_opening, bible_context, context_text, active_note_context, memory_context
     );
 
     Ok(SystemContext {
@@ -411,10 +407,26 @@ pub fn execute_tool(
             Ok(lines.join("\n"))
         }
         "save_note" => {
-            let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let id = args
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let title = args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let content = args
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if id.is_empty() || path.is_empty() || title.is_empty() {
                 return Err("save_note: 'id', 'path', and 'title' are required".to_string());
             }
@@ -484,11 +496,9 @@ fn load_existing_frontmatter(
     conn: &rusqlite::Connection,
     path: &str,
 ) -> std::collections::HashMap<String, serde_json::Value> {
-    conn.query_row(
-        "SELECT id FROM notes WHERE path = ?1",
-        [path],
-        |row| row.get::<_, String>(0),
-    )
+    conn.query_row("SELECT id FROM notes WHERE path = ?1", [path], |row| {
+        row.get::<_, String>(0)
+    })
     .ok()
     .and_then(|note_id| {
         let mut stmt = conn
@@ -542,7 +552,9 @@ pub fn run_agent_turn(
     cancel_flag: &std::sync::atomic::AtomicBool,
     run_id: &str,
     pending_approvals: &std::sync::Arc<
-        std::sync::Mutex<std::collections::HashMap<(String, String), tokio::sync::oneshot::Sender<bool>>>,
+        std::sync::Mutex<
+            std::collections::HashMap<(String, String), tokio::sync::oneshot::Sender<bool>>,
+        >,
     >,
     emit: &mut dyn FnMut(crate::AgentEvent),
 ) -> Result<String, String> {
@@ -582,7 +594,9 @@ pub fn run_agent_turn(
     for turn in history {
         match turn.role.as_str() {
             "user" => messages.push(crate::providers::llm::ChatMessage::user(&turn.content)),
-            "assistant" => messages.push(crate::providers::llm::ChatMessage::assistant(&turn.content)),
+            "assistant" => {
+                messages.push(crate::providers::llm::ChatMessage::assistant(&turn.content))
+            }
             _ => {}
         }
     }
@@ -614,13 +628,21 @@ pub fn run_agent_turn(
                     round_text.push_str(&text);
                     emit(crate::AgentEvent::Delta { text });
                 }
-                crate::providers::llm::StreamEvent::ToolCall { id, name, arguments } => {
+                crate::providers::llm::StreamEvent::ToolCall {
+                    id,
+                    name,
+                    arguments,
+                } => {
                     tool_calls.push(crate::providers::llm::ToolCallMsg {
                         id: id.clone(),
                         name: name.clone(),
                         arguments: arguments.clone(),
                     });
-                    emit(crate::AgentEvent::ToolCall { id, name, arguments });
+                    emit(crate::AgentEvent::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    });
                 }
                 crate::providers::llm::StreamEvent::Done(text) => {
                     round_text = text;
@@ -651,9 +673,9 @@ pub fn run_agent_turn(
         }
 
         // Record the assistant turn with tool calls, then execute them.
-        messages.push(crate::providers::llm::ChatMessage::assistant_with_tool_calls(
-            tool_calls.clone(),
-        ));
+        messages.push(
+            crate::providers::llm::ChatMessage::assistant_with_tool_calls(tool_calls.clone()),
+        );
 
         for tc in &tool_calls {
             // Write tools pause for explicit user approval. The approval
@@ -696,7 +718,8 @@ pub fn run_agent_turn(
                     break;
                 }
                 if !approved {
-                    let result_text = "User rejected this write. Do not retry it; continue without saving.";
+                    let result_text =
+                        "User rejected this write. Do not retry it; continue without saving.";
                     emit(crate::AgentEvent::ToolResult {
                         id: tc.id.clone(),
                         name: tc.name.clone(),
@@ -720,7 +743,10 @@ pub fn run_agent_turn(
                 name: tc.name.clone(),
                 result: result_text.clone(),
             });
-            messages.push(crate::providers::llm::ChatMessage::tool(&tc.id, result_text));
+            messages.push(crate::providers::llm::ChatMessage::tool(
+                &tc.id,
+                result_text,
+            ));
         }
 
         if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
@@ -764,8 +790,16 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let bible_dir = tmp.path().join("bible");
         std::fs::create_dir_all(&bible_dir).unwrap();
-        std::fs::write(bible_dir.join("TONE.md"), "Grim, cosmic horror. Hope is a lie.").unwrap();
-        std::fs::write(bible_dir.join("RULES.md"), "Sanity erodes on failed checks.").unwrap();
+        std::fs::write(
+            bible_dir.join("TONE.md"),
+            "Grim, cosmic horror. Hope is a lie.",
+        )
+        .unwrap();
+        std::fs::write(
+            bible_dir.join("RULES.md"),
+            "Sanity erodes on failed checks.",
+        )
+        .unwrap();
 
         let context = load_bible_context(tmp.path().to_str().unwrap());
         assert!(
@@ -794,7 +828,10 @@ mod tests {
     fn test_load_bible_context_empty_when_no_files() {
         let tmp = tempfile::tempdir().unwrap();
         let context = load_bible_context(tmp.path().to_str().unwrap());
-        assert!(context.is_empty(), "no bible files should yield empty context");
+        assert!(
+            context.is_empty(),
+            "no bible files should yield empty context"
+        );
     }
 
     #[test]
@@ -807,8 +844,14 @@ mod tests {
 
         let context = load_bible_context(tmp.path().to_str().unwrap());
         assert!(context.contains("[PEOPLE.md]"));
-        assert!(!context.contains("[TONE.md]"), "missing file should be skipped");
-        assert!(!context.contains("[CONSPIRACY.md]"), "missing file should be skipped");
+        assert!(
+            !context.contains("[TONE.md]"),
+            "missing file should be skipped"
+        );
+        assert!(
+            !context.contains("[CONSPIRACY.md]"),
+            "missing file should be skipped"
+        );
     }
 
     #[test]
@@ -864,8 +907,14 @@ mod tests {
         .unwrap();
         let context = load_bible_context(vault.to_str().unwrap());
         assert!(context.contains("[TONE.md]"));
-        assert!(!context.contains("[RULES.md]"), "unpinned file should be excluded");
-        assert!(!context.contains("[PEOPLE.md]"), "unpinned file should be excluded");
+        assert!(
+            !context.contains("[RULES.md]"),
+            "unpinned file should be excluded"
+        );
+        assert!(
+            !context.contains("[PEOPLE.md]"),
+            "unpinned file should be excluded"
+        );
 
         // Pin a file that doesn't exist → gracefully skipped.
         std::fs::write(
@@ -875,7 +924,10 @@ mod tests {
         .unwrap();
         let context = load_bible_context(vault.to_str().unwrap());
         assert!(context.contains("[TONE.md]"));
-        assert!(!context.contains("[MISSING.md]"), "missing pinned file should be skipped");
+        assert!(
+            !context.contains("[MISSING.md]"),
+            "missing pinned file should be skipped"
+        );
     }
 
     #[test]
@@ -895,7 +947,10 @@ mod tests {
 
         let on_disk = std::fs::read_to_string(vault.join("world.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&on_disk).unwrap();
-        assert_eq!(parsed["custom_field"], "keep-me", "unrelated key should survive");
+        assert_eq!(
+            parsed["custom_field"], "keep-me",
+            "unrelated key should survive"
+        );
         assert_eq!(parsed["bible_files"][0], "TONE.md");
         // Round-trip through load_manifest.
         let loaded = load_manifest(vault.to_str().unwrap()).unwrap();
@@ -912,7 +967,9 @@ mod tests {
         // No config → default persona.
         let context = build_system_context(&conn, "hello", None, vault.to_str().unwrap()).unwrap();
         assert!(
-            context.system_prompt.contains("expert RPG Campaign Architect"),
+            context
+                .system_prompt
+                .contains("expert RPG Campaign Architect"),
             "default persona should be used when no vault_config.json exists"
         );
 
@@ -930,7 +987,9 @@ mod tests {
             "campaign persona should appear in the system prompt"
         );
         assert!(
-            !context.system_prompt.contains("expert RPG Campaign Architect"),
+            !context
+                .system_prompt
+                .contains("expert RPG Campaign Architect"),
             "hardcoded opening should be replaced when persona is set"
         );
     }
@@ -986,11 +1045,7 @@ mod tests {
         assert_eq!(load_world_firm_wild(vault.to_str().unwrap()), None);
 
         // Valid override → Some(value).
-        std::fs::write(
-            vault.join("vault_config.json"),
-            r#"{ "firm_wild": 0.3 }"#,
-        )
-        .unwrap();
+        std::fs::write(vault.join("vault_config.json"), r#"{ "firm_wild": 0.3 }"#).unwrap();
         assert_eq!(
             load_world_firm_wild(vault.to_str().unwrap()),
             Some(0.3),
@@ -998,11 +1053,7 @@ mod tests {
         );
 
         // Out-of-range values are rejected (fall back to global).
-        std::fs::write(
-            vault.join("vault_config.json"),
-            r#"{ "firm_wild": 1.7 }"#,
-        )
-        .unwrap();
+        std::fs::write(vault.join("vault_config.json"), r#"{ "firm_wild": 1.7 }"#).unwrap();
         assert_eq!(
             load_world_firm_wild(vault.to_str().unwrap()),
             None,
@@ -1030,34 +1081,30 @@ mod tests {
             r#"{ "notation": "2d6" }"#,
         )
         .unwrap();
-        assert!(result.contains("2d6"), "result should echo notation: {}", result);
+        assert!(
+            result.contains("2d6"),
+            "result should echo notation: {}",
+            result
+        );
     }
 
     #[test]
     fn test_execute_tool_roll_dice_missing_notation() {
         let tmp = tempfile::tempdir().unwrap();
         let conn = test_conn(tmp.path());
-        let err = execute_tool(
-            &conn,
-            tmp.path().to_str().unwrap(),
-            "roll_dice",
-            "{}",
-        )
-        .unwrap_err();
-        assert!(err.contains("missing 'notation'"), "unexpected error: {}", err);
+        let err = execute_tool(&conn, tmp.path().to_str().unwrap(), "roll_dice", "{}").unwrap_err();
+        assert!(
+            err.contains("missing 'notation'"),
+            "unexpected error: {}",
+            err
+        );
     }
 
     #[test]
     fn test_execute_tool_list_notes_empty() {
         let tmp = tempfile::tempdir().unwrap();
         let conn = test_conn(tmp.path());
-        let result = execute_tool(
-            &conn,
-            tmp.path().to_str().unwrap(),
-            "list_notes",
-            "{}",
-        )
-        .unwrap();
+        let result = execute_tool(&conn, tmp.path().to_str().unwrap(), "list_notes", "{}").unwrap();
         assert_eq!(result, "No notes in the vault.");
     }
 
@@ -1075,11 +1122,23 @@ mod tests {
             r#"{ "id": "n1", "path": "Worldbuilding/Goblin.md", "title": "Goblin", "content": "A small green creature." }"#,
         )
         .unwrap();
-        assert!(saved.contains("Saved note 'Goblin'"), "unexpected: {}", saved);
+        assert!(
+            saved.contains("Saved note 'Goblin'"),
+            "unexpected: {}",
+            saved
+        );
 
         let read = execute_tool(&conn, vault, "read_note", r#"{ "id": "n1" }"#).unwrap();
-        assert!(read.contains("Goblin"), "read should include title: {}", read);
-        assert!(read.contains("small green creature"), "read should include content: {}", read);
+        assert!(
+            read.contains("Goblin"),
+            "read should include title: {}",
+            read
+        );
+        assert!(
+            read.contains("small green creature"),
+            "read should include content: {}",
+            read
+        );
     }
 
     #[test]
@@ -1093,21 +1152,23 @@ mod tests {
             r#"{ "id": "nope" }"#,
         )
         .unwrap_err();
-        assert!(err.contains("no note with id 'nope'"), "unexpected: {}", err);
+        assert!(
+            err.contains("no note with id 'nope'"),
+            "unexpected: {}",
+            err
+        );
     }
 
     #[test]
     fn test_execute_tool_unknown() {
         let tmp = tempfile::tempdir().unwrap();
         let conn = test_conn(tmp.path());
-        let err = execute_tool(
-            &conn,
-            tmp.path().to_str().unwrap(),
-            "teleport",
-            "{}",
-        )
-        .unwrap_err();
-        assert!(err.contains("Unknown tool: teleport"), "unexpected: {}", err);
+        let err = execute_tool(&conn, tmp.path().to_str().unwrap(), "teleport", "{}").unwrap_err();
+        assert!(
+            err.contains("Unknown tool: teleport"),
+            "unexpected: {}",
+            err
+        );
     }
 
     #[test]
@@ -1122,9 +1183,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            err.contains("outside")
-                || err.contains("safe")
-                || err.contains("hidden/system"),
+            err.contains("outside") || err.contains("safe") || err.contains("hidden/system"),
             "unsafe path should be rejected: {}",
             err
         );

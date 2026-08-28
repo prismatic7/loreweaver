@@ -59,10 +59,7 @@ pub fn clip_url(url: &str) -> Result<WebClip, String> {
 
     // Extract title and site.
     let title = extract_title(&html).unwrap_or_else(|| parsed.to_string());
-    let site = parsed
-        .host_str()
-        .unwrap_or("")
-        .to_string();
+    let site = parsed.host_str().unwrap_or("").to_string();
 
     // Extract main readable content and convert to Markdown.
     let main_html = extract_main_content(&html);
@@ -154,7 +151,8 @@ mod tests {
 
     #[test]
     fn extract_main_content_prefers_article() {
-        let html = "<html><body><nav>menu</nav><article><p>the good stuff</p></article></body></html>";
+        let html =
+            "<html><body><nav>menu</nav><article><p>the good stuff</p></article></body></html>";
         let main = extract_main_content(html);
         assert!(main.contains("the good stuff"));
         assert!(!main.contains("menu"));

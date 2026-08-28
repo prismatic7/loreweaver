@@ -23,6 +23,7 @@
 //! 5. **Safe Injection**: Plugin state is converted from `serde_json::Value` into native Boa values
 //!    and set on `globalThis` directly, eliminating code injection through string interpolation.
 
+use crate::PluginInfo;
 use boa_engine::{
     js_string,
     object::{builtins::JsArray, JsObject},
@@ -30,13 +31,10 @@ use boa_engine::{
     value::JsValue,
     Context, Source,
 };
-use crate::PluginInfo;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
-
-
 
 /// Validates requested permissions against the host's strict allow-list.
 ///
@@ -134,7 +132,13 @@ pub fn plugin_state(vault_path: &str, plugin_id: &str) -> Option<String> {
 fn plugin_state_file(vault_path: &str, plugin_id: &str) -> std::path::PathBuf {
     let sanitized_vault: String = vault_path
         .chars()
-        .map(|c| if c == '/' || c == '\\' || c == ':' { '_' } else { c })
+        .map(|c| {
+            if c == '/' || c == '\\' || c == ':' {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     let base = {
         let dir = plugins_dir().lock().unwrap_or_else(|e| e.into_inner());
@@ -226,11 +230,9 @@ pub fn load_all_plugins(
                         active_plugins_guard.insert(info.id.clone(), info.clone());
                         // Restore persisted state from disk (survives restarts), falling
                         // back to an empty object when no state file exists yet.
-                        let persisted_state = fs::read_to_string(plugin_state_file(
-                            vault_path,
-                            &info.id,
-                        ))
-                        .unwrap_or_else(|_| "{}".to_string());
+                        let persisted_state =
+                            fs::read_to_string(plugin_state_file(vault_path, &info.id))
+                                .unwrap_or_else(|_| "{}".to_string());
                         states_guard
                             .entry(vault_path.to_string())
                             .or_default()
@@ -331,10 +333,7 @@ fn json_to_js_value(value: &serde_json::Value, context: &mut Context) -> JsValue
         serde_json::Value::Array(arr) => {
             // Build the list of converted elements first so we do not borrow `context`
             // mutably inside the iterator passed to `JsArray::from_iter`.
-            let elements: Vec<JsValue> = arr
-                .iter()
-                .map(|v| json_to_js_value(v, context))
-                .collect();
+            let elements: Vec<JsValue> = arr.iter().map(|v| json_to_js_value(v, context)).collect();
             let js_array = JsArray::from_iter(elements, context);
             JsValue::from(js_array)
         }
@@ -364,9 +363,9 @@ fn json_to_js_value(value: &serde_json::Value, context: &mut Context) -> JsValue
 ///    via native Boa value construction (no string interpolation / `eval`).
 /// 5. **Context Setup**: Configures a fresh Boa `Context` with loop-iteration, recursion,
 ///    and stack-size limits via `apply_runtime_limits`.
-   /// 6. **Function Calling**: Evaluates the script, extracts the target hook function, and calls it with `payload`.
-   ///    The call runs synchronously on the current thread; Boa's `Context` is not `Send`, so a scoped
-   ///    thread timeout cannot borrow it, and Boa 0.19 exposes only loop-iteration and recursion limits.
+/// 6. **Function Calling**: Evaluates the script, extracts the target hook function, and calls it with `payload`.
+///    The call runs synchronously on the current thread; Boa's `Context` is not `Send`, so a scoped
+///    thread timeout cannot borrow it, and Boa 0.19 exposes only loop-iteration and recursion limits.
 /// 7. **State Persistence**: Serializes `globalThis.__state` back to string via `JSON.stringify` and saves it in `PLUGIN_STATES`.
 /// 8. **Output Return**: Returns the string result returned by the JavaScript hook call.
 pub fn run_plugin_hook(
@@ -446,10 +445,7 @@ pub fn run_plugin_hook(
             let state_file = plugin_state_file(&vault_path_owned, &plugin_id_owned);
             if let Some(parent) = state_file.parent() {
                 if let Err(e) = fs::create_dir_all(parent) {
-                    eprintln!(
-                        "Failed to create plugin state dir {:?}: {}",
-                        parent, e
-                    );
+                    eprintln!("Failed to create plugin state dir {:?}: {}", parent, e);
                 } else if let Err(e) = fs::write(&state_file, new_state) {
                     eprintln!(
                         "Failed to persist plugin state for {}: {}",
@@ -465,12 +461,14 @@ pub fn run_plugin_hook(
 
     match rx.recv_timeout(HOOK_TIMEOUT) {
         Ok(res) => res,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err(format!("Plugin hook '{}' timed out after {:?}", hook, HOOK_TIMEOUT))
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            Err(format!("Plugin hook '{}' thread terminated unexpectedly", hook))
-        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "Plugin hook '{}' timed out after {:?}",
+            hook, HOOK_TIMEOUT
+        )),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "Plugin hook '{}' thread terminated unexpectedly",
+            hook
+        )),
     }
 }
 
@@ -497,8 +495,8 @@ fn execute_hook_in_context(
 
     // Inject state safely — parse as JSON value and set on globalThis using native Boa
     // values instead of string-interpolating raw JSON into eval (which allows code injection).
-    let state_value: serde_json::Value = serde_json::from_str(state_json)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let state_value: serde_json::Value =
+        serde_json::from_str(state_json).unwrap_or_else(|_| serde_json::json!({}));
     let state_js = json_to_js_value(&state_value, &mut context);
     let global_obj = context.global_object();
     global_obj

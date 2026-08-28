@@ -558,7 +558,11 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     for i in 1..=a_len {
         curr[0] = i;
         for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
             curr[j] = (prev[j] + 1) // deletion
                 .min(curr[j - 1] + 1) // insertion
                 .min(prev[j - 1] + cost); // substitution
@@ -1079,7 +1083,10 @@ mod tests {
 
         // Exact query still works (and is expanded — variants are added).
         let (results, expanded) = hybrid_query(&conn, "campaign", "notes", &vault).unwrap();
-        assert!(expanded, "exact lexicon key should still be flagged as expanded");
+        assert!(
+            expanded,
+            "exact lexicon key should still be flagged as expanded"
+        );
         assert!(
             results.iter().any(|r| r.title == "Campaign Notes"),
             "expected 'Campaign Notes' for exact 'campaign'"

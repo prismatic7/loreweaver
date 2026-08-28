@@ -202,10 +202,7 @@ pub fn load_manifest(vault_path: &str) -> Result<WorldManifest, String> {
     }
 
     // bible: default true.
-    m.bible = raw
-        .get("bible")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    m.bible = raw.get("bible").and_then(|v| v.as_bool()).unwrap_or(true);
 
     // bible_files: pinned conditioning files; empty = canon 8-file set.
     if let Some(Value::Array(arr)) = raw.get("bible_files") {
@@ -334,10 +331,7 @@ mod tests {
         assert_eq!(m.provenance_taxonomy.len(), 4);
         assert!(m.bible);
         // speculation ships for all worlds
-        assert!(m
-            .provenance_taxonomy
-            .iter()
-            .any(|p| p.id == "speculation"));
+        assert!(m.provenance_taxonomy.iter().any(|p| p.id == "speculation"));
     }
 
     #[test]
@@ -402,6 +396,9 @@ mod tests {
         assert_eq!(m2.id, "custom");
         assert_eq!(m2.name, "Custom");
         let on_disk = std::fs::read_to_string(&manifest_path).unwrap();
-        assert!(on_disk.contains("custom"), "existing manifest was overwritten");
+        assert!(
+            on_disk.contains("custom"),
+            "existing manifest was overwritten"
+        );
     }
 }

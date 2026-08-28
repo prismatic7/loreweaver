@@ -145,10 +145,13 @@ pub fn transcribe_speech(
                 .trim()
                 .trim_end_matches('/');
             let url = format!("{}/v1/audio/transcriptions", base);
-            let boundary = format!("----loreweaver{}", std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0));
+            let boundary = format!(
+                "----loreweaver{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0)
+            );
 
             let mut body = Vec::new();
             body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
@@ -166,7 +169,10 @@ pub fn transcribe_speech(
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(60))
                 .set("Authorization", &format!("Bearer {}", key.trim()))
-                .set("Content-Type", &format!("multipart/form-data; boundary={boundary}"))
+                .set(
+                    "Content-Type",
+                    &format!("multipart/form-data; boundary={boundary}"),
+                )
                 .send_bytes(&body)
                 .map_err(|e| format!("OpenAI Whisper request failed: {:?}", e))?;
 
@@ -204,11 +210,19 @@ fn decode_audio(bytes: &[u8]) -> Result<(u32, Vec<f32>), String> {
     use symphonia::core::meta::MetadataOptions;
     use symphonia::core::probe::Hint;
 
-    let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes.to_vec())), Default::default());
+    let mss = MediaSourceStream::new(
+        Box::new(std::io::Cursor::new(bytes.to_vec())),
+        Default::default(),
+    );
     let mut hint = Hint::new();
     hint.with_extension("wav");
     let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .map_err(|e| format!("Failed to probe audio: {e}"))?;
 
     let mut format = probed.format;
@@ -216,7 +230,10 @@ fn decode_audio(bytes: &[u8]) -> Result<(u32, Vec<f32>), String> {
         .default_track()
         .ok_or_else(|| "Audio has no default track".to_string())?;
     let track_id = track.id;
-    let sample_rate = track.codec_params.sample_rate.ok_or_else(|| "Audio has no sample rate".to_string())?;
+    let sample_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or_else(|| "Audio has no sample rate".to_string())?;
     let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(1);
 
     let mut decoder = symphonia::default::get_codecs()

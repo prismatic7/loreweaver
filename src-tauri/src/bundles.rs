@@ -15,14 +15,17 @@ pub fn export_world_impl(vault_path: &str, dest_zip: &str) -> Result<(), String>
         return Err(format!("World folder does not exist: {}", vault_path));
     }
 
-    let file = std::fs::File::create(dest_zip)
-        .map_err(|e| format!("Failed to create zip file: {}", e))?;
+    let file =
+        std::fs::File::create(dest_zip).map_err(|e| format!("Failed to create zip file: {}", e))?;
     let mut zip = zip::ZipWriter::new(file);
     let options: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
     let mut entries: Vec<PathBuf> = Vec::new();
-    for entry in walkdir::WalkDir::new(vault).into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(vault)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if path == vault {
             continue;
@@ -75,10 +78,9 @@ fn safe_zip_entry_name(name: &str) -> Result<PathBuf, String> {
 /// Open a zip, find and validate its `world.json`, then extract into
 /// `campaigns_root/<id>`. Returns the new world path.
 pub fn import_world_impl(campaigns_root: &Path, zip_path: &str) -> Result<String, String> {
-    let file = std::fs::File::open(zip_path)
-        .map_err(|e| format!("Failed to open zip: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read zip archive: {}", e))?;
+    let file = std::fs::File::open(zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Failed to read zip archive: {}", e))?;
 
     // Locate world.json at the archive root (or any depth).
     let mut manifest_index: Option<usize> = None;
@@ -92,9 +94,8 @@ pub fn import_world_impl(campaigns_root: &Path, zip_path: &str) -> Result<String
             break;
         }
     }
-    let manifest_index = manifest_index.ok_or_else(|| {
-        "Zip does not contain a valid world.json manifest".to_string()
-    })?;
+    let manifest_index = manifest_index
+        .ok_or_else(|| "Zip does not contain a valid world.json manifest".to_string())?;
 
     // Read + validate the manifest.
     let mut manifest_bytes = Vec::new();
@@ -128,11 +129,13 @@ pub fn import_world_impl(campaigns_root: &Path, zip_path: &str) -> Result<String
         let rel = safe_zip_entry_name(entry.name())?;
         let dest = world_dir.join(&rel);
         if !dest.starts_with(&world_dir) {
-            return Err(format!("Zip entry escapes world directory: {}", entry.name()));
+            return Err(format!(
+                "Zip entry escapes world directory: {}",
+                entry.name()
+            ));
         }
         if entry.is_dir() {
-            std::fs::create_dir_all(&dest)
-                .map_err(|e| format!("Failed to create dir: {}", e))?;
+            std::fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dir: {}", e))?;
         } else {
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)

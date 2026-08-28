@@ -32,7 +32,9 @@ fn make_wav() -> Vec<u8> {
         for i in 0..sample_rate as usize {
             let t = i as f32 / sample_rate;
             let sample = (2.0 * std::f32::consts::PI * 440.0 * t).sin();
-            writer.write_sample((sample * i16::MAX as f32) as i16).unwrap();
+            writer
+                .write_sample((sample * i16::MAX as f32) as i16)
+                .unwrap();
         }
         writer.finalize().unwrap();
     }

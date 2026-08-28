@@ -139,7 +139,14 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_ollama(model, &system_context.system_prompt, prompt, base, params, agent)
+            call_ollama(
+                model,
+                &system_context.system_prompt,
+                prompt,
+                base,
+                params,
+                agent,
+            )
         }
         "openai" | "openai-compatible" | "openrouter" | "copilot" | "z-ai" | "kilo"
         | "huggingface" => {
@@ -160,7 +167,16 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_openai_compatible(model, key, &system_context.system_prompt, prompt, base, provider, params, agent)
+            call_openai_compatible(
+                model,
+                key,
+                &system_context.system_prompt,
+                prompt,
+                base,
+                provider,
+                params,
+                agent,
+            )
         }
         "gemini" => {
             let key = api_key
@@ -172,7 +188,15 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_gemini(model, key, &system_context.system_prompt, prompt, base, params, agent)
+            call_gemini(
+                model,
+                key,
+                &system_context.system_prompt,
+                prompt,
+                base,
+                params,
+                agent,
+            )
         }
         "anthropic" => {
             let key = api_key
@@ -184,7 +208,15 @@ pub fn generate_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            call_anthropic(model, key, &system_context.system_prompt, prompt, base, params, agent)
+            call_anthropic(
+                model,
+                key,
+                &system_context.system_prompt,
+                prompt,
+                base,
+                params,
+                agent,
+            )
         }
         other => Err(format!("Unsupported LLM provider: {}", other)),
     }
@@ -440,7 +472,9 @@ pub fn stream_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            stream_gemini(model, key, system, messages, base, params, tools, agent, emit)
+            stream_gemini(
+                model, key, system, messages, base, params, tools, agent, emit,
+            )
         }
         "anthropic" => {
             let key = api_key
@@ -452,7 +486,9 @@ pub fn stream_response(
                 .trim()
                 .trim_end_matches('/');
             crate::validate_provider_url(base, allow_local)?;
-            stream_anthropic(model, key, system, messages, base, params, tools, agent, emit)
+            stream_anthropic(
+                model, key, system, messages, base, params, tools, agent, emit,
+            )
         }
         other => Err(format!("Unsupported LLM provider: {}", other)),
     }
@@ -506,7 +542,9 @@ fn ollama_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                             })
                         })
                         .collect();
-                    out.push(json!({ "role": "assistant", "content": m.content, "tool_calls": calls }));
+                    out.push(
+                        json!({ "role": "assistant", "content": m.content, "tool_calls": calls }),
+                    );
                 }
             }
             "tool" => out.push(json!({
@@ -561,7 +599,12 @@ fn stream_ollama(
         .post(&url)
         .set("Content-Type", "application/json")
         .send_json(body)
-        .map_err(|e| format!("Ollama request failed: {:?}. Is Ollama running at {}?", e, base_url))?;
+        .map_err(|e| {
+            format!(
+                "Ollama request failed: {:?}. Is Ollama running at {}?",
+                e, base_url
+            )
+        })?;
 
     let mut reader = response.into_reader();
     let mut full_text = String::new();
@@ -612,7 +655,11 @@ fn stream_ollama(
     }
 
     for (id, name, args) in &pending_tool_calls {
-        emit(StreamEvent::ToolCall { id: id.clone(), name: name.clone(), arguments: args.clone() });
+        emit(StreamEvent::ToolCall {
+            id: id.clone(),
+            name: name.clone(),
+            arguments: args.clone(),
+        });
     }
 
     if full_text.is_empty() && pending_tool_calls.is_empty() {
@@ -647,7 +694,9 @@ fn openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                             })
                         })
                         .collect();
-                    out.push(json!({ "role": "assistant", "content": m.content, "tool_calls": calls }));
+                    out.push(
+                        json!({ "role": "assistant", "content": m.content, "tool_calls": calls }),
+                    );
                 }
             }
             "tool" => out.push(json!({
@@ -723,7 +772,11 @@ fn stream_openai_compatible(
             let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else {
                 continue;
             };
-            let Some(choice) = v.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first()) else {
+            let Some(choice) = v
+                .get("choices")
+                .and_then(|c| c.as_array())
+                .and_then(|c| c.first())
+            else {
                 continue;
             };
             let Some(delta) = choice.get("delta") else {
@@ -743,14 +796,24 @@ fn stream_openai_compatible(
             if let Some(calls) = delta.get("tool_calls").and_then(|c| c.as_array()) {
                 for call in calls {
                     let idx = call.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
-                    let entry = tool_fragments.entry(idx).or_insert_with(|| (String::new(), String::new(), String::new()));
+                    let entry = tool_fragments
+                        .entry(idx)
+                        .or_insert_with(|| (String::new(), String::new(), String::new()));
                     if let Some(id) = call.get("id").and_then(|i| i.as_str()) {
                         entry.0 = id.to_string();
                     }
-                    if let Some(fname) = call.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
+                    if let Some(fname) = call
+                        .get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(|n| n.as_str())
+                    {
                         entry.1 = fname.to_string();
                     }
-                    if let Some(fargs) = call.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()) {
+                    if let Some(fargs) = call
+                        .get("function")
+                        .and_then(|f| f.get("arguments"))
+                        .and_then(|a| a.as_str())
+                    {
                         entry.2.push_str(fargs);
                     }
                 }
@@ -763,7 +826,11 @@ fn stream_openai_compatible(
     for idx in indices {
         let (id, name, args) = tool_fragments.remove(&idx).unwrap();
         if !name.is_empty() {
-            emit(StreamEvent::ToolCall { id, name, arguments: args });
+            emit(StreamEvent::ToolCall {
+                id,
+                name,
+                arguments: args,
+            });
         }
     }
 
@@ -790,8 +857,8 @@ fn anthropic_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                         content.push(json!({ "type": "text", "text": m.content }));
                     }
                     for tc in &m.tool_calls {
-                        let args: serde_json::Value =
-                            serde_json::from_str(&tc.arguments).unwrap_or(serde_json::Value::Object(Default::default()));
+                        let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                            .unwrap_or(serde_json::Value::Object(Default::default()));
                         content.push(json!({
                             "type": "tool_use",
                             "id": tc.id,
@@ -880,13 +947,29 @@ fn stream_anthropic(
             match event {
                 "content_block_start" => {
                     let block = v.get("content_block").cloned().unwrap_or_default();
-                    current_block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
-                    current_block_id = block.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
-                    current_block_name = block.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                    current_block_type = block
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    current_block_id = block
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    current_block_name = block
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     if current_block_type == "tool_use" {
                         tool_blocks.insert(
                             current_block_id.clone(),
-                            (current_block_id.clone(), current_block_name.clone(), String::new()),
+                            (
+                                current_block_id.clone(),
+                                current_block_name.clone(),
+                                String::new(),
+                            ),
                         );
                     }
                 }
@@ -906,7 +989,9 @@ fn stream_anthropic(
                             }
                         }
                         "input_json_delta" => {
-                            if let Some(partial) = delta.get("partial_json").and_then(|p| p.as_str()) {
+                            if let Some(partial) =
+                                delta.get("partial_json").and_then(|p| p.as_str())
+                            {
                                 if let Some(entry) = tool_blocks.get_mut(&current_block_id) {
                                     entry.2.push_str(partial);
                                 }
@@ -927,7 +1012,11 @@ fn stream_anthropic(
 
     for (id, (_, name, args)) in &tool_blocks {
         if !name.is_empty() {
-            emit(StreamEvent::ToolCall { id: id.clone(), name: name.clone(), arguments: args.clone() });
+            emit(StreamEvent::ToolCall {
+                id: id.clone(),
+                name: name.clone(),
+                arguments: args.clone(),
+            });
         }
     }
 
@@ -954,16 +1043,16 @@ fn gemini_contents(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                         parts.push(json!({ "text": m.content }));
                     }
                     for tc in &m.tool_calls {
-                        let args: serde_json::Value =
-                            serde_json::from_str(&tc.arguments).unwrap_or(serde_json::Value::Object(Default::default()));
+                        let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                            .unwrap_or(serde_json::Value::Object(Default::default()));
                         parts.push(json!({ "functionCall": { "name": tc.name, "args": args } }));
                     }
                     out.push(json!({ "role": "model", "parts": parts }));
                 }
             }
             "tool" => {
-                let args: serde_json::Value =
-                    serde_json::from_str(&m.content).unwrap_or(serde_json::Value::Object(Default::default()));
+                let args: serde_json::Value = serde_json::from_str(&m.content)
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
                 out.push(json!({
                     "role": "user",
                     "parts": [{
@@ -1047,7 +1136,11 @@ fn stream_gemini(
             let Ok(v) = serde_json::from_str::<serde_json::Value>(data) else {
                 continue;
             };
-            let Some(candidate) = v.get("candidates").and_then(|c| c.as_array()).and_then(|c| c.first()) else {
+            let Some(candidate) = v
+                .get("candidates")
+                .and_then(|c| c.as_array())
+                .and_then(|c| c.first())
+            else {
                 continue;
             };
             let Some(content) = candidate.get("content") else {
@@ -1071,10 +1164,21 @@ fn stream_gemini(
                     }
                 }
                 if let Some(fc) = part.get("functionCall") {
-                    let name = fc.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
-                    let args = fc.get("args").map(|a| a.to_string()).unwrap_or_else(|| "{}".to_string());
+                    let name = fc
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let args = fc
+                        .get("args")
+                        .map(|a| a.to_string())
+                        .unwrap_or_else(|| "{}".to_string());
                     if !name.is_empty() {
-                        pending_tool_calls.push((format!("gemini-{}", pending_tool_calls.len()), name, args));
+                        pending_tool_calls.push((
+                            format!("gemini-{}", pending_tool_calls.len()),
+                            name,
+                            args,
+                        ));
                     }
                 }
             }
@@ -1082,7 +1186,11 @@ fn stream_gemini(
     }
 
     for (id, name, args) in &pending_tool_calls {
-        emit(StreamEvent::ToolCall { id: id.clone(), name: name.clone(), arguments: args.clone() });
+        emit(StreamEvent::ToolCall {
+            id: id.clone(),
+            name: name.clone(),
+            arguments: args.clone(),
+        });
     }
 
     if full_text.is_empty() && pending_tool_calls.is_empty() {
