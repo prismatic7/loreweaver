@@ -18,7 +18,7 @@
 **Already built (do not rebuild):**
 - **Phase 1 (Real Image Generation) — DONE.** `src-tauri/src/providers/image.rs` (ComfyUI / OpenAI / Stability), `generate_image` command (`lib.rs:2011`), UI wiring (`useSessionTools.ts:116,152`, `useAgent.ts:506`), note→image flow (Creator's Instrument Task 4, `797a790`). The `/imagine` milestone is met via the right-drawer prompt + note-illustrate flow.
 - **Phase 0 partial — Sandbox v2 minimal form exists.** The plugin permission allow-list is live (`plugins.rs:45-48`, currently `["hooks"]` only). Feature-flag config and quota limits are future.
-- **Phase 3 partial — Search.** `hybrid_query` exists (`search.rs:540`); fuzzy/synonym layers are future.
+- **Phase 3 partial — Search.** `hybrid_query` exists (`search.rs:540`); synonym + fuzzy layers shipped in Increment B (`2026-08-28-increment-b-search-fuzzy-synonyms.md`); `search_result` event on the bus is future.
 - **Phase 5 partial — Themes.** Firm↔Wild cascade shipped (`9e16deb`): global default → per-world override → per-session toggle. Canvas collaboration / WebSocket is future.
 
 **Sequencing:** the remaining phases are queued as bounded increments in `docs/superpowers/plans/2026-08-27-frontend-audit-and-roadmap-deploy.md` (Phase 3). The Muse/agent arc (DESIGN_SKETCH_CREATOR) is the recommended next creative arc.
@@ -85,12 +85,12 @@
 | Piece | Files | Implementation |
 |-------|-------|----------------|
 | Multi‑Vector Index Router | `src-tauri/src/search.rs` | ✅ `hybrid_query` exists (`search.rs:540`); provider-agnostic struct |
-| Synonym Service | `vault/lexicon/synonyms.json` + `src-tauri/src/search.rs` | ⏭️ Future — load on startup; expand query tokens before search |
-| Fuzzy Matching Layer | `levenshtein` crate integration in `search.rs` | ⏭️ Future — `--fuzzy` toggles via feature flag |
-| UI Enhancements | `src/components/SearchBar.tsx`, `src/components/ResultCard.tsx` | ⏭️ Future — expansion indicator; tooltip for backlink preview |
+| Synonym Service | `vault/lexicon/synonyms.json` + `src-tauri/src/search.rs` | ✅ Increment B (`2026-08-28-increment-b-search-fuzzy-synonyms.md`) — `load_synonyms` reads `<vault>/lexicon/synonyms.json` read-only; `create_vault` seeds a default lexicon; `expand_query` expands tokens before FTS |
+| Fuzzy Matching Layer | `levenshtein` crate integration in `search.rs` | ✅ Increment B — hand-rolled Wagner–Fischer `levenshtein_distance` (no new crate); `fuzzy_threshold` 0/1/2 by token length |
+| UI Enhancements | `src/components/SearchBar.tsx`, `src/components/ResultCard.tsx` | ✅ Increment B — `SearchExpansionBadge` in the search results header; `search_vault` returns `SearchResponse { results, expanded }`; tooltip for backlink preview is Increment C |
 | Backend Hook for Results | `event_bus.rs` emit `search_result` event | ⏭️ Future |
 
-**Milestone**: Users can type fuzzy queries (`cgna`) and receive expanded, synonym‑enhanced results.
+**Milestone**: Users can type fuzzy queries (`cgna`) and receive expanded, synonym‑enhanced results. (The literal `cgna` example is illustrative — the gate test uses realistic typos `campain` → `campaign` and `cmbat` → `combat`.)
 
 ---
 

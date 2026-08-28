@@ -26,8 +26,8 @@ pub fn build_system_context(
     };
 
     // 1. Gather Context via Hybrid Search (RAG)
-    let context_results = match search::hybrid_query(conn, prompt, "all") {
-        Ok(results) => results,
+    let context_results = match search::hybrid_query(conn, prompt, "all", vault_path) {
+        Ok((results, _expanded)) => results,
         Err(e) => {
             eprintln!("RAG context search failed: {:?}", e);
             Vec::new()
@@ -369,7 +369,7 @@ pub fn execute_tool(
             if query.trim().is_empty() {
                 return Err("search_vault: missing 'query'".to_string());
             }
-            let results = crate::search::hybrid_query(conn, &query, "all")
+            let (results, _expanded) = crate::search::hybrid_query(conn, &query, "all", vault_path)
                 .map_err(|e| format!("search_vault failed: {}", e))?;
             let mut lines = Vec::new();
             for r in results.iter().take(8) {

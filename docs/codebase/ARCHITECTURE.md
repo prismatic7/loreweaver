@@ -9,7 +9,7 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 1. Markdown vault files live under the campaign vault directory.
 2. `watcher.rs` parses Markdown frontmatter and H1 titles, then syncs notes into SQLite.
 3. `db.rs` stores notes, note metadata, rules, chunk embeddings, and app settings.
-4. `search.rs` downloads and loads the local embedding model, chunks text, and performs hybrid semantic search.
+4. `search.rs` downloads and loads the local embedding model, chunks text, and performs hybrid semantic search. Queries are expanded before the FTS5 phase via the vault's read-only synonym lexicon (`<vault>/lexicon/synonyms.json`) and a hand-rolled Levenshtein fuzzy layer; `search_vault` returns `SearchResponse { results, expanded }` so the UI can show an expansion indicator.
 5. The frontend calls Tauri commands such as `load_notes`, `load_rules`, `search_vault`, `save_note`, and `orchestrate_agent`. The Architect chat uses `orchestrate_agent_stream` (a Tauri `Channel` of `AgentEvent`s) for streaming reasoning, tool calls, and answer text; `cancel_agent_stream` flips a cooperative abort flag keyed by run id.
 
 ## Deletion and Trash

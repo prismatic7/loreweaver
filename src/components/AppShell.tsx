@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { CampaignNote, RuleEntry, SearchResult, WorldInfo } from "../types";
 import { WorldShelf } from "./WorldShelf";
+import { SearchExpansionBadge } from "./SearchExpansionBadge";
 
 export type AppView =
   | "dashboard"
@@ -50,6 +51,7 @@ export interface AppShellProps {
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
   searchResults: SearchResult[];
+  searchExpanded: boolean;
   notes: CampaignNote[];
   rules: RuleEntry[];
   onSelectSearchResult: (result: SearchResult) => void;
@@ -78,6 +80,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   isSearchOpen,
   setIsSearchOpen,
   searchResults,
+  searchExpanded,
   onSelectSearchResult,
   searchRef,
   children,
@@ -305,6 +308,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                     >
                       HYBRID SEMANTIC SEARCH RESULTS
                     </span>
+                    <SearchExpansionBadge expanded={searchExpanded} />
                     <button
                       onClick={() => {
                         setIsSearchOpen(false);

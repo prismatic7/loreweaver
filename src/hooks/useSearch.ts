@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CampaignNote, RuleEntry, SearchResult } from "../types";
+import { CampaignNote, RuleEntry, SearchResult, SearchResponse } from "../types";
 import { useDebounce } from "use-debounce";
 
 export function useSearch(notes: CampaignNote[], rules: RuleEntry[]) {
@@ -8,23 +8,30 @@ export function useSearch(notes: CampaignNote[], rules: RuleEntry[]) {
   const [searchCategory] = useState<"all" | "notes" | "rules">("all");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchExpanded, setSearchExpanded] = useState(false);
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
 
-  const executeSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    try {
-      const res = await invoke<SearchResult[]>("search_vault", {
-        query,
-        category: searchCategory,
-      });
-      setSearchResults(res || []);
-    } catch (err) {
-      console.error("Search failed:", err);
-    }
-  }, [searchCategory]);
+  const executeSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim()) {
+        setSearchResults([]);
+        setSearchExpanded(false);
+        return;
+      }
+      try {
+        const res = await invoke<SearchResponse>("search_vault", {
+          query,
+          category: searchCategory,
+        });
+        setSearchResults(res?.results || []);
+        setSearchExpanded(res?.expanded ?? false);
+      } catch (err) {
+        console.error("Search failed:", err);
+        setSearchExpanded(false);
+      }
+    },
+    [searchCategory],
+  );
 
   useEffect(() => {
     executeSearch(debouncedSearchQuery);
@@ -50,6 +57,7 @@ export function useSearch(notes: CampaignNote[], rules: RuleEntry[]) {
     setIsSearchOpen,
     searchResults,
     setSearchResults,
+    searchExpanded,
     executeSearch,
     matchedNotesByPath,
     matchedRulesById,

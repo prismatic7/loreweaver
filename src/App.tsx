@@ -116,6 +116,7 @@ function App() {
     isSearchOpen,
     setIsSearchOpen,
     searchResults,
+    searchExpanded,
   } = useSearch(notes, rules);
   const {
     theme,
@@ -609,6 +610,7 @@ function App() {
       isSearchOpen={isSearchOpen}
       setIsSearchOpen={setIsSearchOpen}
       searchResults={searchResults}
+      searchExpanded={searchExpanded}
       notes={notes}
       rules={rules}
       onSelectSearchResult={handleSelectSearchResult}

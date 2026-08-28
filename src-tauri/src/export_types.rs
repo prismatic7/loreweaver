@@ -56,6 +56,15 @@ pub struct SearchResult {
     pub path: String,
 }
 
+/// Wrapper returned by `search_vault`: the ranked results plus a flag telling
+/// the frontend whether the query was expanded (synonym/fuzzy layer) so it can
+/// show an expansion indicator.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct SearchResponse {
+    pub results: Vec<SearchResult>,
+    pub expanded: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Type)]
 pub struct AppSettings {
     pub llm_provider: String,
@@ -280,6 +289,7 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<CampaignNote>()
         .typ::<RuleEntry>()
         .typ::<SearchResult>()
+        .typ::<SearchResponse>()
         .typ::<SourceEntry>()
         .typ::<WebClip>()
         .typ::<AppSettings>()

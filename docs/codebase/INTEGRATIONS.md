@@ -17,6 +17,7 @@
 - `search.rs` loads an ONNX embedding model and tokenizer from the app data directory.
 - Missing model files are downloaded from Hugging Face at runtime.
 - The current search path is hybrid: semantic similarity first, then keyword fallback when embedding generation fails.
+- Query expansion (Increment B): before the FTS5 phase, `hybrid_query` expands the query via the vault's read-only synonym lexicon (`<vault>/lexicon/synonyms.json`, seeded by `create_vault`) and a hand-rolled Levenshtein fuzzy layer. `search_vault` returns `SearchResponse { results, expanded }`; the UI shows an expansion indicator when `expanded` is true. A missing/malformed lexicon degrades to no expansion.
 
 ## AI Providers
 

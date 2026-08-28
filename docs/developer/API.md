@@ -158,8 +158,8 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 ### `search_vault`
 
 - **Arguments:** `query: &str`, `scope: &str`
-- **Returns:** `Result<Vec<SearchResult>, String>`
-- **Description:** Executes hybrid FTS5 keyword matching and ONNX vector similarity queries.
+- **Returns:** `Result<SearchResponse, String>` where `SearchResponse = { results: SearchResult[], expanded: boolean }`
+- **Description:** Executes hybrid FTS5 keyword matching and ONNX vector similarity queries. Before the FTS5 phase the query is expanded via the vault's read-only synonym lexicon (`<vault>/lexicon/synonyms.json`) plus a hand-rolled Levenshtein fuzzy layer; `expanded` is true when the query was rewritten (the UI shows an expansion indicator).
 
 ### `orchestrate_agent`
 

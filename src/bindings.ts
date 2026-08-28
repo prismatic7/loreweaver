@@ -135,6 +135,16 @@ export type RuleEntry = {
 	content: string,
 };
 
+/**
+ *  Wrapper returned by `search_vault`: the ranked results plus a flag telling
+ *  the frontend whether the query was expanded (synonym/fuzzy layer) so it can
+ *  show an expansion indicator.
+ */
+export type SearchResponse = {
+	results: SearchResult[],
+	expanded: boolean,
+};
+
 export type SearchResult = {
 	type: string,
 	title: string,

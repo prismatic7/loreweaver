@@ -526,53 +526,219 @@ pub fn index_note_vectors(
     Ok(())
 }
 
+// --- Query Expansion (synonym service + fuzzy layer) ---
+//
+// Increment B: `hybrid_query` expands the raw query before the FTS5 phase.
+// Expansion is a pure function of the query text and the vault's read-only
+// lexicon (`<vault>/lexicon/synonyms.json`). A missing or malformed lexicon
+// degrades to today's behaviour (no expansion). The fuzzy layer is a
+// hand-rolled Wagner–Fischer Levenshtein distance — deliberately no new
+// crate (see the Increment B plan).
+
+/// Computes the Levenshtein edit distance between two strings.
+///
+/// Hand-rolled Wagner–Fischer with a two-row DP table over `char` vectors.
+/// Distance 0 = identical; each insertion/deletion/substitution costs 1.
+pub fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
+
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
+
+    let mut prev: Vec<usize> = (0..=b_len).collect();
+    let mut curr = vec![0usize; b_len + 1];
+
+    for i in 1..=a_len {
+        curr[0] = i;
+        for j in 1..=b_len {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1) // deletion
+                .min(curr[j - 1] + 1) // insertion
+                .min(prev[j - 1] + cost); // substitution
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[b_len]
+}
+
+/// Maximum edit distance allowed for a fuzzy lexicon-key match, by token length.
+///
+/// Tokens shorter than 4 characters are exact-match only (distance 0) — short
+/// tokens would flood with false positives. 4–5 chars tolerate one edit;
+/// 6+ chars tolerate two (covers dropped letters and transpositions).
+pub fn fuzzy_threshold(token_len: usize) -> usize {
+    match token_len {
+        0..=3 => 0,
+        4..=5 => 1,
+        _ => 2,
+    }
+}
+
+/// Loads the vault's synonym lexicon (`<vault>/lexicon/synonyms.json`).
+///
+/// The file maps canonical terms to variant spellings/aliases:
+/// `{ "campaign": ["campain", "campaing"], "combat": ["cmbat"] }`.
+/// Read-only at runtime: a missing or malformed file yields an empty map
+/// (search degrades to today's behaviour), never an error.
+pub fn load_synonyms(vault_path: &str) -> HashMap<String, Vec<String>> {
+    let lexicon_path = std::path::Path::new(vault_path)
+        .join("lexicon")
+        .join("synonyms.json");
+    let raw = match std::fs::read_to_string(&lexicon_path) {
+        Ok(raw) => raw,
+        Err(_) => return HashMap::new(),
+    };
+    match serde_json::from_str::<HashMap<String, Vec<String>>>(&raw) {
+        Ok(map) => map,
+        Err(e) => {
+            eprintln!("Malformed lexicon at {:?}: {:?}", lexicon_path, e);
+            HashMap::new()
+        }
+    }
+}
+
+/// Expands a query string into FTS terms using the vault lexicon + fuzzy layer.
+///
+/// Per whitespace-separated token:
+/// 1. Exact lexicon key → the key plus its variants.
+/// 2. Exact variant → its canonical key.
+/// 3. Fuzzy key match within `fuzzy_threshold` → the canonical key.
+/// 4. Otherwise the token is kept unchanged.
+///
+/// Returns `(terms, expanded)` where `expanded` is true when any term was
+/// added beyond the original tokens (i.e. the query was rewritten).
+pub fn expand_query(query_text: &str, vault_path: &str) -> (Vec<String>, bool) {
+    let synonyms = load_synonyms(vault_path);
+    if synonyms.is_empty() {
+        return (vec![query_text.to_string()], false);
+    }
+
+    // Reverse index: variant -> canonical key.
+    let mut variant_to_key: HashMap<&str, &str> = HashMap::new();
+    for (key, variants) in &synonyms {
+        for variant in variants {
+            variant_to_key.insert(variant.as_str(), key.as_str());
+        }
+    }
+
+    let mut terms: Vec<String> = Vec::new();
+    let mut expanded = false;
+
+    for token in query_text.split_whitespace() {
+        let lower = token.to_lowercase();
+
+        // 1. Exact lexicon key.
+        if let Some(variants) = synonyms.get(lower.as_str()) {
+            terms.push(lower.clone());
+            for variant in variants {
+                terms.push(variant.clone());
+            }
+            expanded = true;
+            continue;
+        }
+
+        // 2. Exact variant -> canonical key.
+        if let Some(&key) = variant_to_key.get(lower.as_str()) {
+            terms.push(key.to_string());
+            expanded = true;
+            continue;
+        }
+
+        // 3. Fuzzy key match within threshold.
+        let threshold = fuzzy_threshold(lower.chars().count());
+        if threshold > 0 {
+            let mut best_key: Option<&str> = None;
+            let mut best_dist = usize::MAX;
+            for key in synonyms.keys() {
+                let dist = levenshtein_distance(&lower, key);
+                if dist <= threshold && dist < best_dist {
+                    best_dist = dist;
+                    best_key = Some(key.as_str());
+                }
+            }
+            if let Some(key) = best_key {
+                terms.push(key.to_string());
+                expanded = true;
+                continue;
+            }
+        }
+
+        // 4. Unchanged.
+        terms.push(token.to_string());
+    }
+
+    (terms, expanded)
+}
+
 /// Executes a hybrid search query blending FTS5 lexical keyword matching with vector similarity.
 ///
 /// ### Hybrid Search Scoring Strategy:
 /// 1. **FTS5 Keyword Match:** Queries SQLite FTS5 index for notes/rules matching `query_text`.
 ///    Raw FTS match scores are weighted by **0.3** (`score = fts_score * 0.3`).
 /// 2. **Vector Similarity Match:** Generates a 384-dim query embedding vector and compares it
-///    against cached chunk embeddings using cosine dot product ($A \cdot B$).
+///    against cached chunk embeddings using cosine dot product ($A \\cdot B$).
 ///    Hits exceeding similarity threshold **0.4** are weighted by **0.7** (`score = cosine_score * 0.7`).
 /// 3. **Score Fusion & Deduplication:** Aggregates hits by document key (`note:title` or `rule:title`).
 ///    If a document matches both FTS5 and vector search, the higher weighted score is preserved.
 /// 4. **Sorting:** Returns deduplicated results ordered by final composite score descending.
+///
+/// ### Query Expansion (Increment B)
+/// Before the FTS5 phase the query is expanded via `expand_query` (vault lexicon +
+/// fuzzy layer). When expansion adds terms, FTS runs per term and results are
+/// merged by key keeping the best score; the returned `bool` is true when the
+/// query was expanded (the frontend shows an expansion indicator). When nothing
+/// was expanded, FTS runs the whole query as one phrase — exactly the
+/// pre-Increment-B behaviour.
 pub fn hybrid_query(
     conn: &rusqlite::Connection,
     query_text: &str,
     category: &str,
-) -> Result<Vec<super::SearchResult>, String> {
+    vault_path: &str,
+) -> Result<(Vec<super::SearchResult>, bool), String> {
     // Collect results: key = "type:title" -> SearchResult
     let mut best_results: HashMap<String, super::SearchResult> = HashMap::new();
 
+    // --- Phase 0: Query Expansion (synonym service + fuzzy layer) ---
+    let (fts_terms, expanded) = expand_query(query_text, vault_path);
+
     // --- Phase 1: FTS5 Keyword Search (Lexical Matching) ---
     if category == "all" || category == "notes" {
-        if let Ok(fts_results) = db::fts_search_notes(&conn, query_text, 20) {
-            for (note_id, title, snippet, fts_score) in fts_results {
-                // Fetch the note path for navigation
-                let note_path = conn
-                    .query_row::<String, _, _>(
-                        "SELECT path FROM notes WHERE id = ?1",
-                        [&note_id],
-                        |r| r.get(0),
-                    )
-                    .unwrap_or_else(|_| note_id.clone());
+        for fts_term in &fts_terms {
+            if let Ok(fts_results) = db::fts_search_notes(&conn, fts_term, 20) {
+                for (note_id, title, snippet, fts_score) in fts_results {
+                    // Fetch the note path for navigation
+                    let note_path = conn
+                        .query_row::<String, _, _>(
+                            "SELECT path FROM notes WHERE id = ?1",
+                            [&note_id],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or_else(|_| note_id.clone());
 
-                let key = format!("note:{}", title);
-                let score = fts_score * 0.3; // Lexical score component weight
-                match best_results.get(&key) {
-                    Some(existing) if existing.score >= score => {}
-                    _ => {
-                        best_results.insert(
-                            key,
-                            super::SearchResult {
-                                r#type: "note".to_string(),
-                                title,
-                                snippet,
-                                score,
-                                path: note_path,
-                            },
-                        );
+                    let key = format!("note:{}", title);
+                    let score = fts_score * 0.3; // Lexical score component weight
+                    match best_results.get(&key) {
+                        Some(existing) if existing.score >= score => {}
+                        _ => {
+                            best_results.insert(
+                                key,
+                                super::SearchResult {
+                                    r#type: "note".to_string(),
+                                    title,
+                                    snippet,
+                                    score,
+                                    path: note_path,
+                                },
+                            );
+                        }
                     }
                 }
             }
@@ -580,23 +746,25 @@ pub fn hybrid_query(
     }
 
     if category == "all" || category == "rules" {
-        if let Ok(fts_results) = db::fts_search_rules(&conn, query_text, 20) {
-            for (rule_id, title, snippet, fts_score) in fts_results {
-                let key = format!("rule:{}", title);
-                let score = fts_score * 0.3; // Lexical score component weight
-                match best_results.get(&key) {
-                    Some(existing) if existing.score >= score => {}
-                    _ => {
-                        best_results.insert(
-                            key,
-                            super::SearchResult {
-                                r#type: "rule".to_string(),
-                                title,
-                                snippet,
-                                score,
-                                path: rule_id,
-                            },
-                        );
+        for fts_term in &fts_terms {
+            if let Ok(fts_results) = db::fts_search_rules(&conn, fts_term, 20) {
+                for (rule_id, title, snippet, fts_score) in fts_results {
+                    let key = format!("rule:{}", title);
+                    let score = fts_score * 0.3; // Lexical score component weight
+                    match best_results.get(&key) {
+                        Some(existing) if existing.score >= score => {}
+                        _ => {
+                            best_results.insert(
+                                key,
+                                super::SearchResult {
+                                    r#type: "rule".to_string(),
+                                    title,
+                                    snippet,
+                                    score,
+                                    path: rule_id,
+                                },
+                            );
+                        }
                     }
                 }
             }
@@ -618,7 +786,7 @@ pub fn hybrid_query(
                     .partial_cmp(&a.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
-            return Ok(final_results);
+            return Ok((final_results, expanded));
         }
     };
 
@@ -694,7 +862,7 @@ pub fn hybrid_query(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    Ok(final_results)
+    Ok((final_results, expanded))
 }
 
 /// Chunks and indexes all rules in the database into SQLite `rule_chunks` table.
@@ -774,5 +942,158 @@ mod tests {
             score_ac += vec_a[d] * vec_c[d];
         }
         assert!(score_ac.abs() < 1e-5);
+    }
+
+    // --- Increment B: query expansion (synonym service + fuzzy layer) ---
+
+    #[test]
+    fn test_levenshtein_distance() {
+        // Identical strings.
+        assert_eq!(levenshtein_distance("campaign", "campaign"), 0);
+        // Single insertion.
+        assert_eq!(levenshtein_distance("campain", "campaign"), 1);
+        // Single deletion.
+        assert_eq!(levenshtein_distance("campaign", "campain"), 1);
+        // Single substitution.
+        assert_eq!(levenshtein_distance("combat", "combar"), 1);
+        // Transposition costs 2 (two substitutions in classic Levenshtein).
+        assert_eq!(levenshtein_distance("cgna", "cgan"), 2);
+        // Classic example.
+        assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
+        // Empty strings.
+        assert_eq!(levenshtein_distance("", ""), 0);
+        assert_eq!(levenshtein_distance("abc", ""), 3);
+        assert_eq!(levenshtein_distance("", "abc"), 3);
+    }
+
+    #[test]
+    fn test_fuzzy_threshold() {
+        assert_eq!(fuzzy_threshold(0), 0);
+        assert_eq!(fuzzy_threshold(3), 0);
+        assert_eq!(fuzzy_threshold(4), 1);
+        assert_eq!(fuzzy_threshold(5), 1);
+        assert_eq!(fuzzy_threshold(6), 2);
+        assert_eq!(fuzzy_threshold(20), 2);
+    }
+
+    /// Writes a small lexicon into a temp vault and returns the vault path.
+    fn write_test_lexicon(tmp: &tempfile::TempDir) -> String {
+        let lexicon_dir = tmp.path().join("lexicon");
+        std::fs::create_dir_all(&lexicon_dir).unwrap();
+        std::fs::write(
+            lexicon_dir.join("synonyms.json"),
+            r#"{
+  "campaign": ["campain", "campaing"],
+  "combat": ["cmbat"]
+}
+"#,
+        )
+        .unwrap();
+        tmp.path().to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn test_expand_query_synonyms_and_fuzzy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = write_test_lexicon(&tmp);
+
+        // Exact variant -> canonical key (expanded).
+        let (terms, expanded) = expand_query("campain", &vault);
+        assert!(expanded);
+        assert!(terms.iter().any(|t| t == "campaign"));
+
+        // Exact key -> key + variants (expanded).
+        let (terms, expanded) = expand_query("combat", &vault);
+        assert!(expanded);
+        assert!(terms.iter().any(|t| t == "cmbat"));
+
+        // Fuzzy key match within threshold (expanded).
+        let (terms, expanded) = expand_query("cmbat", &vault);
+        assert!(expanded);
+        assert!(terms.iter().any(|t| t == "combat"));
+
+        // Unknown token unchanged (not expanded).
+        let (terms, expanded) = expand_query("goblin", &vault);
+        assert!(!expanded);
+        assert_eq!(terms, vec!["goblin".to_string()]);
+
+        // No lexicon at all -> single term, not expanded.
+        let empty_tmp = tempfile::tempdir().unwrap();
+        let (terms, expanded) = expand_query("campaign", empty_tmp.path().to_str().unwrap());
+        assert!(!expanded);
+        assert_eq!(terms, vec!["campaign".to_string()]);
+    }
+
+    /// GATE TEST (Increment B): a fuzzy/variant query returns expanded results.
+    ///
+    /// The roadmap's literal `cgna` example is illustrative — `cgna` is not
+    /// within threshold of any real lexicon key, so the gate uses realistic
+    /// typos (`campain` → `campaign`, `cmbat` → `combat`) that exercise both
+    /// the synonym-variant path and the fuzzy path.
+    #[test]
+    fn test_hybrid_query_fuzzy_expansion_gate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = write_test_lexicon(&tmp);
+
+        // Point the embedding-provider lookup at a temp path so
+        // `generate_embedding`'s DB probe never touches the repo cwd.
+        set_db_path(tmp.path().join("embed.db").to_str().unwrap());
+
+        let conn = db::init_db(":memory:").unwrap();
+        db::upsert_note(
+            &conn,
+            "Worldbuilding/CampaignNotes.md",
+            "Campaign Notes",
+            "The campaign spans the eastern reaches and its combat is brutal.",
+            &HashMap::new(),
+            None,
+        )
+        .unwrap();
+        db::upsert_note(
+            &conn,
+            "Worldbuilding/CombatRules.md",
+            "Combat Rules",
+            "Combat uses initiative and action economy.",
+            &HashMap::new(),
+            None,
+        )
+        .unwrap();
+
+        // Variant query: `campain` expands to `campaign` and finds the note.
+        let (results, expanded) = hybrid_query(&conn, "campain", "notes", &vault).unwrap();
+        assert!(expanded, "variant query should be flagged as expanded");
+        assert!(
+            results.iter().any(|r| r.title == "Campaign Notes"),
+            "expected 'Campaign Notes' for 'campain', got {:?}",
+            results.iter().map(|r| &r.title).collect::<Vec<_>>()
+        );
+
+        // Fuzzy query: `cmbat` expands to `combat` and finds the note.
+        let (results, expanded) = hybrid_query(&conn, "cmbat", "notes", &vault).unwrap();
+        assert!(expanded, "fuzzy query should be flagged as expanded");
+        assert!(
+            results.iter().any(|r| r.title == "Combat Rules"),
+            "expected 'Combat Rules' for 'cmbat', got {:?}",
+            results.iter().map(|r| &r.title).collect::<Vec<_>>()
+        );
+
+        // Exact query still works (and is expanded — variants are added).
+        let (results, expanded) = hybrid_query(&conn, "campaign", "notes", &vault).unwrap();
+        assert!(expanded, "exact lexicon key should still be flagged as expanded");
+        assert!(
+            results.iter().any(|r| r.title == "Campaign Notes"),
+            "expected 'Campaign Notes' for exact 'campaign'"
+        );
+
+        // A query with no lexicon match is NOT expanded and still works.
+        let (results, expanded) = hybrid_query(&conn, "goblin", "notes", &vault).unwrap();
+        assert!(!expanded, "unknown query should not be flagged as expanded");
+        assert!(
+            results.is_empty(),
+            "no note should match 'goblin', got {:?}",
+            results.iter().map(|r| &r.title).collect::<Vec<_>>()
+        );
+
+        invalidate_cache();
     }
 }

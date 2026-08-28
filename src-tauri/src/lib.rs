@@ -1011,15 +1011,21 @@ async fn reindex_vault(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 /// Performs a hybrid local search (SQLite FTS5 + vector search similarity).
+///
+/// Returns `SearchResponse { results, expanded }` — `expanded` is true when
+/// the query was rewritten by the synonym/fuzzy layer (the frontend shows an
+/// expansion indicator).
 #[tauri::command]
 async fn search_vault(
     state: State<'_, AppState>,
     query: &str,
     category: &str,
-) -> Result<Vec<SearchResult>, String> {
+) -> Result<SearchResponse, String> {
+    let vault_path = state.vault_path.lock().await.clone();
     let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
-    search::hybrid_query(&conn, query, category)
+    let (results, expanded) = search::hybrid_query(&conn, query, category, &vault_path)?;
+    Ok(SearchResponse { results, expanded })
 }
 
 /// Saves (creates or updates) a rule entry to the database.
@@ -2546,6 +2552,26 @@ fn create_vault(state: State<AppState>, name: &str) -> Result<String, String> {
     std::fs::create_dir_all(new_vault_path.join("Worldbuilding")).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(new_vault_path.join("Characters")).map_err(|e| e.to_string())?;
 
+    // Seed a small synonym lexicon (additive — never overwrites an existing
+    // file). The search layer reads this read-only at runtime to expand
+    // queries (Increment B).
+    let lexicon_dir = new_vault_path.join("lexicon");
+    std::fs::create_dir_all(&lexicon_dir).map_err(|e| e.to_string())?;
+    let lexicon_path = lexicon_dir.join("synonyms.json");
+    if !lexicon_path.exists() {
+        let _ = std::fs::write(
+            &lexicon_path,
+            r#"{
+  "campaign": ["campain", "campaing", "campagn"],
+  "combat": ["cmbat", "combatting"],
+  "spell": ["spel", "spells"],
+  "rest": ["resting", "long rest", "short rest"],
+  "gm": ["game master", "dungeon master", "dm"]
+}
+"#,
+        );
+    }
+
     let seed_note_path = new_vault_path.join("Worldbuilding/Eldoria.md");
     std::fs::write(&seed_note_path, r#"---
 type: Location
@@ -3169,6 +3195,7 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<CampaignNote>()
         .typ::<RuleEntry>()
         .typ::<SearchResult>()
+        .typ::<SearchResponse>()
         .typ::<SourceEntry>()
         .typ::<WebClip>()
         .typ::<AppSettings>()
@@ -3642,11 +3669,11 @@ mod tests {
             search::invalidate_cache();
 
             let s: tauri::State<AppState> = unsafe { std::mem::transmute(&state) };
-            let results = search_vault(s, "goblin", "notes").await.unwrap();
+            let response = search_vault(s, "goblin", "notes").await.unwrap();
             assert!(
-                results.iter().any(|r| r.title == "Goblin Hoard"),
+                response.results.iter().any(|r| r.title == "Goblin Hoard"),
                 "expected a note titled 'Goblin Hoard' in results, got {:?}",
-                results.iter().map(|r| &r.title).collect::<Vec<_>>()
+                response.results.iter().map(|r| &r.title).collect::<Vec<_>>()
             );
 
             search::invalidate_cache();
