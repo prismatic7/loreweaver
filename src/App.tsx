@@ -44,6 +44,7 @@ import { useFolderActions } from "./hooks/useFolderActions";
 import { useSessionTools } from "./hooks/useSessionTools";
 import { useVaultActions } from "./hooks/useVaultActions";
 import { useCaptureInbox } from "./hooks/useCaptureInbox";
+import { findBacklinks } from "./utils/links";
 
 import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
 
@@ -416,14 +417,9 @@ function App() {
     const currentNoteObj = notes.find((n) => n.id === selectedNoteId);
     if (!currentNoteObj) return [];
 
-    return notes.filter((note) => {
-      if (note.id === selectedNoteId) return false;
-      const lowerTitle = currentNoteObj.title.toLowerCase();
-      return (
-        note.content.toLowerCase().includes(`[[${lowerTitle}]]`) ||
-        note.content.toLowerCase().includes(`[[${lowerTitle}|`)
-      );
-    });
+    // Resolve real wiki-links and single-bracket links against titles,
+    // file stems, and aliases — see utils/links.ts.
+    return findBacklinks(currentNoteObj, notes);
   }, [notes, selectedNoteId]);
 
   const sessionTools = useSessionTools({

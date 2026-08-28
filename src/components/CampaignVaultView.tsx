@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../types";
 import { NoteOutline } from "./NoteOutline";
+import { parseNoteTags } from "../utils/tags";
 
 export interface TemplateProperty {
   type: "number" | "boolean" | "string";
@@ -815,7 +816,9 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                           </label>
                           <input
                             type="text"
-                            value={(editFrontmatter.tags || []).join(", ")}
+                            value={Array.isArray(editFrontmatter.tags)
+                              ? editFrontmatter.tags.join(", ")
+                              : String(editFrontmatter.tags ?? "")}
                             onChange={(e) =>
                               setEditFrontmatter((prev) => ({
                                 ...prev,
@@ -1205,8 +1208,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       <span className="doc-meta-tag">
                         {currentNote.path}
                       </span>
-                      {Array.isArray(currentNote.frontmatter.tags) &&
-                        currentNote.frontmatter.tags.map((t) => (
+                      {parseNoteTags(currentNote).map((t) => (
                           <span key={t} className="doc-meta-tag tag-pill">
                             #{t}
                           </span>
