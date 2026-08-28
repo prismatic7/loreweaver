@@ -23,6 +23,8 @@ export interface AiViewProps {
   sessionTemperature: number | null;
   setSessionTemperature: (value: number | null) => void;
   defaultTemperature: number;
+  /** Persists the current session temperature as the active world's default (vault_config.json firm_wild). */
+  onMakeWorldDefault?: (value: number) => Promise<void>;
 }
 
 export const AiView: React.FC<AiViewProps> = ({
@@ -44,8 +46,24 @@ export const AiView: React.FC<AiViewProps> = ({
   sessionTemperature,
   setSessionTemperature,
   defaultTemperature,
+  onMakeWorldDefault,
 }) => {
   const [contextPickerOpen, setContextPickerOpen] = useState(false);
+  const [confirmWorldDefault, setConfirmWorldDefault] = useState(false);
+  const [worldDefaultState, setWorldDefaultState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
+  const effectiveTemperature =
+    sessionTemperature === null ? defaultTemperature : sessionTemperature;
+
+  const handleMakeWorldDefault = () => {
+    if (!onMakeWorldDefault) return;
+    setWorldDefaultState("saving");
+    onMakeWorldDefault(effectiveTemperature)
+      .then(() => setWorldDefaultState("saved"))
+      .catch(() => setWorldDefaultState("error"));
+  };
 
   const attachNote = (note: { id: string; title: string; content: string }) => {
     addContextItem({
@@ -162,6 +180,73 @@ export const AiView: React.FC<AiViewProps> = ({
                 >
                   reset
                 </button>
+              )}
+              {onMakeWorldDefault && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {confirmWorldDefault ? (
+                    <>
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        onClick={handleMakeWorldDefault}
+                        disabled={worldDefaultState === "saving"}
+                        data-testid="confirm-world-default"
+                        style={{
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
+                          cursor: "pointer",
+                        }}
+                        title={`Save ${effectiveTemperature.toFixed(2)} as this world's default`}
+                      >
+                        {worldDefaultState === "saving" ? "saving..." : "save as world default"}
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        type="button"
+                        onClick={() => {
+                          setConfirmWorldDefault(false);
+                          setWorldDefaultState("idle");
+                        }}
+                        style={{
+                          padding: "2px 6px",
+                          fontSize: 10,
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--muted)",
+                          cursor: "pointer",
+                        }}
+                        aria-label="Cancel making world default"
+                      >
+                        ✕
+                      </button>
+                      {worldDefaultState === "saved" && (
+                        <span style={{ fontSize: 10, color: "var(--muted)" }}>saved ✓</span>
+                      )}
+                      {worldDefaultState === "error" && (
+                        <span style={{ fontSize: 10, color: "var(--muted)" }}>failed</span>
+                      )}
+                    </>
+                  ) : (
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      onClick={() => setConfirmWorldDefault(true)}
+                      data-testid="make-world-default"
+                      style={{
+                        padding: "2px 8px",
+                        fontSize: 10,
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
+                        cursor: "pointer",
+                      }}
+                      title="Make this session's Firm↔Wild value the default for this world"
+                    >
+                      make world default
+                    </button>
+                  )}
+                </span>
               )}
             </div>
           </div>

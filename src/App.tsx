@@ -822,6 +822,22 @@ function App() {
           sessionTemperature={agent.sessionTemperature}
           setSessionTemperature={agent.setSessionTemperature}
           defaultTemperature={llmTemperature}
+          onMakeWorldDefault={(value) =>
+            invoke<{
+              name: string | null;
+              campaign_system: string | null;
+              description: string | null;
+              tag_colors: Record<string, string> | null;
+              image_style_template: string | null;
+              firm_wild: number | null;
+            }>("load_vault_settings")
+              .then((settings) =>
+                invoke("save_vault_settings", {
+                  settings: { ...settings, firm_wild: value },
+                }),
+              )
+              .then(() => undefined)
+          }
         />
       )}
 

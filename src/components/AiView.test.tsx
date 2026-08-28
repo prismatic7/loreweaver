@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { AiView, AiViewProps } from "./AiView";
 import type { ChatMessage } from "../hooks/useAgent";
@@ -198,5 +198,33 @@ describe("AiView", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Reject" }));
     expect(handleRejectAgentTool).toHaveBeenCalled();
+  });
+
+  it("saves the session temperature as the world default via confirm-first affordance", async () => {
+    const onMakeWorldDefault = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AiView
+        {...makeProps({
+          sessionTemperature: 0.35,
+          onMakeWorldDefault,
+        })}
+      />,
+    );
+
+    // Affordance shows the confirm step, not a modal.
+    fireEvent.click(screen.getByTestId("make-world-default"));
+    const confirm = screen.getByTestId("confirm-world-default");
+    expect(confirm).toHaveTextContent("save as world default");
+    fireEvent.click(confirm);
+
+    await waitFor(() => {
+      expect(onMakeWorldDefault).toHaveBeenCalledWith(0.35);
+    });
+    expect(await screen.findByText("saved ✓")).toBeInTheDocument();
+  });
+
+  it("hides the world-default affordance when no handler is provided", () => {
+    render(<AiView {...makeProps()} />);
+    expect(screen.queryByTestId("make-world-default")).not.toBeInTheDocument();
   });
 });
