@@ -39,6 +39,8 @@ export interface RightDrawerProps {
   handleInitiativeTracker: () => void;
   handleEncounterBuilder: () => void;
   scaffoldPlugin: (id: string, name: string) => Promise<string>;
+  showPrompt: (message: string, defaultValue?: string) => Promise<string | null>;
+  alert: (message: string) => void;
   // AI tab
   currentChatMessages: ChatMessage[];
   chatInput: string;
@@ -315,6 +317,8 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
   handleInitiativeTracker,
   handleEncounterBuilder,
   scaffoldPlugin,
+  showPrompt,
+  alert,
   captureTitle,
   setCaptureTitle,
   captureContent,
@@ -402,6 +406,8 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
       handleInitiativeTracker={handleInitiativeTracker}
       handleEncounterBuilder={handleEncounterBuilder}
       scaffoldPlugin={scaffoldPlugin}
+      showPrompt={showPrompt}
+      alert={alert}
     />
   </div>
 );
@@ -742,6 +748,8 @@ const PluginButtons: React.FC<
     | "handleInitiativeTracker"
     | "handleEncounterBuilder"
     | "scaffoldPlugin"
+    | "showPrompt"
+    | "alert"
   >
 > = ({
   pluginsList,
@@ -750,6 +758,8 @@ const PluginButtons: React.FC<
   handleInitiativeTracker,
   handleEncounterBuilder,
   scaffoldPlugin,
+  showPrompt,
+  alert,
 }) => (
   <div
     style={{
@@ -779,13 +789,20 @@ const PluginButtons: React.FC<
         cursor: "pointer",
         marginBottom: "8px",
       }}
-      onClick={() => {
-        const id = prompt("Plugin id (lowercase, hyphenated):", "my-plugin");
+      onClick={async () => {
+        const id = await showPrompt(
+          "Plugin id (lowercase, hyphenated):",
+          "my-plugin",
+        );
         if (!id) return;
-        const name = prompt("Display name:", id);
-        scaffoldPlugin(id, name || id)
-          .then((path) => alert(`Plugin created at ${path}`))
-          .catch((err) => alert("Failed to scaffold plugin: " + err));
+        const name = await showPrompt("Display name:", id);
+        if (!name) return;
+        try {
+          const path = await scaffoldPlugin(id, name);
+          alert(`Plugin created at ${path}`);
+        } catch (err) {
+          alert("Failed to scaffold plugin: " + err);
+        }
       }}
       type="button"
       data-od-id="plugin-scaffold"

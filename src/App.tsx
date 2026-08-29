@@ -691,6 +691,8 @@ function App() {
             handleInitiativeTracker={vaultActions.handleInitiativeTrackerCb}
             handleEncounterBuilder={vaultActions.handleEncounterBuilderCb}
             scaffoldPlugin={scaffoldPlugin}
+            showPrompt={showPrompt}
+            alert={alert}
             currentChatMessages={agent.currentChatMessages}
             chatInput={agent.chatInput}
             setChatInput={agent.setChatInput}

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { RightDrawer, RightDrawerProps } from "./RightDrawer";
 import { WebClip } from "../types";
@@ -26,6 +26,8 @@ function makeProps(overrides: Partial<RightDrawerProps> = {}): RightDrawerProps 
     handleInitiativeTracker: vi.fn(),
     handleEncounterBuilder: vi.fn(),
     scaffoldPlugin: vi.fn().mockResolvedValue("/tmp/plugins/my-plugin"),
+    showPrompt: vi.fn().mockResolvedValue("my-plugin"),
+    alert: vi.fn(),
     currentChatMessages: [],
     chatInput: "",
     setChatInput: vi.fn(),
@@ -263,5 +265,55 @@ describe("Backlinks tab preview", () => {
     fireEvent.mouseEnter(screen.getByText("The City"));
     expect(screen.getByTestId("note-preview")).toBeInTheDocument();
     expect(screen.getByText(/sprawling port city/)).toBeInTheDocument();
+  });
+});
+
+describe("Plugin scaffolding", () => {
+  it("prompts for id and name, then scaffolds the plugin", async () => {
+    const scaffoldPlugin = vi.fn().mockResolvedValue("/tmp/plugins/my-plugin");
+    const showPrompt = vi
+      .fn()
+      .mockResolvedValueOnce("my-plugin")
+      .mockResolvedValueOnce("My Plugin");
+    const alert = vi.fn();
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "scratchpad",
+          scaffoldPlugin,
+          showPrompt,
+          alert,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("+ New Plugin"));
+
+    await waitFor(() => expect(showPrompt).toHaveBeenCalledTimes(2));
+    expect(scaffoldPlugin).toHaveBeenCalledWith("my-plugin", "My Plugin");
+    await waitFor(() =>
+      expect(alert).toHaveBeenCalledWith(
+        "Plugin created at /tmp/plugins/my-plugin",
+      ),
+    );
+  });
+
+  it("does not scaffold when the id prompt is cancelled", async () => {
+    const scaffoldPlugin = vi.fn();
+    const showPrompt = vi.fn().mockResolvedValue(null);
+    render(
+      <RightDrawer
+        {...makeProps({
+          tab: "scratchpad",
+          scaffoldPlugin,
+          showPrompt,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("+ New Plugin"));
+
+    expect(showPrompt).toHaveBeenCalledTimes(1);
+    expect(scaffoldPlugin).not.toHaveBeenCalled();
   });
 });
