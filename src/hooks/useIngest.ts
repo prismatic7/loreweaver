@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { extractTextFromPdf, PdfProgress } from "../utils/pdf";
+import { extractTextFromPdf, PdfProgress, rawToMarkdown } from "../utils/pdf";
 
 interface UseIngestDeps {
-  alert: (message: string) => void;
+  showToast: (message: string) => void;
   loadRules: () => Promise<void>;
   llmProvider: string;
   llmModel: string;
@@ -19,7 +19,7 @@ export interface IngestDialogState {
 }
 
 export const useIngest = (deps: UseIngestDeps) => {
-  const { alert, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress } = deps;
+  const { showToast, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress } = deps;
   const [ingestDialog, setIngestDialog] = useState<IngestDialogState>({
     open: false,
     fileName: "",
@@ -38,11 +38,11 @@ export const useIngest = (deps: UseIngestDeps) => {
 
           try {
             if (mode === "ai") {
-              alert(
+              showToast(
                 "Starting AI Markdown ingestion... Pages are being processed in batches by your LLM. Progress will appear in the bottom-right corner.",
               );
             } else {
-              alert("Extracting text locally...");
+              showToast("Extracting text locally...");
             }
 
             const content = await extractTextFromPdf(
@@ -62,17 +62,17 @@ export const useIngest = (deps: UseIngestDeps) => {
             })
               .then(() => loadRules())
               .then(() => {
-                alert(
+                showToast(
                   `Successfully ingested "${file.name}" with ${mode === "ai" ? "AI parsing" : "raw text extraction"} and generated local semantic vector search chunks!`,
                 );
               })
               .catch((err) => {
                 console.error("Failed to ingest SRD:", err);
-                alert("Error during SRD ingestion: " + err);
+                showToast("Error during SRD ingestion: " + err);
               });
           } catch (err: any) {
             console.error("PDF Ingestion failed:", err);
-            alert("Failed to parse PDF: " + err.message);
+            showToast("Failed to parse PDF: " + err.message);
           }
         };
         reader.readAsArrayBuffer(file);
@@ -84,7 +84,7 @@ export const useIngest = (deps: UseIngestDeps) => {
           try {
             let content = rawContent;
             if (mode === "ai") {
-              alert("Starting AI Markdown ingestion... Processing file content through your LLM.");
+              showToast("Starting AI Markdown ingestion... Processing file content through your LLM.");
               const systemPrompt = `You are a document parser. Format the following text into clean, structured Markdown. Reconstruct headers (#, ##, ###), lists, tables, and paragraphs where appropriate. Do NOT add conversational filler. Just output the raw Markdown content.\n\nText:\n${rawContent}`;
               content = await invoke<string>("orchestrate_agent", {
                 prompt: systemPrompt,
@@ -94,6 +94,11 @@ export const useIngest = (deps: UseIngestDeps) => {
                 baseUrl: llmBaseUrl || null,
                 activeNoteId: null,
               });
+            } else {
+              // Raw text mode: apply the same conservative local
+              // markdown-ification the PDF path uses so plain .txt imports
+              // render with headers and lists instead of a wall of text.
+              content = rawToMarkdown(rawContent);
             }
 
             invoke("ingest_srd_text", {
@@ -103,23 +108,23 @@ export const useIngest = (deps: UseIngestDeps) => {
             })
               .then(() => loadRules())
               .then(() => {
-                alert(
+                showToast(
                   `Successfully ingested "${file.name}" with ${mode === "ai" ? "AI parsing" : "raw text"}!`,
                 );
               })
               .catch((err) => {
                 console.error("Failed to ingest SRD:", err);
-                alert("Error during SRD ingestion: " + err);
+                showToast("Error during SRD ingestion: " + err);
               });
           } catch (err: any) {
             console.error("Ingestion failed:", err);
-            alert("Failed to ingest: " + err.message);
+            showToast("Failed to ingest: " + err.message);
           }
         };
         reader.readAsText(file);
       }
     },
-    [alert, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress],
+    [showToast, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress],
   );
 
   const handleIngestSRD = useCallback(

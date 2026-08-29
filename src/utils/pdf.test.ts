@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { extractTextFromPdf } from "./pdf";
+import { extractTextFromPdf, rawToMarkdown } from "./pdf";
 
 const invokeMock = vi.fn();
 
@@ -57,6 +57,33 @@ function mockPdf(numPages: number) {
 }
 
 const buf = () => new Uint8Array([1, 2, 3]).buffer;
+
+describe("rawToMarkdown", () => {
+  it("promotes short all-caps lines to headers", () => {
+    const out = rawToMarkdown("SKILLS\nStart with one Great (+4).");
+    expect(out).toContain("## SKILLS");
+    expect(out).toContain("Start with one Great (+4).");
+  });
+
+  it("converts bullet-like lines to markdown list items", () => {
+    const out = rawToMarkdown("+ Academics\n+ Athletics\n- Empathy");
+    expect(out).toContain("- Academics");
+    expect(out).toContain("- Athletics");
+    expect(out).toContain("- Empathy");
+  });
+
+  it("leaves existing markdown untouched", () => {
+    const md = "# Fireball\n\n**Damage:** 8d6\n\n- Range: 120 ft";
+    expect(rawToMarkdown(md)).toBe(md);
+  });
+
+  it("does not promote long or mixed-case lines", () => {
+    const out = rawToMarkdown(
+      "This is a long sentence that should never become a header because it is far too long to be a section label.",
+    );
+    expect(out).not.toContain("## ");
+  });
+});
 
 describe("extractTextFromPdf", () => {
   beforeEach(() => {

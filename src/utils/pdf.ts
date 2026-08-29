@@ -17,6 +17,80 @@ export interface PdfProgress {
   total: number;
 }
 
+/**
+ * Lightweight local markdown-ification for raw PDF text.
+ *
+ * The AI parser is the primary path; this heuristic pass makes the raw
+ * fallback readable when the LLM is unavailable or the user picks local
+ * extraction. It is deliberately conservative — it only promotes lines
+ * that are unambiguous:
+ *
+ * - Short all-caps lines (≤60 chars) become `## ` headers — rulebook
+ *   section labels like "SKILLS", "STRESS", "ASPECTS VITALS".
+ * - Lines starting with `+`, `-`, `*`, or `•` become `- ` list items.
+ * - Everything else stays as-is (existing markdown is never mangled).
+ */
+export const rawToMarkdown = (text: string): string => {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inList = false;
+
+  const flushList = () => {
+    if (inList) {
+      out.push("");
+      inList = false;
+    }
+  };
+
+  // Only insert a blank separator when the previous line isn't already blank,
+  // so existing markdown passes through byte-for-byte.
+  const ensureBlankBefore = () => {
+    if (out.length > 0 && out[out.length - 1] !== "") {
+      out.push("");
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (!line.trim()) {
+      flushList();
+      out.push("");
+      continue;
+    }
+    const trimmed = line.trim();
+
+    // Bullet-like lines → markdown list items.
+    if (/^[+\-*•]\s+/.test(trimmed)) {
+      if (!inList) {
+        ensureBlankBefore();
+        inList = true;
+      }
+      out.push(`- ${trimmed.replace(/^[+\-*•]\s+/, "")}`);
+      continue;
+    }
+    flushList();
+
+    // Short all-caps lines → headers (rulebook section labels).
+    if (
+      trimmed.length >= 2 &&
+      trimmed.length <= 60 &&
+      /^[A-Z][A-Z0-9\s&'’\-–—:()/?!]+$/.test(trimmed)
+    ) {
+      out.push(`## ${trimmed}`);
+      continue;
+    }
+
+    out.push(line);
+  }
+  flushList();
+  // Drop any trailing blank lines so the output is byte-identical to the
+  // input when nothing was transformed.
+  while (out.length > 0 && out[out.length - 1] === "") {
+    out.pop();
+  }
+  return out.join("\n");
+};
+
 export const extractTextFromPdf = async (
   arrayBuffer: ArrayBuffer,
   mode: "text" | "ai",
@@ -81,7 +155,9 @@ export const extractTextFromPdf = async (
   }
 
   if (mode !== "ai") {
-    return pages.map(({ num, text }) => `# Page ${num}\n\n${text}`).join("\n");
+    return pages
+      .map(({ num, text }) => `# Page ${num}\n\n${rawToMarkdown(text)}`)
+      .join("\n");
   }
 
   // AI mode: group consecutive pages into batches, one LLM call per batch.
@@ -108,7 +184,7 @@ export const extractTextFromPdf = async (
       .join("\n\n")}`;
 
   const rawFallback = (batch: { num: number; text: string }[]) =>
-    batch.map(({ num, text }) => `# Page ${num} (Raw)\n\n${text}`).join("\n");
+    batch.map(({ num, text }) => `# Page ${num} (Raw)\n\n${rawToMarkdown(text)}`).join("\n");
 
   let fullText = "";
   let batchDone = 0;

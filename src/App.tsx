@@ -326,7 +326,7 @@ function App() {
   });
 
   const { ingestDialog, setIngestDialog, handleIngestSRD } = useIngest({
-    alert,
+    showToast,
     loadRules,
     llmProvider,
     llmModel,
@@ -1135,6 +1135,7 @@ function App() {
         fileName={ingestDialog.fileName}
         onSelect={(mode) => {
           ingestDialog.onSelect?.(mode);
+          setIngestDialog({ open: false, fileName: "", onSelect: null });
         }}
         onCancel={() =>
           setIngestDialog({ open: false, fileName: "", onSelect: null })
