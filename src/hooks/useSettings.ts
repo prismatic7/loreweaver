@@ -79,8 +79,10 @@ export const DEFAULT_SETTINGS: SettingsForm = {
   stt_base_url: "",
 };
 
+export type ThemePreference = "system" | "dark" | "light";
+
 export function useSettings() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<ThemePreference>("system");
   const [settingsTab, setSettingsTab] = useState<
     "build" | "contributors" | "licenses" | "profile"
   >("build");
@@ -148,9 +150,24 @@ export function useSettings() {
     loadSettings();
   }, [loadSettings]);
 
+  // Resolve the effective theme: "system" follows the OS preference live,
+  // explicit dark/light overrides it. The resolved value drives data-theme.
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      setResolvedTheme(theme === "system" ? (mq.matches ? "dark" : "light") : theme);
+    };
+    apply();
+    if (theme === "system") {
+      mq.addEventListener("change", apply);
+      return () => mq.removeEventListener("change", apply);
+    }
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", resolvedTheme);
+  }, [resolvedTheme]);
 
   const handleSaveSettings = useCallback(
     async (data: SettingsForm, alert: (message: string) => void) => {

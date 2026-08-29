@@ -7,6 +7,7 @@ import {
   Layers,
   Link2,
   Map as MapIcon,
+  Monitor,
   Moon,
   Network,
   Search,
@@ -16,6 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { CampaignNote, RuleEntry, SearchResult, WorldInfo } from "../types";
+import { ThemePreference } from "../hooks/useSettings";
 import { WorldShelf } from "./WorldShelf";
 import { SearchExpansionBadge } from "./SearchExpansionBadge";
 
@@ -35,8 +37,8 @@ export type AppView =
 export interface AppShellProps {
   activeView: AppView;
   setActiveView: (view: AppView) => void;
-  theme: "dark" | "light";
-  setTheme: (theme: "dark" | "light") => void;
+  theme: ThemePreference;
+  setTheme: (theme: ThemePreference) => void;
   vaultPath: string;
   // World Shelf
   worlds: WorldInfo[];
@@ -201,11 +203,27 @@ export const AppShell: React.FC<AppShellProps> = ({
           />
           <button
             className="ribbon-btn"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            title="Toggle Theme"
+            onClick={() =>
+              setTheme(
+                theme === "system" ? "dark" : theme === "dark" ? "light" : "system",
+              )
+            }
+            title={
+              theme === "system"
+                ? "Theme: System (click for Dark)"
+                : theme === "dark"
+                  ? "Theme: Dark (click for Light)"
+                  : "Theme: Light (click for System)"
+            }
             data-od-id="btn-theme-toggle"
           >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            {theme === "system" ? (
+              <Monitor size={18} />
+            ) : theme === "dark" ? (
+              <Sun size={18} />
+            ) : (
+              <Moon size={18} />
+            )}
           </button>
         </div>
       </nav>

@@ -51,3 +51,21 @@ if (typeof globalThis.DOMMatrix === "undefined") {
     writable: true,
   });
 }
+
+// matchMedia polyfill for theme resolution (prefers-color-scheme).
+// Defaults to light; tests can override via window.matchMedia mock.
+if (typeof window.matchMedia === "undefined") {
+  Object.defineProperty(window, "matchMedia", {
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+    writable: true,
+  });
+}
