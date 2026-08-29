@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { extractTextFromPdf } from "../utils/pdf";
+import { extractTextFromPdf, PdfProgress } from "../utils/pdf";
 
 interface UseIngestDeps {
   alert: (message: string) => void;
@@ -9,6 +9,7 @@ interface UseIngestDeps {
   llmModel: string;
   llmApiKey: string;
   llmBaseUrl: string;
+  onProgress?: (progress: PdfProgress) => void;
 }
 
 export interface IngestDialogState {
@@ -18,7 +19,7 @@ export interface IngestDialogState {
 }
 
 export const useIngest = (deps: UseIngestDeps) => {
-  const { alert, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl } = deps;
+  const { alert, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress } = deps;
   const [ingestDialog, setIngestDialog] = useState<IngestDialogState>({
     open: false,
     fileName: "",
@@ -38,8 +39,10 @@ export const useIngest = (deps: UseIngestDeps) => {
           try {
             if (mode === "ai") {
               alert(
-                "Starting AI Markdown ingestion... Each page is being processed by your LLM. Please wait for completion.",
+                "Starting AI Markdown ingestion... Pages are being processed in batches by your LLM. Progress will appear in the bottom-right corner.",
               );
+            } else {
+              alert("Extracting text locally...");
             }
 
             const content = await extractTextFromPdf(
@@ -49,6 +52,7 @@ export const useIngest = (deps: UseIngestDeps) => {
               llmModel,
               llmApiKey,
               llmBaseUrl,
+              onProgress,
             );
 
             invoke("ingest_srd_text", {
@@ -115,7 +119,7 @@ export const useIngest = (deps: UseIngestDeps) => {
         reader.readAsText(file);
       }
     },
-    [alert, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl],
+    [alert, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress],
   );
 
   const handleIngestSRD = useCallback(
