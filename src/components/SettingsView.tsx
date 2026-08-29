@@ -322,41 +322,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             padding: "20px",
           }}
         >
-          <h3
-            style={{
-              fontSize: "12px",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "var(--accent)",
-              marginBottom: "16px",
-              fontWeight: 600,
-            }}
-          >
+          <h3 className="settings-section-title" style={{ marginBottom: "16px" }}>
             Workspace Configuration
           </h3>
 
           <div
             className="settings-item"
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
               borderBottom: "1px solid var(--border)",
               paddingBottom: "12px",
               marginBottom: "12px",
             }}
           >
             <div>
-              <div
-                className="settings-label"
-                style={{ fontSize: "13px", fontWeight: 500 }}
-              >
-                Active Campaign Directory
-              </div>
-              <div
-                className="settings-desc"
-                style={{ fontSize: "11px", color: "var(--muted)" }}
-              >
+              <div className="settings-label">Active Campaign Directory</div>
+              <div className="settings-desc">
                 Where markdown files are monitored and stored
               </div>
             </div>
@@ -365,7 +345,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               value={vaultPath || "Loading campaign vault path..."}
               readOnly
               style={{
-                width: 300,
+                width: "min(300px, 40%)",
+                minWidth: 180,
                 padding: "6px 10px",
                 fontSize: 11,
                 background: "var(--bg)",
@@ -376,25 +357,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
 
-          <div
-            className="settings-item"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
+          <div className="settings-item">
             <div>
-              <div
-                className="settings-label"
-                style={{ fontSize: "13px", fontWeight: 500 }}
-              >
-                Installed Plugins
-              </div>
-              <div
-                className="settings-desc"
-                style={{ fontSize: "11px", color: "var(--muted)" }}
-              >
+              <div className="settings-label">Installed Plugins</div>
+              <div className="settings-desc">
                 {pluginsList.length} third-party extensions active
               </div>
             </div>
@@ -435,18 +401,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }}
           >
             <div>
-              <h3
-                style={{
-                  fontSize: "12px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "var(--accent)",
-                  margin: 0,
-                  fontWeight: 600,
-                }}
-              >
-                This World
-              </h3>
+              <h3 className="settings-section-title">This World</h3>
               <p
                 style={{
                   fontSize: "11px",
@@ -479,7 +434,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div
               style={{
                 fontSize: "11px",
-                color: "var(--danger, #c0392b)",
+                color: "var(--danger)",
                 marginBottom: "8px",
               }}
             >
@@ -487,16 +442,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           )}
 
-          <div className="settings-item">
+          <div className="settings-field">
             <div
               className="settings-label"
-              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "6px" }}
+              style={{ marginBottom: "6px" }}
             >
               Persona
             </div>
             <div
               className="settings-desc"
-              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "6px" }}
+              style={{ marginBottom: "6px" }}
             >
               Who the Muse believes it is in this world. When set, it replaces
               the default assistant opening; leave blank to use the default
@@ -529,22 +484,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* Style template */}
           <div
-            className="settings-item"
+            className="settings-field"
             style={{
               borderTop: "1px solid var(--border)",
-              paddingTop: "12px",
-              marginTop: "12px",
+              marginTop: "0",
             }}
           >
             <div
               className="settings-label"
-              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "6px" }}
+              style={{ marginBottom: "6px" }}
             >
               Image Style Template
             </div>
             <div
               className="settings-desc"
-              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "6px" }}
+              style={{ marginBottom: "6px" }}
             >
               How images in this world look — aesthetics and tone, prepended
               to every generated image prompt.
@@ -576,22 +530,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* World predictability override */}
           <div
-            className="settings-item"
+            className="settings-field"
             style={{
               borderTop: "1px solid var(--border)",
-              paddingTop: "12px",
-              marginTop: "12px",
+              marginTop: "0",
             }}
           >
             <div
               className="settings-label"
-              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}
+              style={{ marginBottom: "4px" }}
             >
               Predictability
             </div>
             <div
               className="settings-desc"
-              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "8px" }}
+              style={{ marginBottom: "8px" }}
             >
               This world's Firm ↔ Wild position. Leave unset to follow the
               global default; the session toggle in the Architect header
@@ -673,22 +626,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* Bible conditioning pins */}
           <div
-            className="settings-item"
+            className="settings-field"
             style={{
               borderTop: "1px solid var(--border)",
-              paddingTop: "12px",
-              marginTop: "12px",
+              marginTop: "0",
             }}
           >
             <div
               className="settings-label"
-              style={{ fontSize: "13px", fontWeight: 500, marginBottom: "4px" }}
+              style={{ marginBottom: "4px" }}
             >
               Bible Conditioning
             </div>
             <div
               className="settings-desc"
-              style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "8px" }}
+              style={{ marginBottom: "8px" }}
             >
               Pinned notes are always injected into the Muse's context. Unpin
               to let a note drop out of conditioning as play moves on.
@@ -756,7 +708,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div
                 style={{
                   fontSize: "11px",
-                  color: "var(--danger, #c0392b)",
+                  color: "var(--danger)",
                   marginTop: "8px",
                 }}
               >
@@ -800,16 +752,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               paddingBottom: "12px",
             }}
           >
-            <h3
-              style={{
-                fontSize: "14px",
-                color: "var(--fg)",
-                fontWeight: 600,
-                margin: 0,
-              }}
-            >
-              Model & Service Integrations
-            </h3>
+            <h3 className="settings-section-title">Model & Service Integrations</h3>
             <p
               style={{
                 fontSize: "11px",
@@ -826,9 +769,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div
             className="settings-item"
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
               border: "1px solid var(--border)",
               borderRadius: 0,
               padding: "12px 14px",
@@ -836,16 +776,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }}
           >
             <div>
-              <div
-                className="settings-label"
-                style={{ fontSize: "13px", fontWeight: 500 }}
-              >
-                Allow Local / Private Providers
-              </div>
-              <div
-                className="settings-desc"
-                style={{ fontSize: "11px", color: "var(--muted)" }}
-              >
+              <div className="settings-label">Allow Local / Private Providers</div>
+              <div className="settings-desc">
                 Enable connections to localhost / LAN addresses (Ollama,
                 ComfyUI, etc.). Disable to only allow public cloud endpoints.
               </div>
@@ -870,19 +802,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* Type Tabs */}
           <div>
-            <label
-              style={{
-                fontSize: "10px",
-                color: "var(--muted)",
-                fontWeight: 600,
-                display: "block",
-                marginBottom: "8px",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Category
-            </label>
+            <label className="settings-field-label">Category</label>
             <div
               style={{
                 display: "flex",
@@ -937,19 +857,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* Integration Cards Grid */}
           <div>
-            <label
-              style={{
-                fontSize: "10px",
-                color: "var(--muted)",
-                fontWeight: 600,
-                display: "block",
-                marginBottom: "8px",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Integration Provider
-            </label>
+            <label className="settings-field-label">Integration Provider</label>
             <div
               style={{
                 display: "grid",
@@ -1084,7 +992,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <>
               <div
                 style={{
-                  background: "oklch(65% 0.12 85 / 0.08)",
+                  background: "oklch(from var(--warn) l c h / 0.08)",
                   border: "1px solid var(--warn)",
                   color: "var(--warn)",
                   padding: "10px 12px",
@@ -1279,15 +1187,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
 
                   <div
-                    style={{
-                      fontSize: "10px",
-                      color: "var(--muted)",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                      marginTop: "16px",
-                      marginBottom: "8px",
-                    }}
+                    className="settings-field-label"
+                    style={{ marginTop: "16px" }}
                   >
                     Advanced Sampling
                   </div>
@@ -1605,7 +1506,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   style={{
                     marginTop: "10px",
                     padding: "8px 12px",
-                    background: "oklch(65% 0.12 20 / 0.08)",
+                    background: "oklch(from var(--danger) l c h / 0.08)",
                     border: "1px solid var(--danger)",
                     color: "var(--danger)",
                     borderRadius: 0,

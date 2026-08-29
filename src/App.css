@@ -1323,13 +1323,14 @@
 /* ── Settings View ── */
 .settings-list {
   width: 100%;
-  max-width: 680px;
+  max-width: 720px;
 }
 
 .settings-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
@@ -1338,14 +1339,49 @@
   border-bottom: none;
 }
 
+/* Stacked form group (label above control) — used in "This World" */
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-field:last-child {
+  border-bottom: none;
+}
+
 .settings-label {
   font-size: 13px;
+  font-weight: 500;
 }
 
 .settings-desc {
   font-size: 11px;
   color: var(--muted);
   margin-top: 2px;
+}
+
+/* Section header — uppercase accent, shared across all settings cards */
+.settings-section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Small uppercase field label (Category, Integration Provider, Advanced) */
+.settings-field-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: block;
+  margin-bottom: 8px;
 }
 
 .plugin-badge {
