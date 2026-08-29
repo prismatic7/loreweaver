@@ -155,6 +155,10 @@ pub fn import_world_impl(campaigns_root: &Path, zip_path: &str) -> Result<String
 /// `Characters/`, `bible/`) and a world.json. If `source` is given, mirror its
 /// directory structure (empty dirs) and copy a world.json skeleton (structure,
 /// no content).
+///
+/// Fresh worlds get the canon 8-file bible set written with starter templates
+/// so they are ready for editing immediately. Mirrored worlds only get bible
+/// files that exist in the source (never overwritten).
 pub fn scaffold_world_impl(
     campaigns_root: &Path,
     name: &str,
@@ -191,6 +195,27 @@ pub fn scaffold_world_impl(
         }
     }
 
+    // Write the canon bible notes. Fresh worlds get starter templates; mirrored
+    // worlds only get files the source actually has (never overwrite).
+    let bible_dir = world_dir.join("bible");
+    if let Some(src) = source {
+        let src_bible = Path::new(src).join("bible");
+        for file in BIBLE_FILES {
+            let src_file = src_bible.join(file);
+            if src_file.is_file() {
+                let contents = std::fs::read_to_string(&src_file)
+                    .map_err(|e| format!("Failed to read source bible file {}: {}", file, e))?;
+                std::fs::write(bible_dir.join(file), contents)
+                    .map_err(|e| format!("Failed to write bible file {}: {}", file, e))?;
+            }
+        }
+    } else {
+        for (file, template) in BIBLE_TEMPLATES {
+            std::fs::write(bible_dir.join(file), template)
+                .map_err(|e| format!("Failed to write bible file {}: {}", file, e))?;
+        }
+    }
+
     // Write a default manifest (id/name = folder name).
     let manifest = worlds::load_manifest(world_dir.to_str().unwrap())?;
     let json = worlds::manifest_to_json(&manifest)?;
@@ -199,6 +224,55 @@ pub fn scaffold_world_impl(
 
     Ok(world_dir.to_string_lossy().to_string())
 }
+
+/// Canon bible conditioning files, in injection order (matches `agent.rs`).
+pub const BIBLE_FILES: [&str; 8] = [
+    "TONE.md",
+    "TOUCHSTONES.md",
+    "THE_PLAN.md",
+    "CONSPIRACY.md",
+    "PEOPLE.md",
+    "PLACES.md",
+    "RULES.md",
+    "SESSION_LOG.md",
+];
+
+/// Starter templates for fresh worlds — short, editable, and shaped so the
+/// Muse's conditioning reads naturally from the first session.
+pub const BIBLE_TEMPLATES: [(&str, &str); 8] = [
+    (
+        "TONE.md",
+        "# Tone\n\nHow this world should feel. Voice, register, mood — the\nMuse reads this before every reply.\n\n",
+    ),
+    (
+        "TOUCHSTONES.md",
+        "# Touchstones\n\nWorks, images, sounds, or scenes this world is in conversation\nwith. One per line, as specific as you like.\n\n",
+    ),
+    (
+        "THE_PLAN.md",
+        "# The Plan\n\nWhat is happening in this world right now. The current situation,\nwhat the players know, and what is moving underneath.\n\n",
+    ),
+    (
+        "CONSPIRACY.md",
+        "# Conspiracy\n\nWhat is really going on. Hidden agendas, secret histories, and\nwhat nobody has noticed yet.\n\n",
+    ),
+    (
+        "PEOPLE.md",
+        "# People\n\nWho matters in this world. Names, faces, relationships, and what\nthey want.\n\n",
+    ),
+    (
+        "PLACES.md",
+        "# Places\n\nWhere this world happens. Locations worth remembering and\nwhat makes each one distinct.\n\n",
+    ),
+    (
+        "RULES.md",
+        "# Rules\n\nHow this world works. Systems, constraints, and the things that\nare always true here.\n\n",
+    ),
+    (
+        "SESSION_LOG.md",
+        "# Session Log\n\nWhat has happened so far. Date each entry; the Muse uses this\nto remember where play left off.\n\n",
+    ),
+];
 
 #[cfg(test)]
 mod tests {
@@ -246,6 +320,13 @@ mod tests {
         assert!(p.join("Characters").is_dir());
         assert!(p.join("bible").is_dir());
         assert!(p.join("world.json").is_file());
+        // Fresh worlds get the canon bible set, ready for editing.
+        for file in BIBLE_FILES {
+            let f = p.join("bible").join(file);
+            assert!(f.is_file(), "missing bible file: {}", file);
+            let contents = std::fs::read_to_string(&f).unwrap();
+            assert!(!contents.trim().is_empty(), "empty bible file: {}", file);
+        }
         let m = worlds::load_manifest(p.to_str().unwrap()).unwrap();
         assert_eq!(m.id, "new-world");
     }
@@ -260,7 +341,9 @@ mod tests {
         let src = tmp.path().join("src-world");
         std::fs::create_dir_all(src.join("Worldbuilding/Cities")).unwrap();
         std::fs::create_dir_all(src.join("Characters")).unwrap();
+        std::fs::create_dir_all(src.join("bible")).unwrap();
         std::fs::write(src.join("Worldbuilding/Cities/Oslo.md"), "# Oslo\ncontent").unwrap();
+        std::fs::write(src.join("bible/TONE.md"), "Grim.").unwrap();
 
         let path = scaffold_world_impl(&campaigns, "mirror", Some(src.to_str().unwrap())).unwrap();
         let p = Path::new(&path);
@@ -270,6 +353,13 @@ mod tests {
         // Content NOT copied.
         assert!(!p.join("Worldbuilding/Cities/Oslo.md").exists());
         assert!(p.join("world.json").is_file());
+        // Bible files present in the source are copied; absent ones are not
+        // fabricated for mirrored worlds.
+        assert_eq!(
+            std::fs::read_to_string(p.join("bible/TONE.md")).unwrap(),
+            "Grim."
+        );
+        assert!(!p.join("bible/RULES.md").exists());
     }
 
     #[test]
