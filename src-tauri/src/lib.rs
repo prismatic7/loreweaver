@@ -1376,6 +1376,30 @@ async fn get_world_manifest(state: State<'_, AppState>) -> Result<WorldManifest,
     worlds::ensure_manifest(&vault_path)
 }
 
+/// Lists the markdown files currently in the active world's `bible/` folder.
+/// The settings pane renders one toggle per file, so files added to the folder
+/// on disk become available for pinning without a code change.
+#[tauri::command]
+async fn list_bible_files(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let vault_path = state.vault_path.lock().await;
+    let bible_dir = std::path::Path::new(&*vault_path).join("bible");
+    if !bible_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut files: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&bible_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
+            if let Some(name) = path.file_name() {
+                files.push(name.to_string_lossy().into_owned());
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
 /// Updates the pinned bible conditioning files for the active world.
 #[tauri::command]
 async fn update_bible_files(
@@ -3254,6 +3278,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             capture_note,
             clip_webpage,
             get_world_manifest,
+            list_bible_files,
             update_bible_files,
             list_worlds,
             create_world,

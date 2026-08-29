@@ -291,6 +291,12 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<WorldManifest, String>`
 - **Description:** Returns the manifest (`world.json`) of the active world campaign, creating a default manifest if none exists.
 
+### `list_bible_files`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<String>, String>`
+- **Description:** Lists the markdown files currently in the active world's `bible/` folder, sorted. The settings pane renders one pin toggle per file, so files added to the folder on disk become available for pinning without a code change.
+
 ### `update_bible_files`
 
 - **Arguments:** `files: Vec<String>`

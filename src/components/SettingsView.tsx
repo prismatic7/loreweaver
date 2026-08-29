@@ -78,6 +78,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     null
   );
   const [biblePins, setBiblePins] = useState<string[] | null>(null);
+  const [bibleFiles, setBibleFiles] = useState<string[]>([]);
   const [biblePinsSaved, setBiblePinsSaved] = useState(false);
   const [biblePinsError, setBiblePinsError] = useState<string | null>(null);
 
@@ -104,6 +105,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       })
       .catch(() => {
         if (!cancelled) setBiblePins([]);
+      });
+    // The pane renders one toggle per file actually present in bible/ on
+    // disk, so files added to the folder show up here without a code change.
+    invoke<string[]>("list_bible_files")
+      .then((files) => {
+        if (!cancelled) setBibleFiles(files);
+      })
+      .catch(() => {
+        if (!cancelled) setBibleFiles([]);
       });
     return () => {
       cancelled = true;
@@ -647,16 +657,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             {biblePins !== null ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {[
-                  "TONE.md",
-                  "TOUCHSTONES.md",
-                  "THE_PLAN.md",
-                  "CONSPIRACY.md",
-                  "PEOPLE.md",
-                  "PLACES.md",
-                  "RULES.md",
-                  "SESSION_LOG.md",
-                ].map((file) => {
+                {bibleFiles.length === 0 ? (
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    No bible notes yet — add a markdown file to the world's
+                    bible/ folder and it will appear here.
+                  </div>
+                ) : (
+                  bibleFiles.map((file) => {
                   const pinned = biblePins.includes(file);
                   const unpinned = biblePins.length === 0;
                   return (
@@ -696,7 +703,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       )}
                     </label>
                   );
-                })}
+                  })
+                )}
               </div>
             ) : (
               <div style={{ fontSize: 11, color: "var(--muted)" }}>
