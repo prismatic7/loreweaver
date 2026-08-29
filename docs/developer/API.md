@@ -307,7 +307,7 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 
 - **Arguments:** `name: &str`, `scaffold_from: Option<&str>`
 - **Returns:** `Result<String, String>`
-- **Description:** Creates a new campaign world folder and manifest, optionally copying folders from a template.
+- **Description:** Creates a new campaign world folder and manifest, optionally copying folders from a template. Fresh worlds get the canon 8-file bible set (`bible/{TONE,TOUCHSTONES,THE_PLAN,CONSPIRACY,PEOPLE,PLACES,RULES,SESSION_LOG}.md`) written with starter templates, ready for editing. When `scaffold_from` is given, bible files present in the source are copied instead (never overwritten).
 
 ### `export_world`
 
