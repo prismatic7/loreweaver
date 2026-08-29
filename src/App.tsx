@@ -48,6 +48,7 @@ import { findBacklinks } from "./utils/links";
 
 import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
 import { CommandPalette, type PaletteSelection } from "./components/CommandPalette";
+import { Toast, useToast } from "./components/Toast";
 
 // Views offered by the Ctrl/Cmd+K palette, in nav order.
 const PALETTE_VIEWS: Array<{ id: AppView; label: string }> = [
@@ -190,6 +191,8 @@ function App() {
     confirm,
   } = useDialogs();
 
+  const { toast, showToast, dismissToast } = useToast();
+
   // True when the current note has edits that have not yet been persisted.
   // Mirrors the dirty check inside immediateSave() so the navigation guard and
   // the autosave agree on what counts as "unsaved".
@@ -329,6 +332,13 @@ function App() {
     llmModel,
     llmApiKey,
     llmBaseUrl,
+    onProgress: (progress) => {
+      if (progress.phase === "pages") {
+        showToast(`Reading pages… ${progress.processed}/${progress.total}`);
+      } else {
+        showToast(`AI formatting… batch ${progress.processed}/${progress.total}`);
+      }
+    },
   });
 
   const [contextMenu, setContextMenu] = useState<{
@@ -1159,6 +1169,7 @@ function App() {
         recentNoteIds={recentNoteIds}
         onSelect={handlePaletteSelect}
       />
+      {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </AppShell>
     </>
   );
