@@ -10,6 +10,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
+}));
+
 const baseProps = {
   register: vi.fn().mockReturnValue({}),
   handleSubmit: vi.fn((fn) => async (e: any) => {

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Brain,
   FileText,
@@ -99,26 +100,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       .catch(() => {
         if (!cancelled) setVaultSettings(null);
       });
-    invoke<{ bible_files?: string[] }>("get_world_manifest")
-      .then((manifest) => {
-        if (!cancelled) setBiblePins(manifest.bible_files ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setBiblePins([]);
-      });
-    // The pane renders one toggle per file actually present in bible/ on
-    // disk, so files added to the folder show up here without a code change.
-    invoke<string[]>("list_bible_files")
-      .then((files) => {
-        if (!cancelled) setBibleFiles(files);
-      })
-      .catch(() => {
-        if (!cancelled) setBibleFiles([]);
-      });
     return () => {
       cancelled = true;
     };
   }, [vaultPath]);
+
+  // The pane renders one toggle per file actually present in bible/ on
+  // disk, so files added to the folder show up here without a code change.
+  const refreshBiblePane = useCallback(() => {
+    if (!vaultPath) return;
+    invoke<{ bible_files?: string[] }>("get_world_manifest")
+      .then((manifest) => setBiblePins(manifest.bible_files ?? []))
+      .catch(() => setBiblePins([]));
+    invoke<string[]>("list_bible_files")
+      .then((files) => setBibleFiles(files))
+      .catch(() => setBibleFiles([]));
+  }, [vaultPath]);
+
+  useEffect(() => {
+    refreshBiblePane();
+    // The vault watcher already emits `vault-changed` for any .md change
+    // under the vault (bible/ included), so the pane stays live as files
+    // are added, renamed, or removed on disk.
+    const unlisten = listen("vault-changed", () => refreshBiblePane());
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, [refreshBiblePane]);
 
   const saveBiblePins = () => {
     if (biblePins === null) return;
