@@ -198,6 +198,7 @@ export function useSettings() {
   const imageBaseUrl = watch("image_base_url");
   const ttsProvider = watch("tts_provider");
   const ttsApiKey = watch("tts_api_key");
+  const ttsVoice = watch("tts_voice");
   const sttProvider = watch("stt_provider");
   const sttApiKey = watch("stt_api_key");
   const ttsBaseUrl = watch("tts_base_url");
@@ -229,6 +230,7 @@ export function useSettings() {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    ttsVoice,
     ttsBaseUrl,
     sttProvider,
     sttApiKey,

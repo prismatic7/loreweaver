@@ -12,6 +12,7 @@ interface SessionToolsDeps {
   imageBaseUrl: string;
   ttsProvider: string;
   ttsApiKey: string;
+  ttsVoice?: string;
   ttsBaseUrl: string;
   sttProvider: string;
   sttApiKey: string;
@@ -29,6 +30,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     imageBaseUrl,
     ttsProvider,
     ttsApiKey,
+    ttsVoice,
     ttsBaseUrl,
     sttProvider,
     sttApiKey,
@@ -81,6 +83,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
   const [ttsText, setTtsText] = useState("");
   const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
   const [generatedSpeechUrl, setGeneratedSpeechUrl] = useState<string>("");
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   const rollDiceNotation = (notation: string) => {
     if (!notation.trim()) return;
@@ -174,19 +177,22 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     if (!ttsText.trim()) return;
     setIsGeneratingSpeech(true);
     setGeneratedSpeechUrl("");
+    setSpeechError(null);
 
     invoke<string>("generate_speech", {
       text: ttsText,
       provider: ttsProvider,
       apiKey: ttsApiKey || null,
-      voice: ttsProvider === "openai" ? "alloy" : null,
+      voice:
+        (ttsVoice && ttsVoice !== "default" ? ttsVoice : null) ||
+        (ttsProvider === "openai" ? "alloy" : null),
       baseUrl: ttsBaseUrl || null,
     })
       .then((audioUrl) => {
         setGeneratedSpeechUrl(audioUrl);
       })
       .catch((err) => {
-        alert("Speech generation failed: " + err);
+        setSpeechError(String(err));
       })
       .finally(() => {
         setIsGeneratingSpeech(false);
@@ -250,6 +256,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     setTtsText,
     isGeneratingSpeech,
     generatedSpeechUrl,
+    speechError,
     handleGenerateSpeech,
     isTranscribing,
     transcribedText,

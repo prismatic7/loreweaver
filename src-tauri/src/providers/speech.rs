@@ -42,13 +42,22 @@ pub fn generate_speech(
                 "response_format": "mp3",
             });
 
-            let response = agent
+            let response = match agent
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(30))
                 .set("Authorization", &format!("Bearer {}", key.trim()))
                 .set("Content-Type", "application/json")
                 .send_json(body)
-                .map_err(|e| format!("OpenAI TTS request failed: {:?}", e))?;
+            {
+                Ok(resp) => resp,
+                Err(ureq::Error::Status(code, resp)) => {
+                    let err_text = resp
+                        .into_string()
+                        .unwrap_or_else(|_| format!("HTTP {}", code));
+                    return Err(format!("OpenAI TTS failed (HTTP {}): {}", code, err_text));
+                }
+                Err(e) => return Err(format!("OpenAI TTS request failed: {:?}", e)),
+            };
 
             let mut reader = response.into_reader();
             let mut bytes = Vec::new();
@@ -72,13 +81,22 @@ pub fn generate_speech(
                 "voice_settings": { "stability": 0.5, "similarity_boost": 0.5 },
             });
 
-            let response = agent
+            let response = match agent
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(30))
                 .set("xi-api-key", key.trim())
                 .set("Content-Type", "application/json")
                 .send_json(body)
-                .map_err(|e| format!("ElevenLabs TTS request failed: {:?}", e))?;
+            {
+                Ok(resp) => resp,
+                Err(ureq::Error::Status(code, resp)) => {
+                    let err_text = resp
+                        .into_string()
+                        .unwrap_or_else(|_| format!("HTTP {}", code));
+                    return Err(format!("ElevenLabs TTS failed (HTTP {}): {}", code, err_text));
+                }
+                Err(e) => return Err(format!("ElevenLabs TTS request failed: {:?}", e)),
+            };
 
             let mut reader = response.into_reader();
             let mut bytes = Vec::new();
@@ -88,26 +106,64 @@ pub fn generate_speech(
             Ok(format!("data:audio/mp3;base64,{}", encoded))
         }
         "local" => {
-            // Best-effort local TTS via espeak-ng if available on the system.
-            // No heavy Rust dependency; shells out to the espeak-ng binary.
-            let text_arg = text.to_string();
-            let voice_arg = voice.unwrap_or("en").to_string();
-            let result = std::process::Command::new("espeak-ng")
-                .args(["-v", &voice_arg, "-w", "-", &text_arg])
-                .output();
-            match result {
-                Ok(out) if out.status.success() && !out.stdout.is_empty() => {
-                    let encoded = general_purpose::STANDARD.encode(&out.stdout);
-                    Ok(format!("data:audio/wav;base64,{}", encoded))
+            #[cfg(target_os = "macos")]
+            {
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0);
+                let mut tmp_path = std::env::temp_dir();
+                tmp_path.push(format!("loreweaver_say_{}.wav", timestamp));
+                let tmp_str = tmp_path.to_string_lossy().to_string();
+
+                let mut cmd = std::process::Command::new("/usr/bin/say");
+                if let Some(v) = voice.filter(|v| !v.trim().is_empty() && *v != "default") {
+                    cmd.args(["-v", v.trim()]);
                 }
-                Ok(_) => Err(
-                    "Local TTS (espeak-ng) produced no audio. Install espeak-ng or configure an API-based provider."
-                        .to_string(),
-                ),
-                Err(e) => Err(format!(
-                    "Local TTS (espeak-ng) unavailable: {}. Install espeak-ng or configure an API-based provider.",
-                    e
-                )),
+                cmd.args(["-o", &tmp_str, "--data-format=LEI16@22050", text]);
+
+                let status = cmd.status().map_err(|e| {
+                    format!("Failed to execute macOS 'say' TTS: {}", e)
+                })?;
+
+                if !status.success() {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return Err(format!("macOS 'say' exited with status: {}", status));
+                }
+
+                let bytes = std::fs::read(&tmp_path).map_err(|e| {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    format!("Failed to read generated speech audio: {}", e)
+                })?;
+                let _ = std::fs::remove_file(&tmp_path);
+
+                let encoded = general_purpose::STANDARD.encode(&bytes);
+                Ok(format!("data:audio/wav;base64,{}", encoded))
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                // Best-effort local TTS via espeak-ng if available on the system.
+                // No heavy Rust dependency; shells out to the espeak-ng binary.
+                let text_arg = text.to_string();
+                let voice_arg = voice.unwrap_or("en").to_string();
+                let result = std::process::Command::new("espeak-ng")
+                    .args(["-v", &voice_arg, "-w", "-", &text_arg])
+                    .output();
+                match result {
+                    Ok(out) if out.status.success() && !out.stdout.is_empty() => {
+                        let encoded = general_purpose::STANDARD.encode(&out.stdout);
+                        Ok(format!("data:audio/wav;base64,{}", encoded))
+                    }
+                    Ok(_) => Err(
+                        "Local TTS (espeak-ng) produced no audio. Install espeak-ng or configure an API-based provider."
+                            .to_string(),
+                    ),
+                    Err(e) => Err(format!(
+                        "Local TTS (espeak-ng) unavailable: {}. Install espeak-ng or configure an API-based provider.",
+                        e
+                    )),
+                }
             }
         }
         other => Err(format!("Unsupported TTS provider: {}", other)),
@@ -325,3 +381,35 @@ fn transcribe_local(audio_bytes: &[u8], base_url: Option<&str>) -> Result<String
         .ok_or_else(|| "Local STT produced no result".to_string())?;
     Ok(result.text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_speech_empty_text_error() {
+        let agent = ureq::Agent::new();
+        let res = generate_speech("", "local", None, None, None, &agent);
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), "Text is required for speech generation");
+    }
+
+    #[test]
+    fn test_generate_speech_unsupported_provider() {
+        let agent = ureq::Agent::new();
+        let res = generate_speech("Hello", "unknown_provider", None, None, None, &agent);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Unsupported TTS provider"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_generate_speech_local_macos() {
+        let agent = ureq::Agent::new();
+        let res = generate_speech("Testing voice synthesis", "local", None, None, None, &agent);
+        assert!(res.is_ok());
+        let data_url = res.unwrap();
+        assert!(data_url.starts_with("data:audio/wav;base64,"));
+    }
+}
+
