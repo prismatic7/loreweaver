@@ -17,7 +17,7 @@ export interface PdfProgress {
   total: number;
 }
 
-const BREAKOUT_PREFIX_REGEX = /^(SIDEBAR|EXAMPLE|NOTE|TIP|WARNING|CAUTION|IMPORTANT|OPTIONAL RULE|RULE VARIANT)[:\-]\s*(.*)$/i;
+const BREAKOUT_PREFIX_REGEX = /^(SIDEBAR|EXAMPLE|NOTE|TIP|WARNING|CAUTION|IMPORTANT|OPTIONAL RULE|RULE VARIANT)[:-]\s*(.*)$/i;
 
 const CALLOUT_TYPE_MAP: Record<string, string> = {
   sidebar: "NOTE",

@@ -88,6 +88,7 @@ function App() {
     editFrontmatter,
     setEditFrontmatter,
     trashedNotes,
+    discoveredFolders,
     currentCanvasFolder,
     setCurrentCanvasFolder,
     activeEditingNoteIdRef,
@@ -101,6 +102,17 @@ function App() {
     deleteTrashedNote,
     emptyTrash,
     handleNewNote,
+    createFolder: _createFolder,
+    renameNote,
+    renameFolder,
+    moveNote,
+    moveFolder,
+    duplicateNote,
+    archiveNote,
+    archiveFolder,
+    changeNoteIcon,
+    revealInFileManager,
+    importFiles,
     trashFolder,
     normalizeCampaignMarkdown,
   } = useNotes(vaultPath);
@@ -823,8 +835,8 @@ function App() {
           activeFolderDropdown={activeFolderDropdown}
           setActiveFolderDropdown={setActiveFolderDropdown}
           renderFolderDropdown={renderFolderDropdown}
-          handleNewNote={() => handleNewNote()}
-          handleNewFolder={handleNewFolder}
+          handleNewNote={(folder) => handleNewNote(folder)}
+          handleNewFolder={(parentFolder) => handleNewFolder(parentFolder)}
           handleTrashNote={vaultActions.handleTrashNote}
           renderMarkdown={renderMarkdown}
           currentCanvasFolder={currentCanvasFolder}
@@ -838,6 +850,17 @@ function App() {
           provenanceTaxonomy={provenanceTaxonomy}
           handleGenerateImageFromNote={sessionTools.handleGenerateImageFromNote}
           isGeneratingImage={sessionTools.isGeneratingImage}
+          discoveredFolders={discoveredFolders}
+          onRenameNote={renameNote}
+          onRenameFolder={renameFolder}
+          onMoveNote={moveNote}
+          onMoveFolder={moveFolder}
+          onDuplicateNote={duplicateNote}
+          onArchiveNote={archiveNote}
+          onArchiveFolder={archiveFolder}
+          onChangeNoteIcon={changeNoteIcon}
+          onRevealInFileManager={revealInFileManager}
+          onImportFiles={importFiles}
         />
       )}
 

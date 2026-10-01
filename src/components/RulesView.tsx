@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from "react";
+import React, { useState, useMemo, lazy, Suspense } from "react";
 import {
   BookOpen,
   ChevronRight,
@@ -10,6 +10,9 @@ import {
   Plus,
   Trash2,
   FolderOpen,
+  Search,
+  ArrowUpDown,
+  X,
 } from "lucide-react";
 import { RuleEntry } from "../types";
 
@@ -88,6 +91,35 @@ export const RulesView: React.FC<RulesViewProps> = ({
   currentRule,
   renderMarkdown,
 }) => {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+  const filteredRulesByFolder = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const result: Record<string, RuleEntry[]> = {};
+
+    Object.entries(rulesByFolder).forEach(([folderName, folderRules]) => {
+      const filtered = folderRules.filter(
+        (r) =>
+          !q ||
+          r.title.toLowerCase().includes(q) ||
+          r.category.toLowerCase().includes(q) ||
+          r.content.toLowerCase().includes(q),
+      );
+
+      if (filtered.length > 0 || (folderName.toLowerCase().includes(q) && q)) {
+        result[folderName] = [...filtered].sort((a, b) =>
+          sortOrder === "asc"
+            ? a.title.localeCompare(b.title, undefined, { numeric: true })
+            : b.title.localeCompare(a.title, undefined, { numeric: true }),
+        );
+      }
+    });
+
+    return result;
+  }, [rulesByFolder, searchQuery, sortOrder]);
+
   return (
     <div
       className="view-container"
@@ -111,9 +143,9 @@ export const RulesView: React.FC<RulesViewProps> = ({
           <div
             style={{
               display: "flex",
-              gap: "6px",
-              marginBottom: "12px",
-              padding: "0 4px",
+              gap: "4px",
+              marginBottom: "8px",
+              padding: "0 2px",
             }}
           >
             <button
@@ -121,7 +153,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
               onClick={() => handleNewRule()}
               style={{
                 flex: 1,
-                padding: "6px 8px",
+                padding: "6px 6px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -138,7 +170,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
               onClick={handleNewRuleFolder}
               style={{
                 flex: 1,
-                padding: "6px 8px",
+                padding: "6px 6px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -154,7 +186,92 @@ export const RulesView: React.FC<RulesViewProps> = ({
             >
               <FolderPlus size={12} /> Folder
             </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+              style={{
+                padding: "6px 7px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "11px",
+                cursor: "pointer",
+                background: "transparent",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                color: "var(--fg)",
+              }}
+              title={`Sort ${sortOrder === "asc" ? "A-Z" : "Z-A"}`}
+            >
+              <ArrowUpDown size={12} />
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setShowSearch(!showSearch)}
+              style={{
+                padding: "6px 7px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "11px",
+                cursor: "pointer",
+                background: showSearch ? "var(--surface-hover)" : "transparent",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                color: "var(--fg)",
+              }}
+              title="Filter rulebook entries"
+            >
+              <Search size={12} />
+            </button>
           </div>
+
+          {showSearch && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                padding: "4px 8px",
+                marginBottom: "8px",
+              }}
+            >
+              <Search size={11} style={{ color: "var(--muted)" }} />
+              <input
+                type="text"
+                placeholder="Filter rules..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  fontSize: "11px",
+                  color: "var(--fg)",
+                  width: "100%",
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    padding: "0 2px",
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+          )}
 
           <span
             className="section-label"
@@ -167,7 +284,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
             Rulebook Entries
           </span>
 
-          {Object.entries(rulesByFolder).map(
+          {Object.entries(filteredRulesByFolder).map(
             ([folderName, folderRules]) => {
               const isCollapsed =
                 !!collapsedFolders[`rule-folder-${folderName}`];

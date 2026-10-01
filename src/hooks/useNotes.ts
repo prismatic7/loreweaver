@@ -232,6 +232,219 @@ export function useNotes(vaultPath: string) {
     [saveNote],
   );
 
+  const createFolder = useCallback(
+    async (folderPath: string) => {
+      const clean = folderPath.replace(/^\/+|\/+$/g, "");
+      if (!clean) return;
+      try {
+        await invoke("create_folder", { folderPath: clean });
+        await loadFolders();
+      } catch (err) {
+        console.error("Failed to create folder:", err);
+        throw err;
+      }
+    },
+    [loadFolders],
+  );
+
+  const renameNote = useCallback(
+    async (note: CampaignNote, newTitle: string) => {
+      const parts = note.path.split("/");
+      parts.pop();
+      const dir = parts.join("/");
+      const sanitized = newTitle.trim().replace(/[\\/:*?"<>|]/g, "_");
+      const newPath = dir ? `${dir}/${sanitized}.md` : `${sanitized}.md`;
+      if (newPath === note.path && note.title === newTitle.trim()) return;
+
+      try {
+        const updated = await invoke<CampaignNote>("rename_note", {
+          oldPath: note.path,
+          newPath,
+        });
+        await refresh();
+        if (selectedNoteId === note.id) {
+          setEditTitle(updated.title);
+        }
+      } catch (err) {
+        console.error("Failed to rename note:", err);
+        throw err;
+      }
+    },
+    [refresh, selectedNoteId],
+  );
+
+  const renameFolder = useCallback(
+    async (oldFolder: string, newFolderName: string) => {
+      const cleanOld = oldFolder.replace(/^\/+|\/+$/g, "");
+      const parts = cleanOld.split("/");
+      parts.pop();
+      const parent = parts.join("/");
+      const sanitized = newFolderName.trim().replace(/[\\/:*?"<>|]/g, "_");
+      const newFolder = parent ? `${parent}/${sanitized}` : sanitized;
+      if (newFolder === cleanOld) return;
+
+      try {
+        await invoke<CampaignNote[]>("rename_folder", {
+          oldFolder: cleanOld,
+          newFolder,
+        });
+        await refresh();
+      } catch (err) {
+        console.error("Failed to rename folder:", err);
+        throw err;
+      }
+    },
+    [refresh],
+  );
+
+  const moveNote = useCallback(
+    async (notePath: string, targetFolder: string) => {
+      const cleanTarget = targetFolder.replace(/^\/+|\/+$/g, "");
+      try {
+        await invoke<CampaignNote>("move_note", {
+          notePath,
+          targetFolder: cleanTarget,
+        });
+        await refresh();
+      } catch (err) {
+        console.error("Failed to move note:", err);
+        throw err;
+      }
+    },
+    [refresh],
+  );
+
+  const moveFolder = useCallback(
+    async (folderPath: string, targetFolder: string) => {
+      const cleanFolder = folderPath.replace(/^\/+|\/+$/g, "");
+      const folderName = cleanFolder.split("/").pop() || cleanFolder;
+      const cleanTarget = targetFolder.replace(/^\/+|\/+$/g, "");
+      const newFolder = cleanTarget ? `${cleanTarget}/${folderName}` : folderName;
+      if (newFolder === cleanFolder) return;
+
+      try {
+        await invoke<CampaignNote[]>("rename_folder", {
+          oldFolder: cleanFolder,
+          newFolder,
+        });
+        await refresh();
+      } catch (err) {
+        console.error("Failed to move folder:", err);
+        throw err;
+      }
+    },
+    [refresh],
+  );
+
+  const duplicateNote = useCallback(
+    async (note: CampaignNote) => {
+      const newId = `note-${Date.now()}`;
+      const parts = note.path.split("/");
+      const filename = parts.pop() || "Note.md";
+      const dir = parts.join("/");
+      const base = filename.replace(/\.md$/, "");
+      const newFilename = `${base}_Copy.md`;
+      const newPath = dir ? `${dir}/${newFilename}` : newFilename;
+      const copyNote: CampaignNote = {
+        ...note,
+        id: newId,
+        title: `${note.title} (Copy)`,
+        path: newPath,
+      };
+      try {
+        await saveNote(copyNote);
+        setSelectedNoteId(newId);
+        await refresh();
+      } catch (err) {
+        console.error("Failed to duplicate note:", err);
+        throw err;
+      }
+    },
+    [saveNote, refresh],
+  );
+
+  const archiveNote = useCallback(
+    async (note: CampaignNote) => {
+      await moveNote(note.path, "Archive");
+    },
+    [moveNote],
+  );
+
+  const archiveFolder = useCallback(
+    async (folderPath: string) => {
+      const cleanFolder = folderPath.replace(/^\/+|\/+$/g, "");
+      const folderName = cleanFolder.split("/").pop() || cleanFolder;
+      await renameFolder(cleanFolder, `Archive/${folderName}`);
+    },
+    [renameFolder],
+  );
+
+  const changeNoteIcon = useCallback(
+    async (note: CampaignNote, iconName: string | null) => {
+      const updatedFrontmatter = { ...(note.frontmatter || {}) };
+      if (iconName) {
+        updatedFrontmatter.icon = iconName;
+      } else {
+        delete updatedFrontmatter.icon;
+      }
+      const updatedNote: CampaignNote = {
+        ...note,
+        frontmatter: updatedFrontmatter,
+      };
+      try {
+        await saveNote(updatedNote);
+        if (selectedNoteId === note.id) {
+          setEditFrontmatter(updatedFrontmatter);
+        }
+        await loadNotes();
+      } catch (err) {
+        console.error("Failed to update note icon:", err);
+        throw err;
+      }
+    },
+    [saveNote, selectedNoteId, loadNotes],
+  );
+
+  const revealInFileManager = useCallback(
+    async (relPath: string) => {
+      try {
+        const fullPath = vaultPath ? `${vaultPath}/${relPath}` : relPath;
+        const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+        await revealItemInDir(fullPath);
+      } catch (err) {
+        console.error("Failed to reveal item in file manager:", err);
+      }
+    },
+    [vaultPath],
+  );
+
+  const importFiles = useCallback(
+    async (targetFolder: string, files: FileList | File[]) => {
+      const cleanTarget = targetFolder.replace(/^\/+|\/+$/g, "");
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = "";
+          for (let j = 0; j < bytes.byteLength; j++) {
+            binary += String.fromCharCode(bytes[j]);
+          }
+          const base64 = btoa(binary);
+          await invoke("import_file_to_vault", {
+            targetFolder: cleanTarget,
+            fileName: file.name,
+            base64Content: base64,
+          });
+        } catch (err) {
+          console.error(`Failed to import file "${file.name}":`, err);
+        }
+      }
+      await refresh();
+    },
+    [refresh],
+  );
+
   const notesByFolder = useMemo<Record<string, CampaignNote[]>>(() => {
     const groups: Record<string, CampaignNote[]> = {};
     discoveredFolders.forEach((folder) => {
@@ -288,6 +501,17 @@ export function useNotes(vaultPath: string) {
     deleteTrashedNote,
     emptyTrash,
     handleNewNote,
+    createFolder,
+    renameNote,
+    renameFolder,
+    moveNote,
+    moveFolder,
+    duplicateNote,
+    archiveNote,
+    archiveFolder,
+    changeNoteIcon,
+    revealInFileManager,
+    importFiles,
     normalizeCampaignMarkdown,
   };
 }

@@ -1,26 +1,16 @@
-import React, { useState, useEffect, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  FilePlus,
-  FolderPlus,
-  ChevronRight,
   Eye,
   PenLine,
   Trash2,
   Copy,
-  Package,
-  FolderOpen,
-  FileText,
-  Map,
-  Swords,
-  AudioLines,
   Image as ImageIcon,
-  User,
-  MapPin,
 } from "lucide-react";
 import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../types";
 import { NoteOutline } from "./NoteOutline";
 import { parseNoteTags } from "../utils/tags";
+import { VaultTree } from "./VaultTree";
 
 export interface TemplateProperty {
   type: "number" | "boolean" | "string";
@@ -73,8 +63,8 @@ export interface CampaignVaultViewProps {
   handleGenerateImageFromNote?: (title: string, content: string) => void;
   isGeneratingImage?: boolean;
   renderFolderDropdown: (folderName: string, isRulebook?: boolean) => React.ReactNode;
-  handleNewNote: () => void;
-  handleNewFolder: () => void;
+  handleNewNote: (folder?: string) => void;
+  handleNewFolder: (parentFolder?: string) => void;
   handleTrashNote: (path: string) => void;
   renderMarkdown: (content: string) => React.ReactNode;
   currentCanvasFolder: string | null;
@@ -87,6 +77,18 @@ export interface CampaignVaultViewProps {
   onSelectCanvas: (canvasPath: string) => void;
   /** World provenance taxonomy; falls back to DEFAULT_PROVENANCE_TAXONOMY. */
   provenanceTaxonomy?: ProvenanceType[];
+  discoveredFolders?: string[];
+  onRenameNote?: (note: CampaignNote, newTitle: string) => Promise<void> | void;
+  onRenameFolder?: (oldFolder: string, newFolderName: string) => Promise<void> | void;
+  onMoveNote?: (notePath: string, targetFolder: string) => Promise<void> | void;
+  onMoveFolder?: (folderPath: string, targetFolder: string) => Promise<void> | void;
+  onDuplicateNote?: (note: CampaignNote) => Promise<void> | void;
+  onArchiveNote?: (note: CampaignNote) => Promise<void> | void;
+  onArchiveFolder?: (folderPath: string) => Promise<void> | void;
+  onChangeNoteIcon?: (note: CampaignNote, iconName: string | null) => Promise<void> | void;
+  onRevealInFileManager?: (path: string) => void;
+  onImportFiles?: (targetFolder: string, files: FileList | File[]) => Promise<void> | void;
+  onOpenImportDialog?: (targetFolder?: string) => void;
 }
 
 /**
@@ -121,7 +123,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   setEditFrontmatter,
   editContent,
   setEditContent,
-  setContextMenu,
+  setContextMenu: _setContextMenu,
   activeFolderDropdown,
   setActiveFolderDropdown,
   renderFolderDropdown,
@@ -140,8 +142,36 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   handleGenerateImageFromNote,
   isGeneratingImage,
   provenanceTaxonomy = DEFAULT_PROVENANCE_TAXONOMY,
+  discoveredFolders,
+  onRenameNote,
+  onRenameFolder,
+  onMoveNote,
+  onMoveFolder,
+  onDuplicateNote,
+  onArchiveNote,
+  onArchiveFolder,
+  onChangeNoteIcon,
+  onRevealInFileManager,
+  onImportFiles,
+  onOpenImportDialog,
 }) => {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
+
+  const effectiveNotes = useMemo(() => {
+    if (notes && notes.length > 0) return notes;
+    if (notesByFolder) {
+      return Object.values(notesByFolder).flat();
+    }
+    return [];
+  }, [notes, notesByFolder]);
+
+  const effectiveFolders = useMemo(() => {
+    if (discoveredFolders && discoveredFolders.length > 0) return discoveredFolders;
+    if (notesByFolder) {
+      return Object.keys(notesByFolder);
+    }
+    return [];
+  }, [discoveredFolders, notesByFolder]);
 
   useEffect(() => {
     invoke<TemplateEntry[]>("list_templates")
@@ -182,332 +212,84 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
         {/* Sidebar notes navigator */}
         <div
           style={{
-            width: 220,
+            width: 250,
             borderRight: "1px solid var(--border)",
-            overflowY: "auto",
-            padding: "12px 8px",
+            height: "100%",
             flexShrink: 0,
             background: "var(--surface)",
+            overflow: "hidden",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              gap: "6px",
-              margin: "4px 8px 12px 8px",
+          <VaultTree
+            notes={effectiveNotes}
+            discoveredFolders={effectiveFolders}
+            collapsedFolders={collapsedFolders}
+            onToggleFolder={(folderName) => {
+              setCollapsedFolders((prev) => ({
+                ...prev,
+                [folderName]: !prev[folderName],
+              }));
             }}
-          >
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={handleNewNote}
-              style={{
-                flex: 1,
-                padding: "6px 8px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "4px",
-                fontSize: "11px",
-                cursor: "pointer",
-                borderRadius: 0,
-              }}
-              title="Create a new note"
-              data-od-id="vault-new-note-btn"
-            >
-              <FilePlus size={12} /> New Note
-            </button>
-            <button
-              className="btn btn-sm"
-              onClick={handleNewFolder}
-              style={{
-                flex: 1,
-                padding: "6px 8px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "4px",
-                fontSize: "11px",
-                cursor: "pointer",
-                background: "transparent",
-                border: "1px solid var(--border)",
-                borderRadius: 0,
-                color: "var(--fg)",
-              }}
-              title="Create a new folder"
-              data-od-id="vault-new-folder-btn"
-            >
-              <FolderPlus size={12} /> Folder
-            </button>
-          </div>
-
-          <span
-            className="section-label"
-            style={{
-              marginLeft: 8,
-              display: "block",
-              marginBottom: "8px",
+            selectedNoteId={selectedNoteId}
+            onSelectNote={(noteId) => {
+              setSelectedNoteId(noteId);
+              const targetNote = effectiveNotes.find((n) => n.id === noteId);
+              const isCanvas =
+                targetNote?.frontmatter?.type === "Canvas" ||
+                targetNote?.path.endsWith(".canvas.md") ||
+                targetNote?.path.endsWith(".canvas");
+              if (isCanvas && targetNote) {
+                const parts = targetNote.path.split("/");
+                parts.pop();
+                const folderName = parts.join("/");
+                setCurrentCanvasFolder(folderName);
+                setActiveView("canvas");
+              } else {
+                setActiveView("vault");
+              }
             }}
-          >
-            Campaign Notes
-          </span>
-
-          {Object.entries(notesByFolder).map(
-            ([folderName, folderNotes]) => {
-              const isCollapsed = !!collapsedFolders[folderName];
-              return (
-                <div key={folderName} style={{ marginBottom: "8px" }}>
-                  {/* Folder Header */}
-                  <div
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                        type: "folder",
-                        targetId: folderName,
-                      });
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      width: "100%",
-                      paddingRight: "8px",
-                      borderRadius: 0,
-                    }}
-                    className="folder-item-header"
-                    data-od-id={`folder-header-${folderName}`}
-                  >
-                    <button
-                      onClick={() =>
-                        setCollapsedFolders((prev) => ({
-                          ...prev,
-                          [folderName]: !isCollapsed,
-                        }))
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setCollapsedFolders((prev) => ({
-                            ...prev,
-                            [folderName]: !isCollapsed,
-                          }));
-                        }
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={!isCollapsed}
-                      aria-label={`Toggle ${folderName} folder`}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "6px 8px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        color: "var(--fg)",
-                        userSelect: "none",
-                        flex: 1,
-                        overflow: "hidden",
-                        background: "transparent",
-                        border: "none",
-                        textAlign: "left",
-                        fontFamily: "var(--font-body)",
-                      }}
-                    >
-                      <ChevronRight
-                        size={12}
-                        style={{
-                          transform: isCollapsed
-                            ? "rotate(0deg)"
-                            : "rotate(90deg)",
-                          transition: "transform 0.15s ease",
-                          color: "var(--muted)",
-                        }}
-                      />
-                      <span style={{ display: "flex", alignItems: "center" }}>
-                        {folderName === "Root" ? (
-                          <Package size={13} />
-                        ) : (
-                          <FolderOpen size={13} />
-                        )}
-                      </span>
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {folderName}
-                      </span>
-                    </button>
-
-                    {/* Plus dropdown button */}
-                    <div style={{ position: "relative" }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveFolderDropdown(
-                            activeFolderDropdown === folderName
-                              ? null
-                              : folderName,
-                          );
-                        }}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "var(--muted)",
-                          cursor: "pointer",
-                          padding: "2px 6px",
-                          display: "flex",
-                          alignItems: "center",
-                          fontSize: "14px",
-                          fontWeight: "bold",
-                        }}
-                        title="Add Asset to folder..."
-                        data-od-id={`folder-actions-${folderName}`}
-                      >
-                        +
-                      </button>
-
-                      {renderFolderDropdown(folderName, false)}
-                    </div>
-                  </div>
-
-                  {/* Note List Inside Folder */}
-                  {!isCollapsed && (
-                    <div
-                      style={{
-                        paddingLeft: "26px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "2px",
-                        marginTop: "2px",
-                        borderLeft: "1px solid var(--border)",
-                      }}
-                    >
-                      {folderNotes.map((note) => {
-                        const isCanvas =
-                          note.frontmatter?.type === "Canvas" ||
-                          note.path.endsWith(".canvas.md") ||
-                          note.path.endsWith(".canvas");
-                        let icon = (
-                          <FileText
-                            size={13}
-                            style={{ color: "var(--muted)", flexShrink: 0 }}
-                          />
-                        );
-                        if (isCanvas)
-                          icon = (
-                            <Map
-                              size={13}
-                              style={{ color: "var(--muted)", flexShrink: 0 }}
-                            />
-                          );
-                        else if (
-                          note.frontmatter.type === "Character" ||
-                          note.frontmatter.type === "NPC"
-                        )
-                          icon = (
-                            <User
-                              size={13}
-                              style={{ color: "var(--muted)", flexShrink: 0 }}
-                            />
-                          );
-                        else if (
-                          note.frontmatter.type === "Location" ||
-                          note.frontmatter.type === "City"
-                        )
-                          icon = (
-                            <MapPin
-                              size={13}
-                              style={{ color: "var(--muted)", flexShrink: 0 }}
-                            />
-                          );
-                        else if (
-                          note.frontmatter.type === "Item" ||
-                          note.frontmatter.type === "Artifact"
-                        )
-                          icon = (
-                            <Swords
-                              size={13}
-                              style={{ color: "var(--muted)", flexShrink: 0 }}
-                            />
-                          );
-                        else if (note.frontmatter.type === "AUDIO")
-                          icon = (
-                            <AudioLines
-                              size={13}
-                              style={{ color: "var(--muted)", flexShrink: 0 }}
-                            />
-                          );
-                        else if (note.frontmatter.type === "IMAGE")
-                          icon = (
-                            <ImageIcon
-                              size={13}
-                              style={{ color: "var(--muted)", flexShrink: 0 }}
-                            />
-                          );
-
-                        return (
-                          <button
-                            key={note.id}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setContextMenu({
-                                x: e.clientX,
-                                y: e.clientY,
-                                type: "note",
-                                targetId: note.id,
-                                path: note.path,
-                              });
-                            }}
-                            className={`nav-item ${selectedNoteId === note.id ? "active" : ""}`}
-                            onClick={() => {
-                              setSelectedNoteId(note.id);
-                              if (isCanvas) {
-                                const parts = note.path.split("/");
-                                parts.pop();
-                                const folderName = parts.join("/");
-                                setCurrentCanvasFolder(folderName);
-                                setActiveView("canvas");
-                              } else {
-                                setActiveView("vault");
-                              }
-                            }}
-                            style={{
-                              padding: "6px 8px",
-                              fontSize: "12px",
-                              display: "flex",
-                              alignItems: "center",
-                              width: "100%",
-                              textAlign: "left",
-                            }}
-                            data-od-id={`note-${note.id}`}
-                          >
-                            {icon}
-                            <span
-                              style={{
-                                marginLeft: "6px",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {note.title}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            },
-          )}
+            onNewNote={(targetFolder) => {
+              handleNewNote(targetFolder);
+            }}
+            onNewFolder={(parentFolder) => {
+              handleNewFolder(parentFolder);
+            }}
+            onRenameNote={onRenameNote || (async (note, newTitle) => {
+              const parts = note.path.split("/");
+              parts.pop();
+              const dir = parts.join("/");
+              const sanitized = newTitle.trim().replace(/[\\/:*?"<>|]/g, "_");
+              const newPath = dir ? `${dir}/${sanitized}.md` : `${sanitized}.md`;
+              await invoke("rename_note", { oldPath: note.path, newPath });
+            })}
+            onRenameFolder={onRenameFolder || (async (oldFolder, newFolderName) => {
+              const cleanOld = oldFolder.replace(/^\/+|\/+$/g, "");
+              const parts = cleanOld.split("/");
+              parts.pop();
+              const parent = parts.join("/");
+              const sanitized = newFolderName.trim().replace(/[\\/:*?"<>|]/g, "_");
+              const newFolder = parent ? `${parent}/${sanitized}` : sanitized;
+              await invoke("rename_folder", { oldFolder: cleanOld, newFolder });
+            })}
+            onMoveNote={onMoveNote || (async (notePath, targetFolder) => {
+              await invoke("move_note", { notePath, targetFolder });
+            })}
+            onMoveFolder={onMoveFolder}
+            onDuplicateNote={onDuplicateNote}
+            onArchiveNote={onArchiveNote}
+            onArchiveFolder={onArchiveFolder}
+            onTrashNote={handleTrashNote}
+            onTrashFolder={(folderPath) => {
+              invoke("trash_folder", { folderPath }).catch(console.error);
+            }}
+            onChangeNoteIcon={onChangeNoteIcon}
+            onRevealInFileManager={onRevealInFileManager}
+            onImportFiles={onImportFiles}
+            onOpenImportDialog={onOpenImportDialog}
+            renderFolderDropdown={renderFolderDropdown}
+            activeFolderDropdown={activeFolderDropdown}
+            setActiveFolderDropdown={setActiveFolderDropdown}
+          />
         </div>
 
         {/* Right Editor / Canvas Sheet */}
@@ -1238,7 +1020,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 <div>No note selected.</div>
                 <button
                   className="btn btn-sm btn-primary"
-                  onClick={handleNewNote}
+                  onClick={() => handleNewNote()}
                   data-od-id="vault-create-first-note-btn"
                 >
                   Create your first Note
