@@ -83,6 +83,31 @@ describe("rawToMarkdown", () => {
     );
     expect(out).not.toContain("## ");
   });
+
+  it("detects multi-column tabular data and formats as GFM table", () => {
+    const input = "Level    Proficiency    Features\n1st      +2             Spellcasting\n2nd      +2             Tradition";
+    const out = rawToMarkdown(input);
+    expect(out).toContain("| Level | Proficiency | Features |");
+    expect(out).toContain("| :--- | :--- | :--- |");
+    expect(out).toContain("| 1st | +2 | Spellcasting |");
+    expect(out).toContain("| 2nd | +2 | Tradition |");
+  });
+
+  it("detects rulebook sidebars and converts to Obsidian callouts", () => {
+    const input = "SIDEBAR: Variant Resting Rules\nCharacters only regain hit dice in a haven.\nShort rests take 8 hours.";
+    const out = rawToMarkdown(input);
+    expect(out).toContain("> [!NOTE] Variant Resting Rules");
+    expect(out).toContain("> Characters only regain hit dice in a haven.");
+    expect(out).toContain("> Short rests take 8 hours.");
+  });
+
+  it("detects example breakout boxes and converts to Obsidian example callout", () => {
+    const input = "EXAMPLE: Counterspell\nTheron casts counterspell.\nHe rolls an ability check.";
+    const out = rawToMarkdown(input);
+    expect(out).toContain("> [!EXAMPLE] Counterspell");
+    expect(out).toContain("> Theron casts counterspell.");
+    expect(out).toContain("> He rolls an ability check.");
+  });
 });
 
 describe("extractTextFromPdf", () => {
@@ -118,6 +143,36 @@ describe("extractTextFromPdf", () => {
     expect(helloIdx).toBeGreaterThan(-1);
     expect(secondIdx).toBeGreaterThan(helloIdx);
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("text mode: reconstructs two-column layouts in logical reading order rather than horizontal slicing", async () => {
+    getDocumentMock.mockReturnValue({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          streamTextContent: () =>
+            makeStream([
+              {
+                items: [
+                  textItem("Left Col Line 1", 50, 500),
+                  textItem("Right Col Line 1", 350, 500),
+                  textItem("Left Col Line 2", 50, 480),
+                  textItem("Right Col Line 2", 350, 480),
+                ],
+                styles: {},
+                lang: "en",
+              },
+            ]),
+        }),
+      }),
+    } as never);
+
+    const text = await extractTextFromPdf(buf(), "text");
+    const left2Idx = text.indexOf("Left Col Line 2");
+    const right1Idx = text.indexOf("Right Col Line 1");
+    expect(left2Idx).toBeGreaterThan(-1);
+    expect(right1Idx).toBeGreaterThan(-1);
+    expect(left2Idx).toBeLessThan(right1Idx);
   });
 
   it("text mode: runs zero LLM calls and headers the pages", async () => {
