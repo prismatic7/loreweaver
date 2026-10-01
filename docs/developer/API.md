@@ -89,6 +89,36 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<Vec<String>, String>`
 - **Description:** Returns the relative paths of all folders inside the vault (excluding `.trash`, hidden directories, and `_assets`), including empty folders.
 
+### `rename_note`
+
+- **Arguments:** `old_path: String`, `new_path: String`
+- **Returns:** `Result<CampaignNote, String>`
+- **Description:** Safely renames or moves a markdown note on disk and cascades path updates to SQLite, FTS5, and vector-chunk records.
+
+### `move_note`
+
+- **Arguments:** `note_path: String`, `target_folder: String`
+- **Returns:** `Result<CampaignNote, String>`
+- **Description:** Moves a note file to a target directory within the vault and updates SQLite database records.
+
+### `create_folder`
+
+- **Arguments:** `folder_path: String`
+- **Returns:** `Result<String, String>`
+- **Description:** Creates a new directory or nested directory structure within the active vault.
+
+### `rename_folder`
+
+- **Arguments:** `old_folder: String`, `new_folder: String`
+- **Returns:** `Result<Vec<CampaignNote>, String>`
+- **Description:** Renames or moves a folder on disk and cascades the new directory path to all contained notes in SQLite.
+
+### `import_file_to_vault`
+
+- **Arguments:** `target_folder: String`, `file_name: String`, `base64_content: String`
+- **Returns:** `Result<Option<CampaignNote>, String>`
+- **Description:** Imports a file from base64 content into the specified target folder in the vault, registering markdown files into SQLite.
+
 ---
 
 ## 3. Trash and Recovery
