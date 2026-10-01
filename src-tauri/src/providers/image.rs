@@ -113,9 +113,19 @@ pub fn generate_image(
                 }
             }
 
-            let response = request
-                .send_json(body)
-                .map_err(|e| format!("Image generation request failed: {:?}", e))?;
+            let response = match request.send_json(body) {
+                Ok(resp) => resp,
+                Err(ureq::Error::Status(code, resp)) => {
+                    let err_text = resp
+                        .into_string()
+                        .unwrap_or_else(|_| format!("HTTP {}", code));
+                    return Err(format!(
+                        "OpenAI image generation failed (HTTP {}): {}",
+                        code, err_text
+                    ));
+                }
+                Err(e) => return Err(format!("Image generation request failed: {:?}", e)),
+            };
 
             let response_json: serde_json::Value = response
                 .into_json()
@@ -252,42 +262,77 @@ fn generate_comfyui_image(
         "client_id": client_id
     });
 
-    let prompt_response = agent
+    let prompt_response = match agent
         .post(&format!("{}/prompt", base))
         .set("Content-Type", "application/json")
         .send_json(prompt_body)
-        .map_err(|e| format!("ComfyUI prompt submission failed: {:?}", e))?;
+    {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(code, resp)) => {
+            let err_body = resp
+                .into_string()
+                .unwrap_or_else(|_| format!("HTTP {}", code));
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&err_body) {
+                return Err(extract_comfyui_prompt_error(&parsed));
+            }
+            return Err(format!(
+                "ComfyUI prompt rejected (HTTP {}): {}",
+                code, err_body
+            ));
+        }
+        Err(e) => return Err(format!("ComfyUI connection failed at {}: {:?}", base, e)),
+    };
 
     let prompt_json: serde_json::Value = prompt_response
         .into_json()
         .map_err(|e| format!("Failed to parse ComfyUI prompt response: {:?}", e))?;
-    let prompt_id = prompt_json["prompt_id"]
-        .as_str()
-        .ok_or("ComfyUI did not return a prompt_id")?;
+
+    let prompt_id = match prompt_json["prompt_id"].as_str() {
+        Some(id) => id.to_string(),
+        None => return Err(extract_comfyui_prompt_error(&prompt_json)),
+    };
 
     let history_url = format!("{}/history/{}", base, prompt_id);
     let mut history_json: Option<serde_json::Value> = None;
 
-    for _ in 0..60 {
-        let response = agent
-            .get(&history_url)
-            .call()
-            .map_err(|e| format!("ComfyUI history request failed: {:?}", e))?;
-        let parsed: serde_json::Value = response
-            .into_json()
-            .map_err(|e| format!("Failed to parse ComfyUI history response: {:?}", e))?;
+    for _ in 0..120 {
+        let response = match agent.get(&history_url).call() {
+            Ok(resp) => resp,
+            Err(_) => {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                continue;
+            }
+        };
 
-        if parsed.get(prompt_id).is_some() {
-            history_json = Some(parsed);
-            break;
+        if let Ok(parsed) = response.into_json::<serde_json::Value>() {
+            if parsed.get(&prompt_id).is_some() {
+                history_json = Some(parsed);
+                break;
+            }
         }
 
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
-    let history_json = history_json.ok_or("Timed out waiting for ComfyUI image generation")?;
-    let images = history_json[prompt_id]["outputs"]["9"]["images"]
+    let history_json = history_json.ok_or(
+        "Timed out waiting for ComfyUI image generation (ensure ComfyUI is running and has downloaded the model)",
+    )?;
+    let entry = &history_json[&prompt_id];
+
+    // Check if ComfyUI reported an execution error in history
+    if let Some(err) = extract_comfyui_execution_error(entry) {
+        return Err(err);
+    }
+
+    let images = entry["outputs"]["9"]["images"]
         .as_array()
+        .or_else(|| {
+            entry.get("outputs").and_then(|outputs| {
+                outputs.as_object().and_then(|obj| {
+                    obj.values().find_map(|v| v.get("images").and_then(|imgs| imgs.as_array()))
+                })
+            })
+        })
         .ok_or("ComfyUI history response did not include output images")?;
     let image_info = images
         .first()
@@ -441,3 +486,152 @@ fn generate_stability_image(
     let image_bytes = image_bytes_from_response(response_json)?;
     Ok(image_data_url_from_bytes(&image_bytes))
 }
+
+pub(crate) fn extract_comfyui_prompt_error(prompt_json: &serde_json::Value) -> String {
+    let mut details = Vec::new();
+    if let Some(node_errors) = prompt_json
+        .get("node_errors")
+        .and_then(|ne| ne.as_object())
+    {
+        for (node_id, obj) in node_errors {
+            if let Some(errors) = obj["errors"].as_array() {
+                for err in errors {
+                    if let Some(msg) = err["message"].as_str() {
+                        details.push(format!("Node {}: {}", node_id, msg));
+                    }
+                }
+            }
+        }
+    }
+    if details.is_empty() {
+        if let Some(err) = prompt_json.get("error") {
+            if let Some(msg) = err["message"].as_str().or_else(|| err.as_str()) {
+                details.push(format!("Error: {}", msg));
+            }
+        }
+    }
+    if details.is_empty() {
+        "ComfyUI did not return a prompt_id (prompt may be malformed)".to_string()
+    } else {
+        format!("ComfyUI validation failed: {}", details.join("; "))
+    }
+}
+
+pub(crate) fn extract_comfyui_execution_error(entry: &serde_json::Value) -> Option<String> {
+    if let Some(status) = entry.get("status") {
+        if status["status_str"].as_str() == Some("error") {
+            if let Some(msgs) = status["messages"].as_array() {
+                for msg in msgs {
+                    if let Some(info) = msg.get(1) {
+                        if let Some(exc) = info["exception_message"].as_str() {
+                            return Some(format!("ComfyUI generation error: {}", exc));
+                        }
+                    }
+                    if let Some(exc) = msg["exception_message"].as_str() {
+                        return Some(format!("ComfyUI generation error: {}", exc));
+                    }
+                }
+            }
+            return Some("ComfyUI generation error: Unknown execution error".to_string());
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extract_comfyui_prompt_error_with_node_errors() {
+        let payload = json!({
+            "error": {
+                "type": "prompt_outputs_failed_validation",
+                "message": "Prompt outputs failed validation"
+            },
+            "node_errors": {
+                "4": {
+                    "errors": [
+                        { "message": "ckpt_name not found" }
+                    ]
+                }
+            }
+        });
+        let err = extract_comfyui_prompt_error(&payload);
+        assert_eq!(err, "ComfyUI validation failed: Node 4: ckpt_name not found");
+    }
+
+    #[test]
+    fn test_extract_comfyui_prompt_error_fallback_generic() {
+        let payload = json!({
+            "error": {
+                "message": "Workflow syntax error"
+            }
+        });
+        let err = extract_comfyui_prompt_error(&payload);
+        assert_eq!(err, "ComfyUI validation failed: Error: Workflow syntax error");
+    }
+
+    #[test]
+    fn test_extract_comfyui_prompt_error_empty_malformed() {
+        let payload = json!({});
+        let err = extract_comfyui_prompt_error(&payload);
+        assert_eq!(err, "ComfyUI did not return a prompt_id (prompt may be malformed)");
+    }
+
+    #[test]
+    fn test_extract_comfyui_execution_error() {
+        let entry = json!({
+            "status": {
+                "status_str": "error",
+                "messages": [
+                    [
+                        "execution_error",
+                        {
+                            "exception_message": "CUDA out of memory"
+                        }
+                    ]
+                ]
+            }
+        });
+        let err = extract_comfyui_execution_error(&entry);
+        assert_eq!(err, Some("ComfyUI generation error: CUDA out of memory".to_string()));
+    }
+
+    #[test]
+    fn test_image_bytes_from_response_b64() {
+        let b64 = general_purpose::STANDARD.encode(b"fake_image_bytes");
+        let resp = json!({
+            "data": [{ "b64_json": b64 }]
+        });
+        let bytes = image_bytes_from_response(resp).unwrap();
+        assert_eq!(bytes, b"fake_image_bytes");
+    }
+
+    #[test]
+    fn test_image_bytes_from_response_missing() {
+        let resp = json!({ "data": [] });
+        assert!(image_bytes_from_response(resp).is_err());
+    }
+
+    #[test]
+    fn test_generate_image_unsupported_provider() {
+        let agent = ureq::Agent::new();
+        let res = generate_image(
+            "test prompt",
+            "",
+            "unknown_provider",
+            "",
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+            &agent,
+        );
+        assert_eq!(res, Err("Unsupported image provider: unknown_provider".to_string()));
+    }
+}
+

@@ -767,12 +767,14 @@ function App() {
             setImageFixedSeed={sessionTools.setImageFixedSeed}
             isGeneratingImage={sessionTools.isGeneratingImage}
             generatedImageUrl={sessionTools.generatedImageUrl}
+            imageError={sessionTools.imageError}
             handleGenerateImage={sessionTools.handleGenerateImage}
             ttsText={sessionTools.ttsText}
             setTtsText={sessionTools.setTtsText}
             ttsProvider={ttsProvider}
             isGeneratingSpeech={sessionTools.isGeneratingSpeech}
             generatedSpeechUrl={sessionTools.generatedSpeechUrl}
+            speechError={sessionTools.speechError}
             handleGenerateSpeech={sessionTools.handleGenerateSpeech}
             isTranscribing={sessionTools.isTranscribing}
             transcribedText={sessionTools.transcribedText}

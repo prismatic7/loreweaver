@@ -96,6 +96,7 @@ export interface RightDrawerProps {
   setImageFixedSeed: (value: string) => void;
   isGeneratingImage: boolean;
   generatedImageUrl: string;
+  imageError?: string | null;
   handleGenerateImage: () => void;
   // Voice tab
   ttsText: string;
@@ -103,6 +104,7 @@ export interface RightDrawerProps {
   ttsProvider: string;
   isGeneratingSpeech: boolean;
   generatedSpeechUrl: string;
+  speechError?: string | null;
   handleGenerateSpeech: () => void;
   // STT transcription
   isTranscribing: boolean;
@@ -1533,6 +1535,7 @@ const AssetTab: React.FC<RightDrawerProps> = ({
   setImageFixedSeed,
   isGeneratingImage,
   generatedImageUrl,
+  imageError,
   handleGenerateImage,
 }) => (
   <div
@@ -1727,6 +1730,23 @@ const AssetTab: React.FC<RightDrawerProps> = ({
         {isGeneratingImage ? "Rendering SD..." : "Generate Image"}
       </button>
 
+      {imageError && (
+        <div
+          style={{
+            padding: "8px 10px",
+            fontSize: "11px",
+            color: "var(--danger)",
+            background: "oklch(from var(--danger) l c h / 0.1)",
+            border: "1px solid var(--danger)",
+            borderRadius: 0,
+            wordBreak: "break-word",
+          }}
+          data-od-id="asset-image-error"
+        >
+          {imageError}
+        </div>
+      )}
+
     <div
       style={{
         marginTop: "12px",
@@ -1781,6 +1801,7 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
   ttsProvider,
   isGeneratingSpeech,
   generatedSpeechUrl,
+  speechError,
   handleGenerateSpeech,
   isTranscribing,
   transcribedText,
@@ -1836,6 +1857,23 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
       >
         {isGeneratingSpeech ? "Generating..." : "Generate Speech"}
       </button>
+
+      {speechError && (
+        <div
+          style={{
+            padding: "8px 10px",
+            fontSize: "11px",
+            color: "var(--danger)",
+            background: "oklch(from var(--danger) l c h / 0.1)",
+            border: "1px solid var(--danger)",
+            borderRadius: 0,
+            wordBreak: "break-word",
+          }}
+          data-od-id="voice-speech-error"
+        >
+          {speechError}
+        </div>
+      )}
     {generatedSpeechUrl && (
       <div
         style={{

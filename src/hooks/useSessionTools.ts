@@ -59,6 +59,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
   const [imageFixedSeed, setImageFixedSeed] = useState("");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string>("");
+  const [imageError, setImageError] = useState<string | null>(null);
 
   // Seed the drawer's style with the world's template when a vault is active,
   // so generated images carry the world's voice unless the GM overrides.
@@ -115,6 +116,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
   const handleGenerateImage = () => {
     setIsGeneratingImage(true);
     setGeneratedImageUrl("");
+    setImageError(null);
 
     invoke<string>("generate_image", {
       prompt: imagePrompt,
@@ -130,7 +132,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
         setGeneratedImageUrl(dataUrl);
       })
       .catch((err) => {
-        alert("Image generation failed: " + err);
+        setImageError(String(err));
       })
       .finally(() => {
         setIsGeneratingImage(false);
@@ -142,6 +144,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     if (!noteTitle.trim() || isGeneratingImage) return;
     setIsGeneratingImage(true);
     setGeneratedImageUrl("");
+    setImageError(null);
 
     // Assemble: style template (if set) → note title/content → optional
     // per-use prompt from the drawer. The note's own words are the source.
@@ -166,7 +169,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
         setImagePrompt("");
       })
       .catch((err) => {
-        alert("Image generation failed: " + err);
+        setImageError(String(err));
       })
       .finally(() => {
         setIsGeneratingImage(false);
@@ -250,6 +253,7 @@ export const useSessionTools = (deps: SessionToolsDeps) => {
     setImageFixedSeed,
     isGeneratingImage,
     generatedImageUrl,
+    imageError,
     handleGenerateImage,
     handleGenerateImageFromNote,
     ttsText,

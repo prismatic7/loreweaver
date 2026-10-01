@@ -160,4 +160,34 @@ describe("useSessionTools - TTS Voice", () => {
     expect(result.current.speechError).toContain("Local TTS failed");
     expect(alertMock).not.toHaveBeenCalled();
   });
+
+  it("tracks image generation error without throwing alert", async () => {
+    const alertMock = vi.fn();
+    vi.mocked(invoke).mockRejectedValue(new Error("ComfyUI validation failed: Node 4: ckpt_name not found"));
+
+    const { result } = renderHook(() =>
+      useSessionTools({
+        pluginsList: [],
+        alert: alertMock,
+        imageProvider: "local",
+        imageModel: "sd15",
+        imageApiKey: "",
+        imageBaseUrl: "http://127.0.0.1:8188",
+        ttsProvider: "local",
+        ttsApiKey: "",
+        ttsBaseUrl: "",
+        sttProvider: "local",
+        sttApiKey: "",
+        sttBaseUrl: "",
+      })
+    );
+
+    await act(async () => {
+      result.current.handleGenerateImage();
+    });
+
+    expect(result.current.isGeneratingImage).toBe(false);
+    expect(result.current.imageError).toContain("ckpt_name not found");
+  });
 });
+
