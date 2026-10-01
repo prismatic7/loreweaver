@@ -449,6 +449,18 @@ describe("MapBuilderView - Icon Tokens", () => {
     expect((input as HTMLInputElement).value).toBe("Goblin Archer");
   });
 
+  it("stops mousedown propagation on edit button to prevent dragging", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+
+    const editBtn = await screen.findByRole("button", { name: "Edit token" });
+    const mousedownEvent = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    const stopPropagationSpy = vi.spyOn(mousedownEvent, "stopPropagation");
+    editBtn.dispatchEvent(mousedownEvent);
+    expect(stopPropagationSpy).toHaveBeenCalled();
+  });
+
   it("preserves icon in palette and when adding from palette", async () => {
     render(
       <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />

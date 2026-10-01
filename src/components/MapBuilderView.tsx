@@ -1243,6 +1243,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                     aria-label="Edit token"
                     data-testid={`map-token-edit-${t.id}`}
                     data-od-id={`map-token-edit-${t.id}`}
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       startEditToken(t);

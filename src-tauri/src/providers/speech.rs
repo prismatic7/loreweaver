@@ -113,7 +113,7 @@ pub fn generate_speech(
                     .map(|d| d.as_millis())
                     .unwrap_or(0);
                 let mut tmp_path = std::env::temp_dir();
-                tmp_path.push(format!("loreweaver_say_{}.wav", timestamp));
+                tmp_path.push(format!("loreweaver_say_{}_{}.wav", std::process::id(), timestamp));
                 let tmp_str = tmp_path.to_string_lossy().to_string();
 
                 let mut cmd = std::process::Command::new("/usr/bin/say");
