@@ -220,7 +220,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             style={{
               maxWidth: width ? `${width}px` : "100%",
               maxHeight: height ? `${height}px` : undefined,
-              borderRadius: 2,
+              borderRadius: 0,
             }}
           />
         );

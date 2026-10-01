@@ -62,7 +62,7 @@ export const InlineDiceBadge: React.FC<InlineDiceBadgeProps> = ({
         margin: "0 2px",
         background: outcome ? "var(--accent-subtle, rgba(200, 150, 60, 0.15))" : "var(--surface)",
         border: outcome ? "1px solid var(--accent)" : "1px solid var(--border)",
-        borderRadius: "3px",
+        borderRadius: 0,
         fontSize: "0.85em",
         fontWeight: 600,
         fontFamily: "var(--font-mono, monospace)",

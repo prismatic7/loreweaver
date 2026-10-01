@@ -400,7 +400,7 @@ export const AiView: React.FC<AiViewProps> = ({
                     overflowY: "auto",
                     background: "var(--surface)",
                     border: "1px solid var(--border)",
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                     zIndex: 20,
                     padding: 8,
                   }}

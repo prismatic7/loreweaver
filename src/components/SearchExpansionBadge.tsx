@@ -20,7 +20,7 @@ export const SearchExpansionBadge: React.FC<{ expanded: boolean }> = ({
         padding: "2px 6px",
         fontSize: "0.7rem",
         fontWeight: 600,
-        borderRadius: "8px",
+        borderRadius: 0,
         background: "var(--accent-soft, rgba(120, 120, 255, 0.15))",
         color: "var(--accent)",
         border: "1px solid var(--border)",

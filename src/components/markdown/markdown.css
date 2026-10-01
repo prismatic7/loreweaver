@@ -3,11 +3,10 @@
 /* Callouts / Admonitions */
 .callout-container {
   margin: 1.25rem 0;
-  border-radius: 4px;
+  border-radius: 0;
   border-left: 4px solid var(--accent);
   background: color-mix(in oklch, var(--surface) 95%, var(--accent) 5%);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   font-size: 0.95rem;
 }
 
@@ -20,7 +19,7 @@
   font-weight: 600;
   gap: 0.5rem;
   background: color-mix(in oklch, var(--surface) 88%, var(--accent) 12%);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--border);
 }
 
 .callout-header-content {
@@ -130,9 +129,6 @@
 }
 
 /* Dark mode callout overrides */
-[data-theme="dark"] .callout-container {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
 [data-theme="dark"] .callout-note .callout-header { color: #60a5fa; }
 [data-theme="dark"] .callout-info .callout-header { color: #38bdf8; }
 [data-theme="dark"] .callout-tip .callout-header { color: #34d399; }
@@ -147,11 +143,10 @@
 /* Code Blocks with Copy */
 .codeblock-container {
   margin: 1.25rem 0;
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--border);
   background: #1e1e1e;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
 }
 
 .codeblock-header {
@@ -174,7 +169,7 @@
   gap: 0.35rem;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  border-radius: 0;
   color: #cccccc;
   font-size: 0.75rem;
   padding: 0.15rem 0.45rem;
@@ -210,7 +205,7 @@
   background-color: #fef08a;
   color: #1c1917;
   padding: 0.1rem 0.3rem;
-  border-radius: 2px;
+  border-radius: 0;
   font-weight: 500;
 }
 
@@ -225,7 +220,7 @@
   font-size: 0.78rem;
   font-family: var(--font-mono);
   padding: 0.1rem 0.45rem;
-  border-radius: 12px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--surface) 90%, var(--accent) 10%);
   color: var(--accent);
   border: 1px solid color-mix(in oklch, var(--border) 80%, var(--accent) 20%);
@@ -243,7 +238,7 @@
   overflow-x: auto;
   margin: 1.25rem 0;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .markdown-table {
@@ -294,7 +289,7 @@
   margin: 1.25rem 0;
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 4px;
+  border-radius: 0;
   background: color-mix(in oklch, var(--surface) 96%, var(--accent) 4%);
   overflow: hidden;
 }
@@ -325,7 +320,7 @@
   display: flex;
   align-items: center;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .markdown-note-embed-open-btn:hover {
