@@ -41,8 +41,8 @@
 
 ## Future Integrations Status
 
-- **Image Generation:** Currently a frontend placeholder mock. Stable Diffusion ComfyUI bindings exist in the Rust backend code but are not connected to the UI.
-- **Audio Processing:** Text-to-speech (TTS) is fully implemented in the backend (supporting OpenAI, ElevenLabs, and a local fallback via `espeak-ng`). Speech-to-text (STT) is also fully implemented (supporting OpenAI Whisper and a local fallback via `sherpa-onnx`).
+- **Image Generation:** Fully implemented in the backend via `providers/image.rs` (ComfyUI local, OpenAI DALL·E, Stability API); the right-drawer prompt and note-illustrate flow call it and results persist as base64 data URLs through `save_note_asset`.
+- **Audio Processing:** Text-to-speech (TTS) is fully implemented in the backend (supporting OpenAI, ElevenLabs, and a local fallback — macOS native `say` on macOS per `providers/speech.rs`, `espeak-ng` on other platforms). Speech-to-text (STT) is also fully implemented (supporting OpenAI Whisper and a local fallback via `sherpa-onnx`).
 
 ## Evidence
 

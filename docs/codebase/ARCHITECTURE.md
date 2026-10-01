@@ -149,7 +149,7 @@ The plugin system is manifest-driven and script-based:
 
 ## Intent vs Reality
 
-- The README and architecture notes describe image generation workflows, but the current UI only simulates generation with a timer and a static image path.
+- Image generation is fully implemented: `generate_image` invokes providers/image.rs (ComfyUI, OpenAI DALL·E, Stability), returns a base64 data URL persisted via `save_note_asset`, the `image_generated` event fires on the event bus, and the note-to-illustrate flow exists (`useSessionTools.handleGenerateImageFromNote`).
 - The README also mentions broader memory backends and orchestration layers that are not visible in the inspected source.
 
 ## Evidence

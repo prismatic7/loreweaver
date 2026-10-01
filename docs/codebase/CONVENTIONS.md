@@ -3,7 +3,7 @@
 ## Frontend
 
 - The frontend is written in TypeScript with strict compiler settings.
-- `App.tsx` uses a single, large stateful component rather than a split feature tree.
+- `App.tsx` is a single large file (~1200 lines) but composes domain hooks (`useVault`, `useNotes`, `useAgent`, etc.) for state and IPC rather than hosting all logic inline.
 - UI state is managed with `useState`, `useEffect`, and `useRef`.
 - Tauri calls are made through `invoke(...)` and are named after backend commands.
 - The UI uses `data-od-id` attributes on key controls, which suggests automation-friendly selectors.
@@ -34,6 +34,7 @@ Rules for adding selectors:
 - Shared app state is held in `AppState` with `Mutex` guards around paths and the filesystem watcher.
 - Persistence and command handlers generally return `Result<..., String>` for error propagation.
 - Vault writes are checked with `validate_safe_path` before file output.
+- Every new `#[tauri::command]` must get a matching `allow-*` entry in `src-tauri/capabilities/default.json` (as of 2026-10-01 this was a real gap for `cancel_agent_stream`, `approve_agent_tool`, `reject_agent_tool`, `scaffold_plugin`, `run_schedule_now`, `evaluate_expression`, `extract_session_memories`, `list_bible_files`, and `update_bible_files`) — otherwise the frontend `invoke` is rejected.
 
 ## Naming and Data Shape
 

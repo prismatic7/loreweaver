@@ -51,7 +51,7 @@ To support fast offline semantic lookup without cloud latency:
 1. **Model:** Pre-packaged or cached `all-MiniLM-L6-v2` ONNX model.
 2. **Text Chunking:** Paragraph-based sliding window tokenizer split to avoid splitting in the middle of UTF-8 boundaries.
 3. **Similarity Matcher:** Query prompts are embedded into a normalized vector. Cosine similarity is calculated directly via dot-product multiplication against chunk records loaded from SQLite.
-4. **Ranking:** Combined keyword scores (BM25 from FTS5, weighted at 30%) and vector scores (normalized dot products, weighted at 70%) are sorted to yield RAG contexts.
+4. **Ranking:** Keyword results rank by raw FTS5/BM25 score; vector hits score cosine similarity × 0.7, and both merge into one ranked list (`src-tauri/src/search.rs`, `combined_score = score * 0.7`).
 
 ---
 
@@ -65,7 +65,7 @@ To support fast offline semantic lookup without cloud latency:
 | **Local Embeddings (ort)** | `Implemented` | Normalized 384-dimensional vector generation. |
 | **RAG AI Chat** | `Implemented` | Context stitching for Ollama, OpenAI, Gemini, and Anthropic. |
 | **JS Plugin Host (Boa)** | `Implemented` | Light JS hook execution. |
-| **Image Generation** | `Planned (Placeholder)` | The UI panel is a timed mockup; ComfyUI/Stable Diffusion API bindings exist in Rust but are not yet linked to the UI. |
+| **Image Generation** | `Implemented` | ComfyUI, OpenAI, and Stability providers wired end-to-end (`src-tauri/src/providers/image.rs`) from the right-drawer prompt and note-illustrate flows. |
 | **Hardened Sandbox** | `Planned` | Sandbox isolation beyond basic Boa scope limitations is not yet implemented. |
 
 For detailed low-level descriptions of backend boundaries and IPC data flows, please refer to [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md).

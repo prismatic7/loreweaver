@@ -10,7 +10,7 @@ Loreweaver uses a split automated testing strategy to cover both the Rust backen
 - **Framework:** [Vitest](https://vitest.dev/)
 - **Utility:** [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/)
 - **Environment:** `jsdom` (simulates browser environment in Node.js)
-- **Globals/Mocking:** Standard `window` globals are configured in `test/setup.ts` to mock Tauri's `invoke` IPC interface and `localStorage` state.
+- **Globals/Mocking:** `test/setup.ts` mocks `localStorage`, stubs `__TAURI_INTERNALS__`, and polyfills `DOMMatrix` (for pdfjs-dist) and `matchMedia`. Tauri `invoke` mocking is not done in setup.ts — each suite mocks `invoke` itself (typically via `vi.mock("@tauri-apps/api/core")` or per-call `vi.mocked` stubs).
 
 ### Running Frontend Tests
 Run all frontend test suites using:
@@ -18,7 +18,7 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**24 Vitest suites / 138 tests** pass (measured 2026-08-28 after Increment C). Note: `npm run test`
+**40 Vitest suites / 258 tests** pass (as of 2026-10-01). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
@@ -27,12 +27,16 @@ load its production build (no `React.act`), breaking `@testing-library/react`.
 ### Coverage Gate
 
 Coverage is gated in CI via `npm run coverage` (`@vitest/coverage-v8`). Thresholds
-are set to the measured baseline (2026-08-27: lines 48.35%, statements 47.08%,
-functions 40.64%, branches 40.4%) minus a small buffer — see `vite.config.ts`.
+in `vite.config.ts` (as of 2026-10-01): lines 46%, statements 45%, functions 38%,
+branches 38% (originally the measured 2026-08-27 baseline minus a small buffer).
 Tighten thresholds in follow-up increments as coverage grows; do not set
 aspirational numbers that fail on day one.
 
-### Coverage
+### Notable Suites
+
+(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 40 suites as of 2026-10-01.
+Notable ones:)
+
 - [App.test.tsx](file:///Users/chris/Development/loreweaver/src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
 - [DashboardView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/DashboardView.test.tsx): Verifies rendering of campaign notes and rule entries.
 - [MarkdownEditor.test.tsx](file:///Users/chris/Development/loreweaver/src/components/MarkdownEditor.test.tsx): Verifies rendering of CodeMirror bindings, input changes, and prop propagation.
@@ -46,6 +50,12 @@ aspirational numbers that fail on day one.
 - [WorldShelf.test.tsx](file:///Users/chris/Development/loreweaver/src/components/WorldShelf.test.tsx): Verifies world switcher, new-world flow, Liminal entry, export/import triggers.
 - [LiminalView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/LiminalView.test.tsx): Verifies the Liminal list, claim-into-world (with default-target fallback), birth-a-world, back navigation, and error state.
 - [types.test.ts](file:///Users/chris/Development/loreweaver/src/types.test.ts): Verifies type-level invariants.
+- [MapBuilderView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/MapBuilderView.test.tsx): Verifies map-building canvas rendering and interaction.
+- [CharacterSheetView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/CharacterSheetView.test.tsx): Verifies character sheet rendering.
+- [CommandPalette.test.tsx](file:///Users/chris/Development/loreweaver/src/components/CommandPalette.test.tsx): Verifies palette open/filter/execute behavior.
+- [useSearch.test.ts](file:///Users/chris/Development/loreweaver/src/hooks/useSearch.test.ts): Verifies search invocation and result state handling.
+- [useWorld.test.ts](file:///Users/chris/Development/loreweaver/src/hooks/useWorld.test.ts): Verifies world manifest loading and theme override application.
+- [useSessionTools.test.ts](file:///Users/chris/Development/loreweaver/src/hooks/useSessionTools.test.ts): Verifies session tool flows including note-to-illustrate image generation.
 
 ---
 
@@ -63,7 +73,7 @@ cd src-tauri
 cargo test
 ```
 
-Currently **86 Rust tests** pass (measured 2026-08-27). `test_api_key_round_trip` self-skips when the OS keyring is unavailable (headless/CI environments) — see `lib.rs:3314`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
+Currently **121 Rust tests** pass (as of 2026-10-01: 119 unit + 2 integration). `test_api_key_round_trip` self-skips when the OS keyring is unavailable (headless/CI environments) — defined at `lib.rs:3677`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
 
 ### Coverage
 - **Database (`db.rs`):** Validates CRUD queries for campaign notes, rulebooks, and settings.

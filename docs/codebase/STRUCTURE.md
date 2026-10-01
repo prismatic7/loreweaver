@@ -13,9 +13,9 @@
 - `index.html` loads `/src/main.tsx`.
 - `src/main.tsx` mounts the React app.
 - `src/App.tsx` is the top-level orchestrator that composes domain hooks and renders shell components.
-- `src/hooks/` contains domain hooks (`useVault`, `useNotes`, `useRules`, `useSearch`, `useAgent`, `usePlugins`, `useSettings`, `useDialogs`, `useIngest`, `useMarkdownRender`, `useFolderActions`) that encapsulate Tauri IPC calls and local state.
-- `src/components/` contains shell and feature components (`AppShell.tsx`, `RightDrawer.tsx`, `Modals.tsx`, `SettingsRightPanel.tsx`, plus existing views like `CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`).
-- `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`).
+- `src/hooks/` contains domain hooks (`useVault`, `useNotes`, `useRules`, `useSearch`, `useAgent`, `usePlugins`, `useSettings`, `useDialogs`, `useIngest`, `useMarkdownRender`, `useFolderActions`, `useWorld`, `useCaptureInbox`, `useSessionTools`, `useFocusTrap`) that encapsulate Tauri IPC calls and local state.
+- `src/components/` contains shell and feature components (`AppShell.tsx`, `RightDrawer.tsx`, `Modals.tsx`, `SettingsRightPanel.tsx`, views like `CampaignVaultView`, `RulesView`, `AiView`, `TrashView`, `DashboardView`, `FolderCanvas`, `MarkdownEditor`, `EntityGraphView`, `WorldShelf`, `LiminalView`, `TimelineView`, `MapBuilderView`, `CharacterSheetView`, `CommandPalette`, plus organisation helpers like `TagTree`, `NoteOutline`, and a `markdown/` subdirectory of remark-driven render primitives).
+- `src/utils/` contains shared utilities (`dice.ts`, `pdf.ts`, `tags.ts` (frontmatter tags → tree), `outline.ts` (markdown headings → tree), `links.ts` (wikilink parsing), plus `utils/editor/` and `utils/markdown/` (remark-* modules) subdirectories).
 - `src/App.css` and `src/index.css` provide the visual system.
 
 ## Backend Entry Points
@@ -26,9 +26,8 @@
 
 ## Plugin Layout
 
-- `plugins/character-roller/` contains a manifest and `index.js` implementation.
-- `plugins/threat-evaluator/` contains a manifest and `index.js` implementation.
-- The backend also seeds a `dice-bonus` plugin at runtime under the app data directory.
+- Repo plugins (each with a `manifest.json` and `index.js`): `plugins/character-roller/`, `plugins/threat-evaluator/`, `plugins/initiative-tracker/`, `plugins/encounter-builder/`.
+- The backend also seeds a `dice-roller` plugin at runtime under the app data directory.
 
 ## Documentation Layout
 

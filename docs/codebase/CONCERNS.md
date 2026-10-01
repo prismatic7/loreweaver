@@ -3,9 +3,9 @@
 ## Highest-Risk Areas
 
 - The plugin system runs JavaScript in Boa with a strict permission allow-list (only `"hooks"`), no host bindings (no fs/network/process), a 1 MiB script cap, 32 KiB payload cap, loop-iteration/recursion/stack limits, and a 5 s wall-clock timeout. **Accepted residual risk:** Boa 0.19 exposes no heap-memory cap, so a plugin that allocates unbounded memory (e.g. `new Array(1e9)`) is bounded only by process memory. Plugins are installed by the user (not untrusted third parties), so this is a low-severity accepted risk.
-- The image generation UI is presented as a feature, but the current implementation is only a timed placeholder that swaps in a static image path.
+- The image generation pipeline handles user-configured provider endpoints (ComfyUI, OpenAI, Stability): base URLs are validated against SSRF rules, so a misconfigured local-first `allow_local_providers` setting is the main exposure surface — keep it intentional.
 - The app depends on runtime model downloads from Hugging Face for embeddings, which creates a startup/network dependency and a possible offline failure mode.
-- The search pipeline assumes 384-dimensional embeddings throughout; changing providers requires a full reindex and the code does not show automatic compatibility enforcement.
+- The search pipeline assumes 384-dimensional embeddings throughout; changing providers requires a full reindex and the code does not show automatic compatibility enforcement. Related: the similarity dot-products iterate only `min(a.len(), b.len())` (`search.rs` similarity helper), so a dimension-swapped corpus would silently truncate instead of erroring — a mismatch produces quietly degraded rankings, not a loud failure.
 - The Architect agent can execute vault tools (`save_note` writes files, `search_vault`/`read_note`/`list_notes` read the vault) based on model-generated tool calls. Writes go through `validate_safe_path`, the tool loop is bounded to `MAX_TOOL_ROUNDS` (4), and cancellation is cooperative (an in-flight HTTP read is abandoned only when the command returns) — but a misbehaving model can still write notes the user didn't ask for. The tool allow-list is fixed in `agent.rs::tool_definitions`; do not widen it without an explicit decision.
 
 ## Maintainability Risks
@@ -19,12 +19,12 @@
 
 ## Intent vs Reality
 
-- README-level claims about image generation, memory backends, and broader orchestration are ahead of what the inspected source currently implements.
+- README-level claims about image generation match the implemented code; claims about memory backends and broader orchestration remain ahead of what the inspected source currently implements.
 - The app looks like a product prototype with real persistence/search/plugin plumbing, but not a fully complete multi-modal system yet.
 
 ## Decided Decisions & Status
 
-- **Image Generation Panel:** The image generation panel will remain a timed placeholder demonstration for now. Real ComfyUI/Stable Diffusion backend integration remains planned for a future release.
+- **Hybrid Search Dimension Safety (open):** the similarity dot-product loops bound to `min(len)` rather than asserting equal dimensions (`search.rs:803-806`); add an explicit dimension check or reindex guard before swapping embedding providers.
 - **Plugin Sandbox Isolation:** The plugin system uses the Boa JS engine with a strict permission allow-list, no host bindings, and explicit loop-iteration/recursion/stack limits plus a 5 s wall-clock timeout. **Hardened 2026-08-21:** recursion limit tightened to 256 and stack limit to 512 (from Boa defaults), applied consistently via `apply_runtime_limits` in both the load-time dry-run and hook execution. A heap-memory cap is not possible in Boa 0.19 and remains an accepted low-severity risk (plugins are user-installed, not untrusted).
 
 ## Evidence

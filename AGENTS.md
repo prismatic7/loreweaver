@@ -22,7 +22,7 @@ Read [docs/codebase/ARCHITECTURE.md](docs/codebase/ARCHITECTURE.md) first — it
 | [docs/codebase/CONVENTIONS.md](docs/codebase/CONVENTIONS.md)   | Naming, command patterns, data shapes                                               |
 | [docs/codebase/INTEGRATIONS.md](docs/codebase/INTEGRATIONS.md) | Filesystem, SQLite, search/embeddings, AI providers, plugins                        |
 | [docs/codebase/CONCERNS.md](docs/codebase/CONCERNS.md)         | Known risk areas — read before touching plugins or search                           |
-| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (17 Vitest suites / 100 tests + 86 Rust tests; `npm run test`, `npm run lint`, and `cargo test` from `src-tauri/` are real verification paths) |
+| [docs/codebase/TESTING.md](docs/codebase/TESTING.md)           | What test coverage exists (40 Vitest suites / 258 tests + 121 Rust tests; `npm run test`, `npm run lint`, and `cargo test` from `src-tauri/` are real verification paths) |
 
 Keep these docs current: if you change architecture, conventions, or a risk area meaningfully, update the relevant file in the same change.
 
@@ -42,7 +42,7 @@ npm run build         # vite build; also the de-facto TypeScript type-check gate
 npm run tauri dev     # full app dev loop (Rust + frontend)
 ```
 
-- Tests exist: 17 Vitest suites / 100 tests (`npm run test`) and 86 Rust tests (`cargo test` from `src-tauri/`). Both are real verification paths — run them before claiming work passes. `npm run lint` (ESLint, wired 2026-08-27) is a third gate.
+- Tests exist: 40 Vitest suites / 258 tests (`npm run test`) and 121 Rust tests (`cargo test` from `src-tauri/`). Both are real verification paths — run them before claiming work passes. `npm run lint` (ESLint, wired 2026-08-27) is a third gate.
 - Cargo/rustc may not be available in every terminal environment here; if `cargo check` isn't runnable, say so rather than assuming the Rust side compiles.
 
 ## Cross-Cutting Conventions

@@ -25,8 +25,8 @@ Loreweaver is a secure, private, local-first desktop application designed to hel
 6. **Extensible Plugin System**: Execute third-party rules scripts and dice rolling modifiers using JS hooks.
 
 ### Known Gaps & Limitations
-- **Image Generation:** The image generation panel is currently a timed placeholder demonstration and is not yet connected to a live Stable Diffusion backend.
 - **Plugin Sandbox:** The plugin sandbox runs in the Boa JavaScript engine. It is not fully sandboxed and is protected by a whitelist constraint (only the `"hooks"` permission is allowed).
+- **Embedding Dimensions:** Search embeddings are hardcoded to 384 dimensions (`all-MiniLM-L6-v2`); changing embedding providers requires a full reindex with no automatic compatibility check.
 
 ---
 

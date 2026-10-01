@@ -4,7 +4,7 @@
 
 ## Platform
 
-web
+Tauri desktop (React frontend in a Tauri v2 shell with a Rust backend)
 
 ## Users
 Game Masters (GMs) preparing and running tabletop RPG campaigns (such as D&D, Pathfinder, Call of Cthulhu, Cyberpunk, Fate, etc.). They operate in low-latency, potentially offline environments, needing a clean workspace to manage complex lore, track session states, search rules, and draft campaign content.
@@ -24,7 +24,7 @@ A desktop application window (Tauri v2 shell wrapping a React app) used during a
 - **AI Orchestrator**: Retrieval-Augmented Generation context stitching supporting local Ollama models and cloud AI providers.
 - **Extensible Hooks**: Boa-based JavaScript engine running custom plugins with a whitelisted permission model (currently restricted to `"hooks"`).
 - **Security Bounds**: Active campaign vault scoping is strictly enforced; path validation via `validate_safe_path` blocks unauthorized file access.
-- **UI Gaps**: The image generation panel is a timed visual placeholder, not currently backed by a functional generator backend.
+- **Image Generation**: Fully implemented via `providers/image.rs` (ComfyUI local, OpenAI DALL·E, Stability API) exposed through the right-drawer prompt and note-illustrate flow.
 
 ## Brand Commitments
 - **Name**: Loreweaver.
