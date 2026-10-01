@@ -4,6 +4,7 @@ import { MapBuilderView } from "./MapBuilderView";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn((path) => path),
 }));
 
 import { invoke } from "@tauri-apps/api/core";
@@ -352,3 +353,137 @@ describe("MapBuilder extended features", () => {
     expect(screen.getAllByText("Boss").length).toBeGreaterThan(0);
   });
 });
+
+describe("MapBuilderView - Icon Tokens", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "load_canvas_file") {
+        return Promise.resolve(
+          JSON.stringify({
+            type: "map",
+            tokens: [
+              {
+                id: "token-1",
+                label: "Goblin Archer",
+                x: 100,
+                y: 100,
+                color: "oklch(50% 0.14 25)",
+                shape: "circle",
+                icon: "Skull",
+              },
+            ],
+            fog: [],
+          })
+        );
+      }
+      return Promise.resolve(null);
+    });
+  });
+
+  it("renders wireframe icon inside the token", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+
+    const tokenGroup = await screen.findByTestId("map-token-token-1");
+    expect(tokenGroup).toBeDefined();
+
+    // Verify foreignObject containing the Skull icon exists
+    const iconContainer = tokenGroup.querySelector("foreignObject");
+    expect(iconContainer).not.toBeNull();
+  });
+
+  it("allows selecting an icon in the token creation modal", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+    await screen.findByTestId("map-token-token-1");
+
+    const addTokenBtn = screen.getByTitle("Add Token");
+    fireEvent.click(addTokenBtn);
+
+    // Verify icon picker buttons are present
+    const skullIconBtn = screen.getByTestId("map-token-icon-picker-Skull");
+    expect(skullIconBtn).toBeDefined();
+
+    fireEvent.click(skullIconBtn);
+    expect(skullIconBtn.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("supports editing token on double-click", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+
+    const tokenGroup = await screen.findByTestId("map-token-token-1");
+    fireEvent.doubleClick(tokenGroup);
+
+    // Modal opens with existing values
+    const input = await screen.findByPlaceholderText("Token label");
+    expect((input as HTMLInputElement).value).toBe("Goblin Archer");
+
+    const skullIconBtn = screen.getByTestId("map-token-icon-picker-Skull");
+    expect(skullIconBtn.getAttribute("aria-pressed")).toBe("true");
+
+    // Change icon to Crown and update label
+    const crownIconBtn = screen.getByTestId("map-token-icon-picker-Crown");
+    fireEvent.click(crownIconBtn);
+    fireEvent.change(input, { target: { value: "Goblin King" } });
+
+    fireEvent.click(screen.getByText("Save Token"));
+
+    // Label updated
+    expect((await screen.findAllByText("Goblin King")).length).toBeGreaterThan(0);
+  });
+
+  it("supports editing token via edit button", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+
+    const editBtn = await screen.findByRole("button", { name: "Edit token" });
+    fireEvent.click(editBtn);
+
+    const input = await screen.findByPlaceholderText("Token label");
+    expect((input as HTMLInputElement).value).toBe("Goblin Archer");
+  });
+
+  it("preserves icon in palette and when adding from palette", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+
+    await screen.findByTestId("map-token-token-1");
+    const paletteBtn = await screen.findByTitle("Add Goblin Archer");
+    fireEvent.click(paletteBtn);
+
+    // Should now have 2 tokens
+    expect(screen.getByText(/2 tokens/)).toBeInTheDocument();
+    // Both tokens have foreignObject (skull icon)
+    const foreignObjects = document.querySelectorAll("foreignObject");
+    expect(foreignObjects.length).toBe(2);
+  });
+
+  it("falls back to initial letter when icon is None", async () => {
+    render(
+      <MapBuilderView vaultPath="/test-vault" mapRelPath="maps/encounter.canvas" />
+    );
+    const tokenGroup = await screen.findByTestId("map-token-token-1");
+
+    // Edit token to have no icon
+    fireEvent.doubleClick(tokenGroup);
+    const noneBtn = screen.getByTestId("map-token-icon-picker-None");
+    fireEvent.click(noneBtn);
+    expect(noneBtn.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(screen.getByText("Save Token"));
+
+    // foreignObject should no longer be present
+    expect(tokenGroup.querySelector("foreignObject")).toBeNull();
+    // Text element with initial letter 'G' should be present
+    const textEl = tokenGroup.querySelector("text");
+    expect(textEl?.textContent).toBe("G");
+  });
+});
+

@@ -20,6 +20,7 @@ import {
   Star as StarIcon,
 } from "lucide-react";
 import { Toast, useToast } from "./Toast";
+import { VAULT_ICONS } from "../utils/vaultIcons";
 
 /**
  * MapBuilderView
@@ -51,6 +52,7 @@ interface MapToken {
   y: number;
   color: string;
   shape?: TokenShape;
+  icon?: string;
 }
 
 interface FogRegion {
@@ -118,6 +120,21 @@ const TOKEN_COLORS = [
 
 const TOKEN_SHAPES: TokenShape[] = ["circle", "square", "star"];
 
+const TOKEN_ICON_OPTIONS: Array<{ name: string; label: string }> = [
+  { name: "User", label: "Character / NPC" },
+  { name: "Swords", label: "Combatant" },
+  { name: "Shield", label: "Defender" },
+  { name: "Skull", label: "Monster / Threat" },
+  { name: "Ghost", label: "Undead" },
+  { name: "Flame", label: "Magic / Hazard" },
+  { name: "Sparkles", label: "Arcane / Special" },
+  { name: "Crown", label: "Boss / Leader" },
+  { name: "MapPin", label: "Landmark / Objective" },
+  { name: "Heart", label: "Ally / Healer" },
+  { name: "Eye", label: "Scout / Watcher" },
+  { name: "Gem", label: "Loot / Item" },
+];
+
 const STAR_OUTER = 16;
 const STAR_INNER = 7;
 
@@ -168,6 +185,8 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   const [tokenName, setTokenName] = useState("");
   const [tokenShape, setTokenShape] = useState<TokenShape>("circle");
   const [tokenColor, setTokenColor] = useState(TOKEN_COLORS[0]);
+  const [tokenIcon, setTokenIcon] = useState<string | null>(null);
+  const [editingTokenId, setEditingTokenId] = useState<string | null>(null);
   const [currentLine, setCurrentLine] = useState<{ x: number; y: number }[]>([]);
   const [placingAnnotation, setPlacingAnnotation] = useState<{ x: number; y: number } | null>(null);
   const [annotationText, setAnnotationText] = useState("");
@@ -274,16 +293,52 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
     setTokenName("");
     setTokenShape("circle");
     setTokenColor(TOKEN_COLORS[0]);
+    setTokenIcon(null);
+    setEditingTokenId(null);
+    setNamingToken(true);
+  };
+
+  const startEditToken = (t: MapToken) => {
+    setTokenName(t.label);
+    setTokenShape(t.shape || "circle");
+    setTokenColor(t.color);
+    setTokenIcon(t.icon || null);
+    setEditingTokenId(t.id);
     setNamingToken(true);
   };
 
   const commitTokenName = () => {
     const label = tokenName.trim() || "Token";
     setNamingToken(false);
-    setTokens((prev) => [
-      ...prev,
-      { id: `token-${Date.now()}`, label, x: 120, y: 120, color: tokenColor, shape: tokenShape },
-    ]);
+    if (editingTokenId) {
+      setTokens((prev) =>
+        prev.map((t) =>
+          t.id === editingTokenId
+            ? {
+                ...t,
+                label,
+                color: tokenColor,
+                shape: tokenShape,
+                icon: tokenIcon || undefined,
+              }
+            : t,
+        ),
+      );
+      setEditingTokenId(null);
+    } else {
+      setTokens((prev) => [
+        ...prev,
+        {
+          id: `token-${Date.now()}`,
+          label,
+          x: 120,
+          y: 120,
+          color: tokenColor,
+          shape: tokenShape,
+          icon: tokenIcon || undefined,
+        },
+      ]);
+    }
   };
 
   const addFogRegion = () => {
@@ -583,12 +638,12 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
   const truncateLabel = (label: string) =>
     label.length > 12 ? `${label.slice(0, 12)}…` : label;
 
-  // Token palette: distinct (label, shape, color) combos, most recent first,
+  // Token palette: distinct (label, shape, color, icon) combos, most recent first,
   // capped at 8. Clicking a palette item drops another copy of that marker.
   const paletteItems = useMemo(() => {
     const seen = new Map<string, MapToken>();
     for (const t of tokens) {
-      const key = `${t.label}|${t.shape || "circle"}|${t.color}`;
+      const key = `${t.label}|${t.shape || "circle"}|${t.color}|${t.icon || ""}`;
       if (!seen.has(key)) seen.set(key, t);
     }
     return Array.from(seen.values()).slice(0, 8);
@@ -605,6 +660,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         y: 120 + offset,
         color: item.color,
         shape: item.shape || "circle",
+        icon: item.icon,
       },
     ]);
   };
@@ -1093,8 +1149,11 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               return (
                 <g
                   key={t.id}
+                  data-testid={`map-token-${t.id}`}
+                  data-od-id={`map-token-${t.id}`}
                   transform={`translate(${t.x}, ${t.y})`}
                   onMouseDown={(e) => handleTokenMouseDown(e, t.id, t.x, t.y)}
+                  onDoubleClick={() => startEditToken(t)}
                   style={{ cursor: "grab" }}
                 >
                   {/* Selection halo ring */}
@@ -1110,15 +1169,41 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   <g data-od-id={`map-token-shape-${t.shape || "circle"}`}>
                     {renderTokenShape(t, isSelected)}
                   </g>
-                  <text
-                    y="4"
-                    fontSize="12"
-                    textAnchor="middle"
-                    fill="#fff"
-                    fontWeight="bold"
-                  >
-                    {t.label.charAt(0).toUpperCase()}
-                  </text>
+                  {t.icon && VAULT_ICONS[t.icon] ? (
+                    <foreignObject
+                      x={-10}
+                      y={-10}
+                      width={20}
+                      height={20}
+                      style={{ pointerEvents: "none" }}
+                    >
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#fff",
+                        }}
+                      >
+                        {React.createElement(VAULT_ICONS[t.icon], {
+                          size: 16,
+                          strokeWidth: 2,
+                        })}
+                      </div>
+                    </foreignObject>
+                  ) : (
+                    <text
+                      y="4"
+                      fontSize="12"
+                      textAnchor="middle"
+                      fill="#fff"
+                      fontWeight="bold"
+                    >
+                      {t.label.charAt(0).toUpperCase()}
+                    </text>
+                  )}
                   {isSelected ? (
                     <g>
                       <rect
@@ -1152,6 +1237,35 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                       {label}
                     </text>
                   )}
+                  <g
+                    transform="translate(-11, -11)"
+                    role="button"
+                    aria-label="Edit token"
+                    data-testid={`map-token-edit-${t.id}`}
+                    data-od-id={`map-token-edit-${t.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditToken(t);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <circle
+                      r="8"
+                      fill="var(--surface)"
+                      stroke="var(--border)"
+                      strokeWidth="1.5"
+                    />
+                    <g
+                      fill="none"
+                      stroke="var(--fg)"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      transform="translate(-4, -4)"
+                    >
+                      <path d="M6 1.5l1.5 1.5L2.5 8H1v-1.5L6 1.5z" />
+                    </g>
+                  </g>
                   <g
                     transform="translate(11, -11)"
                     role="button"
@@ -1221,15 +1335,22 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                   padding: "2px 6px",
                 }}
               >
-                <svg width="12" height="12" viewBox="-16 -16 32 32">
-                  {item.shape === "square" ? (
-                    <rect x={-16} y={-16} width={32} height={32} rx={0} fill={item.color} />
-                  ) : item.shape === "star" ? (
-                    <polygon points={starPoints(16, 7)} fill={item.color} />
-                  ) : (
-                    <circle r={16} fill={item.color} />
-                  )}
-                </svg>
+                {item.icon && VAULT_ICONS[item.icon] ? (
+                  (() => {
+                    const IconComp = VAULT_ICONS[item.icon];
+                    return <IconComp size={12} style={{ color: item.color }} />;
+                  })()
+                ) : (
+                  <svg width="12" height="12" viewBox="-16 -16 32 32">
+                    {item.shape === "square" ? (
+                      <rect x={-16} y={-16} width={32} height={32} rx={0} fill={item.color} />
+                    ) : item.shape === "star" ? (
+                      <polygon points={starPoints(16, 7)} fill={item.color} />
+                    ) : (
+                      <circle r={16} fill={item.color} />
+                    )}
+                  </svg>
+                )}
                 {truncateLabel(item.label)}
               </button>
             ))}
@@ -1360,12 +1481,12 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               borderRadius: 0,
               boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: "16px",
-              width: 280,
+              width: 320,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--fg)", marginBottom: "8px" }}>
-              New Token
+              {editingTokenId ? "Edit Token" : "New Token"}
             </div>
             <input
               ref={tokenNameRef}
@@ -1374,7 +1495,10 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               onChange={(e) => setTokenName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") commitTokenName();
-                if (e.key === "Escape") setNamingToken(false);
+                if (e.key === "Escape") {
+                  setNamingToken(false);
+                  setEditingTokenId(null);
+                }
               }}
               placeholder="Token label"
               style={{
@@ -1460,15 +1584,87 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 />
               ))}
             </div>
+            <div style={{ marginBottom: "12px" }}>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "10px",
+                  color: "var(--muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: "6px",
+                }}
+              >
+                Icon
+              </span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  title="None (use initial letter)"
+                  data-testid="map-token-icon-picker-None"
+                  data-od-id="map-token-icon-picker-None"
+                  onClick={() => setTokenIcon(null)}
+                  aria-pressed={tokenIcon === null}
+                  style={{
+                    background: tokenIcon === null ? "var(--accent)" : "var(--surface)",
+                    color: tokenIcon === null ? "#fff" : "var(--fg)",
+                    fontSize: "11px",
+                    padding: "2px 6px",
+                    height: 24,
+                  }}
+                >
+                  None
+                </button>
+                {TOKEN_ICON_OPTIONS.map((opt) => {
+                  const IconComp = VAULT_ICONS[opt.name];
+                  const isSelected = tokenIcon === opt.name;
+                  return (
+                    <button
+                      key={opt.name}
+                      type="button"
+                      className="btn btn-sm"
+                      title={opt.label}
+                      data-testid={`map-token-icon-picker-${opt.name}`}
+                      data-od-id={`map-token-icon-picker-${opt.name}`}
+                      onClick={() => setTokenIcon(opt.name)}
+                      aria-pressed={isSelected}
+                      style={{
+                        background: isSelected ? "var(--accent)" : "var(--surface)",
+                        color: isSelected ? "#fff" : "var(--fg)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "2px 4px",
+                        minWidth: 24,
+                        height: 24,
+                      }}
+                    >
+                      {IconComp && <IconComp size={14} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
               <button
                 className="btn btn-sm"
-                onClick={() => setNamingToken(false)}
+                onClick={() => {
+                  setNamingToken(false);
+                  setEditingTokenId(null);
+                }}
               >
                 Cancel
               </button>
               <button className="btn btn-sm btn-primary" onClick={commitTokenName}>
-                Add Token
+                {editingTokenId ? "Save Token" : "Add Token"}
               </button>
             </div>
           </div>
