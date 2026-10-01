@@ -67,6 +67,11 @@
     "allow-import-world",
     "allow-list-liminal-notes",
     "allow-claim-liminal-note",
-    "allow-make-world-from-liminal"
+    "allow-make-world-from-liminal",
+    "allow-rename-note",
+    "allow-move-note",
+    "allow-create-folder",
+    "allow-rename-folder",
+    "allow-import-file-to-vault"
   ]
 }

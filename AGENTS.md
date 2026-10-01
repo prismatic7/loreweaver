@@ -57,3 +57,10 @@ npm run tauri dev     # full app dev loop (Rust + frontend)
 - Image generation is real (ComfyUI / OpenAI / Stability via `src-tauri/src/providers/image.rs`); the UI flow is the right-drawer prompt + note-illustrate. No placeholder remains.
 - The plugin system runs arbitrary JS in Boa with no strong sandbox/isolation beyond the permission allow-list.
 - Search embeddings are hardcoded to 384 dimensions; changing embedding providers requires a full reindex with no automatic compatibility check.
+
+
+## Fleet conventions
+
+Stricter-than (never looser than) fleet-wide conventions apply everywhere in the fleet:
+
+@../fleet-conventions.md

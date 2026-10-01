@@ -800,6 +800,188 @@ fn restore_note_impl(
     Ok(())
 }
 
+/// Renames a note file on disk and updates its database record and path.
+#[tauri::command]
+async fn rename_note(
+    state: State<'_, AppState>,
+    old_path: &str,
+    new_path: &str,
+) -> Result<CampaignNote, String> {
+    let vault_path = state.vault_path.lock().await;
+    let old_file = validate_safe_path(&vault_path, old_path)?;
+    let new_file = validate_safe_path(&vault_path, new_path)?;
+
+    if !old_file.exists() {
+        return Err(format!("Source note '{}' does not exist", old_path));
+    }
+    if new_file.exists() && old_file != new_file {
+        return Err(format!("Destination note '{}' already exists", new_path));
+    }
+
+    if let Some(parent) = new_file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    std::fs::rename(&old_file, &new_file)
+        .map_err(|e| format!("Failed to rename note file: {}", e))?;
+
+    let (title, content, frontmatter) = watcher::parse_markdown_file(&new_file)?;
+
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+
+    // Check if an existing note ID can be preserved
+    let existing_notes = db::load_all_notes(&conn).map_err(|e| e.to_string())?;
+    let existing_id = existing_notes
+        .iter()
+        .find(|n| n.path == old_path)
+        .map(|n| n.id.clone())
+        .unwrap_or_else(|| format!("note-{}", uuid::Uuid::new_v4()));
+
+    let _ = db::delete_note_by_path(&conn, old_path);
+    let frontmatter_map = frontmatter;
+
+    let _ = db::upsert_note(
+        &conn,
+        new_path,
+        &title,
+        &content,
+        &frontmatter_map,
+        Some(&existing_id),
+    );
+
+    search::invalidate_cache();
+
+    Ok(CampaignNote {
+        id: existing_id,
+        title,
+        path: new_path.to_string(),
+        frontmatter: frontmatter_map,
+        content,
+    })
+}
+
+/// Moves a note into a target destination folder.
+#[tauri::command]
+async fn move_note(
+    state: State<'_, AppState>,
+    note_path: &str,
+    target_folder: &str,
+) -> Result<CampaignNote, String> {
+    let filename = std::path::Path::new(note_path)
+        .file_name()
+        .ok_or("Invalid note path")?
+        .to_string_lossy();
+    let clean_folder = target_folder.trim_matches('/');
+    let new_path = if clean_folder.is_empty() || clean_folder == "Root" {
+        filename.to_string()
+    } else {
+        format!("{}/{}", clean_folder, filename)
+    };
+    rename_note(state, note_path, &new_path).await
+}
+
+/// Creates a new directory inside the vault.
+#[tauri::command]
+async fn create_folder(state: State<'_, AppState>, folder_path: &str) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let dir = validate_safe_path(&vault_path, folder_path)?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create folder: {}", e))?;
+    Ok(())
+}
+
+/// Renames a directory inside the vault and updates note records.
+#[tauri::command]
+async fn rename_folder(
+    state: State<'_, AppState>,
+    old_folder: &str,
+    new_folder: &str,
+) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await;
+    let old_dir = validate_safe_path(&vault_path, old_folder)?;
+    let new_dir = validate_safe_path(&vault_path, new_folder)?;
+
+    if !old_dir.exists() {
+        return Err(format!("Source folder '{}' does not exist", old_folder));
+    }
+    if new_dir.exists() && old_dir != new_dir {
+        return Err(format!("Destination folder '{}' already exists", new_folder));
+    }
+
+    if let Some(parent) = new_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    std::fs::rename(&old_dir, &new_dir).map_err(|e| format!("Failed to rename folder: {}", e))?;
+
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+
+    let old_prefix = format!("{}/", old_folder.trim_matches('/'));
+    let new_prefix = format!("{}/", new_folder.trim_matches('/'));
+
+    let notes = db::load_all_notes(&conn).map_err(|e| e.to_string())?;
+    for note in notes {
+        if note.path.starts_with(&old_prefix) {
+            let updated_path = format!("{}{}", new_prefix, &note.path[old_prefix.len()..]);
+            let _ = db::delete_note_by_path(&conn, &note.path);
+            let _ = db::upsert_note(
+                &conn,
+                &updated_path,
+                &note.title,
+                &note.content,
+                &note.frontmatter,
+                Some(&note.id),
+            );
+        }
+    }
+
+    search::invalidate_cache();
+    Ok(())
+}
+
+/// Imports an external file into a vault folder.
+#[tauri::command]
+async fn import_file_to_vault(
+    state: State<'_, AppState>,
+    target_folder: &str,
+    file_name: &str,
+    base64_content: &str,
+) -> Result<String, String> {
+    let vault_path = state.vault_path.lock().await;
+    let clean_folder = target_folder.trim_matches('/');
+    let rel_path = if clean_folder.is_empty() || clean_folder == "Root" {
+        file_name.to_string()
+    } else {
+        format!("{}/{}", clean_folder, file_name)
+    };
+
+    let target_path = validate_safe_path(&vault_path, &rel_path)?;
+    if let Some(parent) = target_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let bytes = base64::prelude::BASE64_STANDARD
+        .decode(base64_content)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    std::fs::write(&target_path, bytes).map_err(|e| format!("Failed to write file: {}", e))?;
+
+    if rel_path.ends_with(".md") {
+        if let Ok((title, content, frontmatter)) = watcher::parse_markdown_file(&target_path) {
+            let conn_arc = state.conn.lock().await;
+            let conn_res = conn_arc.lock();
+            if let Ok(conn) = conn_res {
+                let id = format!("note-{}", uuid::Uuid::new_v4());
+                let _ = db::upsert_note(&conn, &rel_path, &title, &content, &frontmatter, Some(&id));
+            }
+        }
+    }
+
+    search::invalidate_cache();
+    Ok(rel_path)
+}
+
 #[tauri::command]
 async fn load_trash_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, String> {
     let vault_path = state.vault_path.lock().await;
@@ -3251,6 +3433,11 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             switch_vault,
             trash_note,
             trash_folder,
+            rename_note,
+            move_note,
+            create_folder,
+            rename_folder,
+            import_file_to_vault,
             restore_note,
             delete_trashed_note,
             delete_rules_folder,

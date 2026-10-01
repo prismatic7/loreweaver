@@ -356,3 +356,28 @@ commands = { allow = ["claim_liminal_note"] }
 identifier = "allow-make-world-from-liminal"
 description = "Allows the make_world_from_liminal command to be invoked by the frontend"
 commands = { allow = ["make_world_from_liminal"] }
+
+[[permission]]
+identifier = "allow-rename-note"
+description = "Allows the rename_note command to be invoked by the frontend"
+commands = { allow = ["rename_note"] }
+
+[[permission]]
+identifier = "allow-move-note"
+description = "Allows the move_note command to be invoked by the frontend"
+commands = { allow = ["move_note"] }
+
+[[permission]]
+identifier = "allow-create-folder"
+description = "Allows the create_folder command to be invoked by the frontend"
+commands = { allow = ["create_folder"] }
+
+[[permission]]
+identifier = "allow-rename-folder"
+description = "Allows the rename_folder command to be invoked by the frontend"
+commands = { allow = ["rename_folder"] }
+
+[[permission]]
+identifier = "allow-import-file-to-vault"
+description = "Allows the import_file_to_vault command to be invoked by the frontend"
+commands = { allow = ["import_file_to_vault"] }
