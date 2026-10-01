@@ -4,7 +4,7 @@ import type { Plugin } from "unified";
 
 const CALLOUT_REGEX = /^\[!([a-zA-Z0-9_-]+)\]([+-])?(?:\s+(.*))?$/;
 
-export interface CalloutNode extends Omit<Blockquote, "type"> {
+export interface CalloutNode extends Omit<Blockquote, "type" | "data"> {
   type: "callout" | string;
   data: {
     calloutType: string;
@@ -12,7 +12,7 @@ export interface CalloutNode extends Omit<Blockquote, "type"> {
     defaultFolded: boolean;
     title: string;
     hName?: string;
-    hProperties?: Record<string, unknown>;
+    hProperties?: Record<string, string | number | boolean | (string | number)[] | null | undefined>;
   };
 }
 

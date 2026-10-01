@@ -103,7 +103,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   let currentCheckboxIndex = 0;
 
   const components: Components = {
-    div: ({ node, children, ...props }: any) => {
+    div: ({ _node, children, ...props }: any) => {
       // Obsidian Callout
       if (props["data-callout"]) {
         const calloutType = props["data-callout"] || "note";

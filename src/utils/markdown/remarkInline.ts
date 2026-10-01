@@ -3,7 +3,7 @@ import type { Root, Text, Parent } from "mdast";
 import type { Plugin } from "unified";
 
 const HIGHLIGHT_REGEX = /==([^=\n]+)==/g;
-const TAG_REGEX = /(?<=\s|^)#([a-zA-Z0-9_\-\/]+)(?=$|[.,!?;:\s])/g;
+const TAG_REGEX = /(?<=\s|^)#([a-zA-Z0-9_\-/]+)(?=$|[.,!?;:\s])/g;
 
 export const remarkInline: Plugin<[], Root> = () => {
   return (tree: Root) => {
