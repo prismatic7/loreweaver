@@ -65,4 +65,20 @@ describe("MarkdownRenderer Integration", () => {
     fireEvent.click(checkboxes[0]);
     expect(onToggleTask).toHaveBeenCalledWith(0, true);
   });
+
+  it("renders inline dice formulas with interactive dice badges", () => {
+    const md = "Roll for initiative: 1d20+5, or take 2d6 damage!";
+    render(
+      <MarkdownRenderer
+        content={md}
+        notes={[]}
+        selectedNoteId=""
+        vaultPath="/vault"
+        onSelectNote={vi.fn()}
+        onCreateNote={vi.fn()}
+      />
+    );
+    expect(screen.getByText("1d20+5")).toBeInTheDocument();
+    expect(screen.getByText("2d6")).toBeInTheDocument();
+  });
 });

@@ -308,7 +308,7 @@ export const AlertModal: React.FC<AlertModalProps> = ({
 export interface IngestModalProps {
   open: boolean;
   fileName: string;
-  onSelect: (mode: "text" | "ai") => void;
+  onSelect: (mode: "text" | "ai", autoChunk?: boolean) => void;
   onCancel: () => void;
 }
 
@@ -320,6 +320,8 @@ export const IngestModal: React.FC<IngestModalProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const titleId = React.useId();
+  const [autoChunk, setAutoChunk] = useState(true);
+  const isPdf = fileName.toLowerCase().endsWith(".pdf");
   useFocusTrap({ active: open, containerRef });
 
   if (!open) return null;
@@ -386,10 +388,42 @@ export const IngestModal: React.FC<IngestModalProps> = ({
           </div>
         </div>
 
+        {isPdf && (
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 10px",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              cursor: "pointer",
+              fontSize: "12px",
+              color: "var(--fg)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={autoChunk}
+              onChange={(e) => setAutoChunk(e.target.checked)}
+              style={{ cursor: "pointer" }}
+            />
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontWeight: 600 }}>
+                Auto-chunk into chapter notes
+              </span>
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                Extracts PDF bookmarks / outline into nested folder notes in Rules/
+              </span>
+            </div>
+          </label>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <button
             type="button"
-            onClick={() => onSelect("text")}
+            onClick={() => onSelect("text", isPdf ? autoChunk : false)}
             style={{
               background: "var(--bg)",
               border: "1px solid var(--border)",
@@ -414,7 +448,7 @@ export const IngestModal: React.FC<IngestModalProps> = ({
 
           <button
             type="button"
-            onClick={() => onSelect("ai")}
+            onClick={() => onSelect("ai", isPdf ? autoChunk : false)}
             style={{
               background: "var(--bg)",
               border: "1px solid var(--border)",

@@ -1,102 +1,49 @@
-import {
-    autocompletion,
-    type CompletionContext,
-    type CompletionResult,
-} from "@codemirror/autocomplete";
+import { autocompletion } from "@codemirror/autocomplete";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView, placeholder } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import Fuse from "fuse.js";
 import { useMemo } from "react";
+import {
+  buildLinkCandidates,
+  wikiLinkCompletion,
+  type EditorNote,
+  type LinkCandidate,
+} from "../utils/editor/wikiLinkCompletion";
 
-/**
- * MarkdownEditor Component
- * Wraps CodeMirror 6 with support for Markdown line-wrapping and wikilink autocompletion.
- * Performs fuzzy search on note titles and aliases to trigger Obsidian-style link injections.
- */
+export type { EditorNote, LinkCandidate };
 
-
-type EditorNote = {
-  title: string;
-  frontmatter: Record<string, unknown>;
-};
-
-type MarkdownEditorProps = {
+export type MarkdownEditorProps = {
   value: string;
   onChange: (value: string) => void;
   notes: EditorNote[];
   activeNotePath?: string;
+  height?: string;
 };
-
-const buildLinkCandidates = (notes: EditorNote[]) => {
-  const candidates = new Map<string, string>();
-
-  for (const note of notes) {
-    const aliasValue = note.frontmatter.aliases ?? note.frontmatter.alias;
-    const aliases = Array.isArray(aliasValue)
-      ? aliasValue
-      : typeof aliasValue === "string"
-        ? [aliasValue]
-        : [];
-
-    for (const name of [note.title, ...aliases]) {
-      const normalized = String(name).trim();
-      if (!normalized) continue;
-      const key = normalized.toLowerCase();
-      if (!candidates.has(key)) {
-        candidates.set(key, note.title);
-      }
-    }
-  }
-
-  return Array.from(candidates.values()).map((label) => ({
-    label,
-    type: "text" as const,
-    apply: `[[${label}]]`,
-  }));
-};
-
-const wikiLinkCompletion =
-  (
-    fuse: Fuse<{ label: string; type: "text"; apply: string }>,
-    notes: EditorNote[],
-  ) =>
-  (context: CompletionContext): CompletionResult | null => {
-    const beforeCursor = context.matchBefore(/\[\[^\]\n]*$/);
-    if (!beforeCursor && !context.explicit) return null;
-
-    const query = beforeCursor?.text.slice(2).trim() ?? "";
-    const candidates = buildLinkCandidates(notes);
-    const options = query
-      ? fuse.search(query, { limit: 10 }).map((result) => result.item)
-      : candidates;
-
-    return {
-      from: beforeCursor ? beforeCursor.from + 2 : context.pos,
-      options,
-    };
-  };
 
 export default function MarkdownEditor({
   value,
   onChange,
   notes,
+  height = "400px",
 }: MarkdownEditorProps) {
+  const candidates = useMemo(() => buildLinkCandidates(notes), [notes]);
   const fuse = useMemo(() => {
-    const candidates = buildLinkCandidates(notes);
     return new Fuse(candidates, {
-      keys: ["label"],
+      keys: ["label", "detail"],
       threshold: 0.4,
       ignoreLocation: true,
     });
-  }, [notes]);
+  }, [candidates]);
 
   const extensions = useMemo(
     () => [
       markdown(),
       EditorView.lineWrapping,
       placeholder("Start writing notes in markdown..."),
-      autocompletion({ override: [wikiLinkCompletion(fuse, notes)] }),
+      autocompletion({
+        override: [wikiLinkCompletion(fuse, candidates, notes)],
+      }),
       EditorView.theme({
         "&": {
           backgroundColor: "var(--surface)",
@@ -144,14 +91,14 @@ export default function MarkdownEditor({
         },
       }),
     ],
-    [notes, fuse],
+    [notes, fuse, candidates],
   );
 
   return (
     <CodeMirror
       value={value}
       onChange={onChange}
-      height="400px"
+      height={height}
       basicSetup={{
         lineNumbers: false,
         foldGutter: false,
@@ -165,7 +112,7 @@ export default function MarkdownEditor({
       extensions={extensions}
       style={{
         width: "100%",
-        height: "400px",
+        height,
         border: "1px solid var(--border)",
         borderRadius: 0,
         overflow: "hidden",

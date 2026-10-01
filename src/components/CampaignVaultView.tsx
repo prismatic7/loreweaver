@@ -6,6 +6,7 @@ import {
   Trash2,
   Copy,
   Image as ImageIcon,
+  Columns2,
 } from "lucide-react";
 import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../types";
 import { NoteOutline } from "./NoteOutline";
@@ -156,6 +157,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   onOpenImportDialog,
 }) => {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
+  const [splitMode, setSplitMode] = useState(false);
 
   const effectiveNotes = useMemo(() => {
     if (notes && notes.length > 0) return notes;
@@ -393,6 +395,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       onClick={() => {
                         triggerImmediateSave();
                         setIsEditingNote(false);
+                        setSplitMode(false);
                       }}
                       data-od-id="preview-note-btn"
                       style={{
@@ -417,16 +420,19 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       <Eye size={12} /> Preview
                     </button>
                     <button
-                      onClick={() => setIsEditingNote(true)}
+                      onClick={() => {
+                        setIsEditingNote(true);
+                        setSplitMode(false);
+                      }}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         gap: "4px",
                         border: "none",
-                        background: isEditingNote
+                        background: isEditingNote && !splitMode
                           ? "var(--surface)"
                           : "transparent",
-                        color: isEditingNote
+                        color: isEditingNote && !splitMode
                           ? "var(--accent)"
                           : "var(--muted)",
                         padding: "4px 10px",
@@ -439,6 +445,33 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       data-od-id="edit-note-btn"
                     >
                       <PenLine size={12} /> Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingNote(true);
+                        setSplitMode(true);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        border: "none",
+                        background: isEditingNote && splitMode
+                          ? "var(--surface)"
+                          : "transparent",
+                        color: isEditingNote && splitMode
+                          ? "var(--accent)"
+                          : "var(--muted)",
+                        padding: "4px 10px",
+                        borderRadius: 0,
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        fontFamily: "var(--font-body)",
+                        cursor: "pointer",
+                      }}
+                      data-od-id="split-note-btn"
+                    >
+                      <Columns2 size={12} /> Split
                     </button>
                   </div>
 
@@ -930,48 +963,193 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                       </div>
                     </details>
 
-                    {/* Markdown Editor */}
-                    <div style={{ marginBottom: "20px" }}>
-                      <Suspense
-                        fallback={
+                    {/* Markdown Editor / Split Pane */}
+                    {splitMode ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "24px",
+                          alignItems: "stretch",
+                          minHeight: "550px",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        {/* Left: Editor Pane */}
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                          }}
+                        >
                           <div
                             style={{
-                              width: "100%",
-                              height: "400px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              border: "1px solid var(--border)",
-                              borderRadius: 0,
-                              background: "var(--surface)",
+                              fontSize: "11px",
+                              fontWeight: 600,
                               color: "var(--muted)",
-                              fontSize: "13px",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              marginBottom: "8px",
                             }}
                           >
-                            Loading markdown editor...
+                            Markdown Editor
                           </div>
-                        }
-                      >
-                        <MarkdownEditor
-                          value={editContent}
-                          onChange={setEditContent}
-                          notes={notes}
-                          activeNotePath={currentNote.path}
-                        />
-                      </Suspense>
-                    </div>
+                          <Suspense
+                            fallback={
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: "500px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 0,
+                                  background: "var(--surface)",
+                                  color: "var(--muted)",
+                                  fontSize: "13px",
+                                }}
+                              >
+                                Loading markdown editor...
+                              </div>
+                            }
+                          >
+                            <MarkdownEditor
+                              value={editContent}
+                              onChange={setEditContent}
+                              notes={notes}
+                              activeNotePath={currentNote.path}
+                              height="500px"
+                            />
+                          </Suspense>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--muted)",
+                              fontStyle: "italic",
+                              borderTop: "1px solid var(--border)",
+                              paddingTop: "8px",
+                              marginTop: "8px",
+                            }}
+                          >
+                            ● Auto-saving in background...
+                          </div>
+                        </div>
 
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "var(--muted)",
-                        fontStyle: "italic",
-                        borderTop: "1px solid var(--border)",
-                        paddingTop: "8px",
-                      }}
-                    >
-                      ● Auto-saving in background...
-                    </div>
+                        {/* Right: Live Preview Pane */}
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            borderLeft: "1px solid var(--border)",
+                            paddingLeft: "24px",
+                            display: "flex",
+                            flexDirection: "column",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              color: "var(--muted)",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            Live Preview
+                          </div>
+                          <div
+                            className="doc-title"
+                            style={{
+                              wordBreak: "break-word",
+                              fontSize: "20px",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            {editTitle || currentNote.title}
+                          </div>
+                          <div
+                            className="doc-meta"
+                            style={{ marginBottom: "12px" }}
+                          >
+                            {Boolean(
+                              editFrontmatter.type ||
+                                currentNote.frontmatter.type,
+                            ) && (
+                              <span className="doc-meta-tag">
+                                {String(
+                                  editFrontmatter.type ||
+                                    currentNote.frontmatter.type,
+                                ).toUpperCase()}
+                              </span>
+                            )}
+                            <span className="doc-meta-tag">
+                              {currentNote.path}
+                            </span>
+                          </div>
+                          <div
+                            className="doc-body"
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              overflowY: "auto",
+                              background: "var(--surface)",
+                              padding: "16px",
+                              border: "1px solid var(--border)",
+                              maxHeight: "500px",
+                            }}
+                          >
+                            {renderMarkdown(editContent)}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: "20px" }}>
+                          <Suspense
+                            fallback={
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: "400px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 0,
+                                  background: "var(--surface)",
+                                  color: "var(--muted)",
+                                  fontSize: "13px",
+                                }}
+                              >
+                                Loading markdown editor...
+                              </div>
+                            }
+                          >
+                            <MarkdownEditor
+                              value={editContent}
+                              onChange={setEditContent}
+                              notes={notes}
+                              activeNotePath={currentNote.path}
+                            />
+                          </Suspense>
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "var(--muted)",
+                            fontStyle: "italic",
+                            borderTop: "1px solid var(--border)",
+                            paddingTop: "8px",
+                          }}
+                        >
+                          ● Auto-saving in background...
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div>

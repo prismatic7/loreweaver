@@ -1,4 +1,15 @@
-export const fallbackRoll = (notation: string): string => {
+export interface DiceRollOutcome {
+  notation: string;
+  total: number;
+  breakdown: string;
+  fullText: string;
+}
+
+/**
+ * Rolls RPG dice using the standard notation format:
+ * Supports dice like 1d20, 2d6+3, 1d100, 1d%, 4df, 3d6+1d4-2.
+ */
+export const parseAndRollDice = (notation: string): DiceRollOutcome => {
   try {
     const str = notation.toLowerCase().replace(/\s+/g, "");
     const termRegex = /([+-]?)(?:(\d*)d(\d+|%|f)|(\d+))/g;
@@ -27,7 +38,7 @@ export const fallbackRoll = (notation: string): string => {
         const termRolls: number[] = [];
         let termTotal = 0;
         for (let i = 0; i < count; i++) {
-          let rollVal;
+          let rollVal: number;
           if (sides === "f") {
             rollVal = Math.floor(Math.random() * 3) - 1;
           } else {
@@ -42,9 +53,32 @@ export const fallbackRoll = (notation: string): string => {
       }
     }
 
-    if (explanation.length === 0) return `Invalid notation: ${notation}`;
-    return `${notation}: ${explanation.join(" ")} = ${total}`;
+    if (explanation.length === 0) {
+      return {
+        notation,
+        total: 0,
+        breakdown: "Invalid notation",
+        fullText: `Invalid notation: ${notation}`,
+      };
+    }
+
+    const breakdown = explanation.join(" ");
+    return {
+      notation,
+      total,
+      breakdown,
+      fullText: `${notation}: ${breakdown} = ${total}`,
+    };
   } catch {
-    return `Error rolling ${notation}`;
+    return {
+      notation,
+      total: 0,
+      breakdown: "Error rolling",
+      fullText: `Error rolling ${notation}`,
+    };
   }
+};
+
+export const fallbackRoll = (notation: string): string => {
+  return parseAndRollDice(notation).fullText;
 };

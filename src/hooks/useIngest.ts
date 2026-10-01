@@ -1,10 +1,16 @@
 import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { extractTextFromPdf, PdfProgress, rawToMarkdown } from "../utils/pdf";
+import {
+  extractTextFromPdf,
+  chunkPdfByOutline,
+  PdfProgress,
+  rawToMarkdown,
+} from "../utils/pdf";
 
 interface UseIngestDeps {
   showToast: (message: string) => void;
   loadRules: () => Promise<void>;
+  loadNotes?: () => Promise<void>;
   llmProvider: string;
   llmModel: string;
   llmApiKey: string;
@@ -15,11 +21,20 @@ interface UseIngestDeps {
 export interface IngestDialogState {
   open: boolean;
   fileName: string;
-  onSelect: ((mode: "text" | "ai") => void) | null;
+  onSelect: ((mode: "text" | "ai", autoChunk?: boolean) => void) | null;
 }
 
 export const useIngest = (deps: UseIngestDeps) => {
-  const { showToast, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress } = deps;
+  const {
+    showToast,
+    loadRules,
+    loadNotes,
+    llmProvider,
+    llmModel,
+    llmApiKey,
+    llmBaseUrl,
+    onProgress,
+  } = deps;
   const [ingestDialog, setIngestDialog] = useState<IngestDialogState>({
     open: false,
     fileName: "",
@@ -27,7 +42,7 @@ export const useIngest = (deps: UseIngestDeps) => {
   });
 
   const executeSRDIngestion = useCallback(
-    async (file: File, mode: "text" | "ai") => {
+    async (file: File, mode: "text" | "ai", autoChunk = false) => {
       const sourceName = file.name.replace(/\.[^/.]+$/, "");
       const reader = new FileReader();
 
@@ -37,6 +52,55 @@ export const useIngest = (deps: UseIngestDeps) => {
           if (!arrayBuffer) return;
 
           try {
+            if (autoChunk) {
+              showToast(
+                `Auto-chunking "${file.name}" into chapter notes via outline...`,
+              );
+              const chunks = await chunkPdfByOutline(arrayBuffer, {
+                mode,
+                sourceName,
+                baseFolder: `Rules/${sourceName}`,
+                llmProvider,
+                llmModel,
+                llmApiKey,
+                llmBaseUrl,
+                onProgress,
+              });
+
+              for (const chunk of chunks) {
+                const noteId = `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                const note = {
+                  id: noteId,
+                  title: chunk.title,
+                  path: chunk.fullPath,
+                  content: chunk.content,
+                  frontmatter: {
+                    type: "reference",
+                    source: sourceName,
+                    start_page: chunk.startPage,
+                    end_page: chunk.endPage,
+                    tags: ["rules", "reference"],
+                  },
+                  updatedAt: new Date().toISOString(),
+                };
+
+                await invoke("save_note", { note });
+
+                await invoke("ingest_srd_text", {
+                  category: "Reference",
+                  source: `${sourceName} - ${chunk.title}`,
+                  content: chunk.content,
+                });
+              }
+
+              await loadRules();
+              await loadNotes?.();
+              showToast(
+                `Successfully auto-chunked "${file.name}" into ${chunks.length} chapter notes in "Rules/${sourceName}/"!`,
+              );
+              return;
+            }
+
             if (mode === "ai") {
               showToast(
                 "Starting AI Markdown ingestion... Pages are being processed in batches by your LLM. Progress will appear in the bottom-right corner.",
@@ -124,7 +188,16 @@ export const useIngest = (deps: UseIngestDeps) => {
         reader.readAsText(file);
       }
     },
-    [showToast, loadRules, llmProvider, llmModel, llmApiKey, llmBaseUrl, onProgress],
+    [
+      showToast,
+      loadRules,
+      loadNotes,
+      llmProvider,
+      llmModel,
+      llmApiKey,
+      llmBaseUrl,
+      onProgress,
+    ],
   );
 
   const handleIngestSRD = useCallback(
@@ -135,8 +208,8 @@ export const useIngest = (deps: UseIngestDeps) => {
       setIngestDialog({
         open: true,
         fileName: file.name,
-        onSelect: (mode) => {
-          executeSRDIngestion(file, mode);
+        onSelect: (mode, autoChunk) => {
+          executeSRDIngestion(file, mode, autoChunk);
         },
       });
 

@@ -10,11 +10,13 @@ import { remarkCallouts } from "../../utils/markdown/remarkCallouts";
 import { remarkWikiLinks } from "../../utils/markdown/remarkWikiLinks";
 import { remarkEmbeds } from "../../utils/markdown/remarkEmbeds";
 import { remarkInline } from "../../utils/markdown/remarkInline";
+import { remarkDice } from "../../utils/markdown/remarkDice";
 import { CalloutBlock } from "./CalloutBlock";
 import { CodeBlockWithCopy } from "./CodeBlockWithCopy";
 import { InteractiveTaskCheckbox } from "./InteractiveTaskCheckbox";
 import { WikiLinkAnchor } from "./WikiLinkAnchor";
 import { TranscludedNoteCard } from "./TranscludedNoteCard";
+import { InlineDiceBadge } from "./InlineDiceBadge";
 import "./markdown.css";
 
 export interface MarkdownRendererProps {
@@ -229,6 +231,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         return <span className="markdown-tag-pill">{children}</span>;
       }
 
+      // Inline Dice Formula
+      if (props["data-dice"]) {
+        return <InlineDiceBadge formula={props["data-dice"]} />;
+      }
+
       return <span {...props}>{children}</span>;
     },
 
@@ -287,6 +294,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           remarkWikiLinks,
           remarkEmbeds,
           remarkInline,
+          remarkDice,
         ]}
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={components}

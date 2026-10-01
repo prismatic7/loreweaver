@@ -288,3 +288,108 @@ describe("extractTextFromPdf", () => {
     ]);
   });
 });
+
+describe("PDF Outline and Auto-Chunking", () => {
+  it("sanitizeFileName removes illegal filesystem characters", async () => {
+    const { sanitizeFileName } = await import("./pdf");
+    expect(sanitizeFileName("Chapter 1: Combat & Tactics / Skills?")).toBe(
+      "Chapter 1 Combat & Tactics Skills"
+    );
+    expect(sanitizeFileName("Evil <Demon> *Boss*")).toBe("Evil Demon Boss");
+  });
+
+  it("detectOutlineFromPages extracts chapter and header patterns from raw pages", async () => {
+    const { detectOutlineFromPages } = await import("./pdf");
+    const pages = [
+      { num: 1, text: "Welcome to the game\nCopyright 2026" },
+      { num: 2, text: "Chapter 1: Character Creation\nRoll your stats" },
+      { num: 5, text: "Chapter 2: Equipment\nArmor and weapons" },
+      { num: 8, text: "# Appendix A: Bestiary\nGoblins and Dragons" },
+    ];
+
+    const outline = detectOutlineFromPages(pages);
+    expect(outline).toHaveLength(3);
+    expect(outline[0]).toEqual({
+      title: "Chapter 1: Character Creation",
+      pageNumber: 2,
+      level: 0,
+    });
+    expect(outline[1]).toEqual({
+      title: "Chapter 2: Equipment",
+      pageNumber: 5,
+      level: 0,
+    });
+    expect(outline[2]).toEqual({
+      title: "Appendix A: Bestiary",
+      pageNumber: 8,
+      level: 0,
+    });
+  });
+
+  it("chunkPdfByOutline chunks pages into nested folders and notes", async () => {
+    const { chunkPdfByOutline } = await import("./pdf");
+
+    // Mock PDF with outline
+    getDocumentMock.mockReturnValue({
+      promise: Promise.resolve({
+        numPages: 6,
+        getPage: async (n: number) => ({
+          streamTextContent: () =>
+            makeStream([{ items: [textItem(`Content of page ${n}`, 10, 100)] }]),
+        }),
+        getOutline: async () => [
+          {
+            title: "Chapter 1: The Beginning",
+            dest: [0], // 0-indexed page 0 -> page 1
+            items: [
+              {
+                title: "Races",
+                dest: [1], // page 2
+              },
+              {
+                title: "Classes",
+                dest: [3], // page 4
+              },
+            ],
+          },
+          {
+            title: "Chapter 2: Magic",
+            dest: [4], // page 5
+          },
+        ],
+        getPageIndex: async (ref: any) => (typeof ref === "number" ? ref : 0),
+      }),
+    } as never);
+
+    const chunks = await chunkPdfByOutline(buf(), {
+      sourceName: "FantasySRD",
+      baseFolder: "Rules/FantasySRD",
+      mode: "text",
+    });
+
+    expect(chunks.length).toBeGreaterThanOrEqual(4);
+
+    // Chapter 1 overview (page 1)
+    expect(chunks.some((c) => c.fullPath.includes("01 - Chapter 1 The Beginning/00 - Overview.md"))).toBe(true);
+
+    // Chapter 1 Races (pages 2-3)
+    const racesChunk = chunks.find((c) => c.title === "Races");
+    expect(racesChunk).toBeDefined();
+    expect(racesChunk?.startPage).toBe(2);
+    expect(racesChunk?.endPage).toBe(3);
+    expect(racesChunk?.content).toContain('title: "Races"');
+    expect(racesChunk?.content).toContain("Page 2");
+
+    // Chapter 1 Classes (page 4)
+    const classesChunk = chunks.find((c) => c.title === "Classes");
+    expect(classesChunk).toBeDefined();
+    expect(classesChunk?.startPage).toBe(4);
+    expect(classesChunk?.endPage).toBe(4);
+
+    // Chapter 2 Magic (pages 5-6)
+    const magicChunk = chunks.find((c) => c.title === "Chapter 2: Magic");
+    expect(magicChunk).toBeDefined();
+    expect(magicChunk?.startPage).toBe(5);
+    expect(magicChunk?.endPage).toBe(6);
+  });
+});
