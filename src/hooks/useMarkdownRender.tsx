@@ -1,8 +1,6 @@
-import { useMemo, useCallback } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import React, { useMemo, useCallback } from "react";
 import { CampaignNote } from "../types";
+import { MarkdownRenderer } from "../components/markdown/MarkdownRenderer";
 
 interface UseMarkdownRenderDeps {
   notes: CampaignNote[];
@@ -76,148 +74,72 @@ export const useMarkdownRender = (deps: UseMarkdownRenderDeps) => {
     [saveNote, setSelectedNoteId, setIsEditingNote],
   );
 
+  const handleToggleTask = useCallback(
+    (taskIndex: number, newChecked: boolean) => {
+      const activeNote = notes.find((n) => n.id === selectedNoteId);
+      if (!activeNote) return;
+
+      const lines = activeNote.content.split("\n");
+      let currentTaskIdx = 0;
+      let inCodeFence = false;
+      let modified = false;
+
+      const updatedLines = lines.map((line) => {
+        if (/^```/.test(line.trim())) {
+          inCodeFence = !inCodeFence;
+          return line;
+        }
+        if (inCodeFence) return line;
+
+        const taskMatch = /^(\s*[-*+]\s+)\[([ xX])\](\s+.*)$/.exec(line);
+        if (taskMatch) {
+          if (currentTaskIdx === taskIndex) {
+            modified = true;
+            const marker = newChecked ? "x" : " ";
+            currentTaskIdx++;
+            return `${taskMatch[1]}[${marker}]${taskMatch[3]}`;
+          }
+          currentTaskIdx++;
+        }
+        return line;
+      });
+
+      if (modified) {
+        const updatedNote: CampaignNote = {
+          ...activeNote,
+          content: updatedLines.join("\n"),
+        };
+        saveNote(updatedNote).catch((err) =>
+          console.error("Failed to persist toggled task checkbox:", err),
+        );
+      }
+    },
+    [notes, selectedNoteId, saveNote],
+  );
+
   const renderMarkdown = useMemo(() => {
     return (markdown: string): React.ReactNode => {
       if (!markdown) return null;
-      const markdownComponents: Components = {
-        a: ({ href, children }) => {
-          const linkHref = href || "";
-
-          if (linkHref.startsWith("loreweaver-note:")) {
-            const targetTitle = decodeURIComponent(linkHref.slice("loreweaver-note:".length));
-            const matchedNote = resolveCampaignNote(targetTitle);
-
-            if (matchedNote) {
-              return (
-                <button
-                  type="button"
-                  onClick={() => setSelectedNoteId(matchedNote.id)}
-                  className="markdown-note-link"
-                >
-                  {children}
-                </button>
-              );
-            }
-
-            return (
-              <button
-                type="button"
-                onClick={() => handleCreateNoteFromLink(targetTitle)}
-                className="markdown-note-link markdown-note-link-missing"
-                title="Note does not exist. Click to create."
-              >
-                {children}?
-              </button>
-            );
-          }
-
-          if (/^https?:\/\//i.test(linkHref)) {
-            return (
-              <a
-                href={linkHref}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="markdown-external-link"
-              >
-                {children}
-              </a>
-            );
-          }
-
-          return (
-            <a
-              href={linkHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="markdown-external-link"
-            >
-              {children}
-            </a>
-          );
-        },
-        table: ({ children }) => <table className="markdown-table">{children}</table>,
-        thead: ({ children }) => <thead>{children}</thead>,
-        tbody: ({ children }) => <tbody>{children}</tbody>,
-        tr: ({ children }) => <tr>{children}</tr>,
-        th: ({ children }) => <th>{children}</th>,
-        td: ({ children }) => <td>{children}</td>,
-        blockquote: ({ children }) => (
-          <blockquote className="markdown-quote">{children}</blockquote>
-        ),
-        pre: ({ children }) => <pre className="markdown-pre">{children}</pre>,
-        code: ({ className, children }) => (
-          <code className={className ? `markdown-code ${className}` : "markdown-code"}>
-            {children}
-          </code>
-        ),
-        img: ({ src, alt, title }) => {
-          let finalSrc = src || "";
-          if (finalSrc.startsWith("_assets/") || finalSrc.includes("/_assets/")) {
-            const activeNoteObj = notes.find((n) => n.id === selectedNoteId);
-            if (activeNoteObj && vaultPath) {
-              const parts = activeNoteObj.path.split("/");
-              parts.pop();
-              const parentRelative = parts.join("/");
-              const separator = parentRelative ? "/" : "";
-              const absolutePath = `${vaultPath}${separator}${parentRelative}/${finalSrc.replace(
-                /^[./]+/,
-                "",
-              )}`;
-              try {
-                finalSrc = convertFileSrc(absolutePath);
-              } catch (e) {
-                console.error("Failed to convert file src:", e);
-              }
-            }
-          }
-          return (
-            <img
-              src={finalSrc}
-              alt={alt}
-              title={title}
-              className="markdown-image"
-              style={{ maxWidth: "100%", borderRadius: 0 }}
-            />
-          );
-        },
-        audio: ({ src }) => {
-          let finalSrc = src || "";
-          if (finalSrc.startsWith("_assets/") || finalSrc.includes("/_assets/")) {
-            const activeNoteObj = notes.find((n) => n.id === selectedNoteId);
-            if (activeNoteObj && vaultPath) {
-              const parts = activeNoteObj.path.split("/");
-              parts.pop();
-              const parentRelative = parts.join("/");
-              const separator = parentRelative ? "/" : "";
-              const absolutePath = `${vaultPath}${separator}${parentRelative}/${finalSrc.replace(
-                /^[./]+/,
-                "",
-              )}`;
-              try {
-                finalSrc = convertFileSrc(absolutePath);
-              } catch (e) {
-                console.error("Failed to convert file src:", e);
-              }
-            }
-          }
-          return (
-            <audio
-              src={finalSrc}
-              controls
-              className="markdown-audio"
-              style={{ width: "100%" }}
-            />
-          );
-        },
-      };
-
       return (
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {markdown}
-        </ReactMarkdown>
+        <MarkdownRenderer
+          content={markdown}
+          notes={notes}
+          selectedNoteId={selectedNoteId}
+          vaultPath={vaultPath}
+          onSelectNote={setSelectedNoteId}
+          onCreateNote={handleCreateNoteFromLink}
+          onToggleTask={handleToggleTask}
+        />
       );
     };
-  }, [notes, selectedNoteId, vaultPath, handleCreateNoteFromLink, resolveCampaignNote, setSelectedNoteId]);
+  }, [
+    notes,
+    selectedNoteId,
+    vaultPath,
+    setSelectedNoteId,
+    handleCreateNoteFromLink,
+    handleToggleTask,
+  ]);
 
   const renderInlineMarkdown = useCallback(
     (text: string): React.ReactNode => {
