@@ -2905,6 +2905,10 @@ async fn switch_vault(
         *conn_guard = Arc::clone(&new_conn);
     }
 
+    // The ChunkCache may still hold the PREVIOUS vault's note/rule chunks;
+    // drop it so the next hybrid_query rebuilds from the new vault's DB.
+    search::invalidate_cache();
+
     // Reset shutdown flag for the new vault's background threads.
     let new_shutdown = Arc::new(AtomicBool::new(false));
     {

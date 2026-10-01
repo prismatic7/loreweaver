@@ -381,3 +381,48 @@ commands = { allow = ["rename_folder"] }
 identifier = "allow-import-file-to-vault"
 description = "Allows the import_file_to_vault command to be invoked by the frontend"
 commands = { allow = ["import_file_to_vault"] }
+
+[[permission]]
+identifier = "allow-cancel-agent-stream"
+description = "Allows the cancel_agent_stream command to be invoked by the frontend"
+commands = { allow = ["cancel_agent_stream"] }
+
+[[permission]]
+identifier = "allow-approve-agent-tool"
+description = "Allows the approve_agent_tool command to be invoked by the frontend"
+commands = { allow = ["approve_agent_tool"] }
+
+[[permission]]
+identifier = "allow-reject-agent-tool"
+description = "Allows the reject_agent_tool command to be invoked by the frontend"
+commands = { allow = ["reject_agent_tool"] }
+
+[[permission]]
+identifier = "allow-scaffold-plugin"
+description = "Allows the scaffold_plugin command to be invoked by the frontend"
+commands = { allow = ["scaffold_plugin"] }
+
+[[permission]]
+identifier = "allow-run-schedule-now"
+description = "Allows the run_schedule_now command to be invoked by the frontend"
+commands = { allow = ["run_schedule_now"] }
+
+[[permission]]
+identifier = "allow-evaluate-expression"
+description = "Allows the evaluate_expression command to be invoked by the frontend"
+commands = { allow = ["evaluate_expression"] }
+
+[[permission]]
+identifier = "allow-extract-session-memories"
+description = "Allows the extract_session_memories command to be invoked by the frontend"
+commands = { allow = ["extract_session_memories"] }
+
+[[permission]]
+identifier = "allow-list-bible-files"
+description = "Allows the list_bible_files command to be invoked by the frontend"
+commands = { allow = ["list_bible_files"] }
+
+[[permission]]
+identifier = "allow-update-bible-files"
+description = "Allows the update_bible_files command to be invoked by the frontend"
+commands = { allow = ["update_bible_files"] }

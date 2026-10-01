@@ -72,6 +72,15 @@
     "allow-move-note",
     "allow-create-folder",
     "allow-rename-folder",
-    "allow-import-file-to-vault"
+    "allow-import-file-to-vault",
+    "allow-cancel-agent-stream",
+    "allow-approve-agent-tool",
+    "allow-reject-agent-tool",
+    "allow-scaffold-plugin",
+    "allow-run-schedule-now",
+    "allow-evaluate-expression",
+    "allow-extract-session-memories",
+    "allow-list-bible-files",
+    "allow-update-bible-files"
   ]
 }

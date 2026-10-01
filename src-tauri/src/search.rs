@@ -69,7 +69,11 @@ pub struct SearchEngine {
 static ENGINE: OnceLock<Mutex<Option<SearchEngine>>> = OnceLock::new();
 
 /// Global static storing the active SQLite database path for embedding provider lookups.
-static DB_PATH: OnceLock<String> = OnceLock::new();
+///
+/// Uses `RwLock<Option<String>>` rather than `OnceLock` so `switch_vault` can overwrite
+/// the path when switching vaults (OnceLock is first-write-wins and would keep embedding
+/// provider preference lookups pointed at the previous vault's SQLite DB).
+static DB_PATH: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
 /// In-memory cache holding pre-extracted vector chunks for notes and rules.
 ///
@@ -122,15 +126,19 @@ fn engine() -> &'static Mutex<Option<SearchEngine>> {
 }
 
 /// Sets the current DB path for embedding provider preference lookups.
-/// Called during search engine initialization.
+/// Overwrites any previously set path; called during search engine initialization
+/// and again by `switch_vault` when the active vault changes.
 pub fn set_db_path(path: &str) {
-    let _ = DB_PATH.set(path.to_string());
+    if let Ok(mut guard) = DB_PATH.write() {
+        *guard = Some(path.to_string());
+    }
 }
 
 fn get_db_path() -> String {
     DB_PATH
-        .get()
-        .cloned()
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
         .unwrap_or_else(|| "loreweaver.db".to_string())
 }
 
@@ -1042,6 +1050,23 @@ mod tests {
         // Point the embedding-provider lookup at a temp path so
         // `generate_embedding`'s DB probe never touches the repo cwd.
         set_db_path(tmp.path().join("embed.db").to_str().unwrap());
+        assert_eq!(
+            get_db_path(),
+            tmp.path().join("embed.db").to_string_lossy(),
+            "get_db_path should return the first set_db_path value"
+        );
+
+        // `switch_vault` calls `set_db_path` again on every vault switch, so a
+        // second call must OVERWRITE the stored path. OnceLock was
+        // first-write-wins and kept embedding-provider lookups pinned to the
+        // previous vault's SQLite DB (cross-vault bleed).
+        let second_db = tmp.path().join("embed-second.db");
+        set_db_path(second_db.to_str().unwrap());
+        assert_eq!(
+            get_db_path(),
+            second_db.to_string_lossy(),
+            "second set_db_path call should overwrite the stored path"
+        );
 
         let conn = db::init_db(":memory:").unwrap();
         db::upsert_note(
