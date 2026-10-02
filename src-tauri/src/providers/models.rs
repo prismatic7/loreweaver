@@ -17,23 +17,42 @@ pub fn list_models(
     let clean_base = base_url.trim().trim_end_matches('/');
 
     match provider {
-        "local" => {
-            let url = if clean_base.is_empty() {
-                "http://127.0.0.1:8188/object_info".to_string()
+        "local" | "comfyui" | "comfy" => {
+            let base = if clean_base.is_empty() {
+                "http://127.0.0.1:8188"
             } else {
-                format!("{}/object_info", clean_base)
+                clean_base
             };
 
-            let response = agent
-                .get(&url)
-                .call()
-                .map_err(|e| format!("Failed to connect to ComfyUI: {:?}", e))?;
+            // 1. Try dedicated checkpoints endpoint: /models/checkpoints
+            let checkpoints_url = format!("{}/models/checkpoints", base);
+            if let Ok(response) = agent.get(&checkpoints_url).call() {
+                if let Ok(res_json) = response.into_json::<serde_json::Value>() {
+                    let models = extract_comfyui_checkpoints(&res_json);
+                    if !models.is_empty() {
+                        return Ok(models);
+                    }
+                }
+            }
 
-            let _: serde_json::Value = response
+            // 2. Fall back to /object_info/CheckpointLoaderSimple or /object_info
+            let simple_node_url = format!("{}/object_info/CheckpointLoaderSimple", base);
+            let response = match agent.get(&simple_node_url).call() {
+                Ok(resp) => resp,
+                Err(_) => {
+                    let full_url = format!("{}/object_info", base);
+                    agent
+                        .get(&full_url)
+                        .call()
+                        .map_err(|e| format!("Failed to connect to ComfyUI at {}: {:?}", base, e))?
+                }
+            };
+
+            let res_json: serde_json::Value = response
                 .into_json()
                 .map_err(|e| format!("Failed to parse ComfyUI object info: {:?}", e))?;
 
-            Ok(Vec::new())
+            Ok(extract_comfyui_checkpoints(&res_json))
         }
         "stability" => {
             let url = if clean_base.is_empty() {
@@ -195,5 +214,102 @@ pub fn list_models(
             "Connection test not supported for provider: {}",
             provider
         )),
+    }
+}
+
+pub(crate) fn extract_comfyui_checkpoints(json: &serde_json::Value) -> Vec<String> {
+    let mut models = Vec::new();
+
+    if let Some(list) = json.as_array() {
+        for item in list {
+            if let Some(name) = item.as_str() {
+                models.push(name.to_string());
+            }
+        }
+        if !models.is_empty() {
+            models.sort();
+            models.dedup();
+            return models;
+        }
+    }
+
+    let candidate_nodes = [
+        json.get("CheckpointLoaderSimple"),
+        json.get("CheckpointLoader"),
+        Some(json),
+    ];
+
+    for node_opt in candidate_nodes.into_iter().flatten() {
+        if let Some(ckpt_arr) = node_opt
+            .get("input")
+            .and_then(|i| i.get("required"))
+            .and_then(|r| r.get("ckpt_name"))
+            .and_then(|c| c.get(0))
+            .and_then(|first| first.as_array())
+        {
+            for item in ckpt_arr {
+                if let Some(name) = item.as_str() {
+                    models.push(name.to_string());
+                }
+            }
+        }
+        if !models.is_empty() {
+            break;
+        }
+    }
+
+    models.sort();
+    models.dedup();
+    models
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_comfyui_checkpoints_direct_array() {
+        let json = serde_json::json!([
+            "sd_xl_base_1.0.safetensors",
+            "v1-5-pruned-emaonly.safetensors"
+        ]);
+        let models = extract_comfyui_checkpoints(&json);
+        assert_eq!(
+            models,
+            vec![
+                "sd_xl_base_1.0.safetensors",
+                "v1-5-pruned-emaonly.safetensors"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_extract_comfyui_checkpoints_object_info() {
+        let json = serde_json::json!({
+            "CheckpointLoaderSimple": {
+                "input": {
+                    "required": {
+                        "ckpt_name": [
+                            ["sd_xl_base_1.0.safetensors", "dreamshaper_8.safetensors"],
+                            {"tooltip": "The name of the checkpoint (model) to load."}
+                        ]
+                    }
+                }
+            }
+        });
+        let models = extract_comfyui_checkpoints(&json);
+        assert_eq!(
+            models,
+            vec!["dreamshaper_8.safetensors", "sd_xl_base_1.0.safetensors"]
+        );
+    }
+
+    #[test]
+    fn test_extract_comfyui_checkpoints_empty_and_garbage() {
+        let json = serde_json::json!({});
+        assert!(extract_comfyui_checkpoints(&json).is_empty());
+
+        let json_garbage = serde_json::json!({"other": 123});
+        assert!(extract_comfyui_checkpoints(&json_garbage).is_empty());
     }
 }

@@ -257,17 +257,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     })
       .then((models) => {
         setLocalIsTesting(false);
-        if (models && models.length > 0) {
-          setTestConnectionResult(models);
-        } else {
-          setTestConnectionResult([]);
-          setTestConnectionError(
-            "Connection succeeded, but no models were returned by the provider."
-          );
-        }
+        setTestConnectionResult(models ?? []);
+        setTestConnectionError(null);
       })
       .catch((err) => {
         setLocalIsTesting(false);
+        setTestConnectionResult(null);
         setTestConnectionError(err.toString());
       });
   };
@@ -1544,8 +1539,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       marginBottom: "6px",
                     }}
                   >
-                    <CheckCircle2 size={12} /> Connected. Pick a model below to
-                    select it:
+                    <CheckCircle2 size={12} />{" "}
+                    {testConnectionResult.length > 0
+                      ? "Connected. Pick a model below to select it:"
+                      : "Connected, but no models were returned by the provider."}
                   </div>
                   <div
                     style={{
@@ -1561,7 +1558,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           color: "var(--muted)",
                         }}
                       >
-                        No models returned.
+                        No models found. Please ensure at least one checkpoint model is installed.
                       </span>
                     ) : (
                       testConnectionResult.map((modelName) => (

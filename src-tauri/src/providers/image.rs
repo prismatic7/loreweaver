@@ -185,11 +185,17 @@ fn generate_comfyui_image(
     };
 
     let negative_prompt = "blurry, low quality, distorted, watermark, text, extra limbs";
-    let checkpoint = if model.trim().is_empty() {
-        "stable-diffusion-v1-5.safetensors"
-    } else {
-        model.trim()
-    };
+    let mut checkpoint = model.trim().to_string();
+    if checkpoint.is_empty() {
+        if let Ok(models) = crate::providers::models::list_models("local", base, None, agent) {
+            if let Some(first) = models.into_iter().next() {
+                checkpoint = first;
+            }
+        }
+    }
+    if checkpoint.is_empty() {
+        checkpoint = "stable-diffusion-v1-5.safetensors".to_string();
+    }
 
     let workflow = serde_json::json!({
         "3": {

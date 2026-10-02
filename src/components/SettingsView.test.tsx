@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
@@ -76,4 +76,65 @@ describe("SettingsView Component", () => {
       await screen.findByText(/No bible notes yet/),
     ).toBeInTheDocument();
   });
+
+  it("handles provider connection test returning models", async () => {
+    invokeMock.mockImplementation(async (cmd: unknown) => {
+      if (cmd === "test_provider_connection") {
+        return ["sd_xl_base_1.0.safetensors", "v1-5-pruned.safetensors"];
+      }
+      return [];
+    });
+
+    render(<SettingsView {...baseProps} />);
+
+    const testBtn = screen.getByText("Run Connection Test");
+    fireEvent.click(testBtn);
+
+    expect(
+      await screen.findByText("Connected. Pick a model below to select it:")
+    ).toBeInTheDocument();
+    expect(screen.getByText("sd_xl_base_1.0.safetensors")).toBeInTheDocument();
+    expect(screen.getByText("v1-5-pruned.safetensors")).toBeInTheDocument();
+    expect(screen.queryByText(/Connection Failed:/)).not.toBeInTheDocument();
+  });
+
+  it("handles provider connection test returning 0 models without failing connection", async () => {
+    invokeMock.mockImplementation(async (cmd: unknown) => {
+      if (cmd === "test_provider_connection") {
+        return [];
+      }
+      return [];
+    });
+
+    render(<SettingsView {...baseProps} />);
+
+    const testBtn = screen.getByText("Run Connection Test");
+    fireEvent.click(testBtn);
+
+    expect(
+      await screen.findByText("Connected, but no models were returned by the provider.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Connection Failed:/)).not.toBeInTheDocument();
+  });
+
+  it("handles provider connection test network failure cleanly", async () => {
+    invokeMock.mockImplementation(async (cmd: unknown) => {
+      if (cmd === "test_provider_connection") {
+        throw new Error("Failed to connect to ComfyUI");
+      }
+      return [];
+    });
+
+    render(<SettingsView {...baseProps} />);
+
+    const testBtn = screen.getByText("Run Connection Test");
+    fireEvent.click(testBtn);
+
+    expect(
+      await screen.findByText(/Connection Failed:/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Failed to connect to ComfyUI/)).toBeInTheDocument();
+    expect(screen.queryByText(/Connected/)).not.toBeInTheDocument();
+  });
 });
+
