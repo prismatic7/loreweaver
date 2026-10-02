@@ -312,4 +312,13 @@ mod tests {
         let json_garbage = serde_json::json!({"other": 123});
         assert!(extract_comfyui_checkpoints(&json_garbage).is_empty());
     }
+
+    #[test]
+    #[ignore]
+    fn test_live_comfy() {
+        let agent = crate::providers::http_client();
+        let models = list_models("local", "http://127.0.0.1:8188", None, &agent).unwrap();
+        println!("LIVE MODELS: {:?}", models);
+        assert!(!models.is_empty());
+    }
 }

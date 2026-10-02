@@ -186,11 +186,13 @@ fn generate_comfyui_image(
 
     let negative_prompt = "blurry, low quality, distorted, watermark, text, extra limbs";
     let mut checkpoint = model.trim().to_string();
-    if checkpoint.is_empty() {
-        if let Ok(models) = crate::providers::models::list_models("local", base, None, agent) {
-            if let Some(first) = models.into_iter().next() {
-                checkpoint = first;
-            }
+    let available_models = crate::providers::models::list_models("local", base, None, agent).unwrap_or_default();
+
+    // If checkpoint is empty or not found in the installed models on this ComfyUI instance,
+    // automatically fall back to the first available checkpoint if one is present.
+    if checkpoint.is_empty() || (!available_models.is_empty() && !available_models.contains(&checkpoint)) {
+        if let Some(first) = available_models.first() {
+            checkpoint = first.clone();
         }
     }
     if checkpoint.is_empty() {
@@ -504,7 +506,11 @@ pub(crate) fn extract_comfyui_prompt_error(prompt_json: &serde_json::Value) -> S
             if let Some(errors) = obj["errors"].as_array() {
                 for err in errors {
                     if let Some(msg) = err["message"].as_str() {
-                        details.push(format!("Node {}: {}", node_id, msg));
+                        if let Some(extra) = err["details"].as_str().filter(|d| !d.is_empty()) {
+                            details.push(format!("Node {}: {} ({})", node_id, msg, extra));
+                        } else {
+                            details.push(format!("Node {}: {}", node_id, msg));
+                        }
                     }
                 }
             }
