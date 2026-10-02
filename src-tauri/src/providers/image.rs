@@ -206,10 +206,10 @@ fn generate_comfyui_image(
                 "sampler_name": "dpmpp_2m",
                 "scheduler": "karras",
                 "denoise": 1,
-                "model": [4, 0],
-                "positive": [6, 0],
-                "negative": [7, 0],
-                "latent_image": [5, 0]
+                "model": ["4", 0],
+                "positive": ["6", 0],
+                "negative": ["7", 0],
+                "latent_image": ["5", 0]
             },
             "class_type": "KSampler",
             "_meta": { "title": "KSampler" }
@@ -233,7 +233,7 @@ fn generate_comfyui_image(
         "6": {
             "inputs": {
                 "text": positive_prompt,
-                "clip": [4, 1]
+                "clip": ["4", 1]
             },
             "class_type": "CLIPTextEncode",
             "_meta": { "title": "CLIPTextEncode" }
@@ -241,22 +241,23 @@ fn generate_comfyui_image(
         "7": {
             "inputs": {
                 "text": negative_prompt,
-                "clip": [4, 1]
+                "clip": ["4", 1]
             },
             "class_type": "CLIPTextEncode",
             "_meta": { "title": "CLIPTextEncode" }
         },
         "8": {
             "inputs": {
-                "samples": [3, 0],
-                "vae": [4, 2]
+                "samples": ["3", 0],
+                "vae": ["4", 2]
             },
             "class_type": "VAEDecode",
             "_meta": { "title": "VAEDecode" }
         },
         "9": {
             "inputs": {
-                "images": [8, 0]
+                "filename_prefix": "Loreweaver",
+                "images": ["8", 0]
             },
             "class_type": "SaveImage",
             "_meta": { "title": "SaveImage" }
