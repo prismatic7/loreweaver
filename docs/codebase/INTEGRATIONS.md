@@ -46,13 +46,13 @@
 
 ## Evidence
 
-- [src-tauri/src/watcher.rs](/Users/chris/Development/loreweaver/src-tauri/src/watcher.rs)
-- [src-tauri/src/db.rs](/Users/chris/Development/loreweaver/src-tauri/src/db.rs)
-- [src-tauri/src/search.rs](/Users/chris/Development/loreweaver/src-tauri/src/search.rs)
-- [src-tauri/src/agent.rs](/Users/chris/Development/loreweaver/src-tauri/src/agent.rs)
-- [src-tauri/src/plugins.rs](/Users/chris/Development/loreweaver/src-tauri/src/plugins.rs)
-- [src-tauri/src/event_bus.rs](/Users/chris/Development/loreweaver/src-tauri/src/event_bus.rs)
-- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
-- [plugins/character-roller/index.js](/Users/chris/Development/loreweaver/plugins/character-roller/index.js)
-- [plugins/threat-evaluator/index.js](/Users/chris/Development/loreweaver/plugins/threat-evaluator/index.js)
-- [src-tauri/Cargo.toml](/Users/chris/Development/loreweaver/src-tauri/Cargo.toml)
+- [src-tauri/src/watcher.rs](src-tauri/src/watcher.rs)
+- [src-tauri/src/db.rs](src-tauri/src/db.rs)
+- [src-tauri/src/search.rs](src-tauri/src/search.rs)
+- [src-tauri/src/agent.rs](src-tauri/src/agent.rs)
+- [src-tauri/src/plugins.rs](src-tauri/src/plugins.rs)
+- [src-tauri/src/event_bus.rs](src-tauri/src/event_bus.rs)
+- [src/App.tsx](src/App.tsx)
+- [plugins/character-roller/index.js](plugins/character-roller/index.js)
+- [plugins/threat-evaluator/index.js](plugins/threat-evaluator/index.js)
+- [src-tauri/Cargo.toml](src-tauri/Cargo.toml)

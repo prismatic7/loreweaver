@@ -57,13 +57,13 @@ for (const docFile of docFiles) {
       continue;
     }
 
-    // Translate file:/// absolute links to workspace relative paths
-    let linkPath = rawLink;
-    if (rawLink.startsWith("file:///Users/chris/Development/loreweaver/")) {
-      linkPath = rawLink.replace("file:///Users/chris/Development/loreweaver/", "");
-    } else if (rawLink.startsWith("file://")) {
-      // General file scheme mock cleanup
-      linkPath = rawLink.replace("file://", "");
+    // Normalise local absolute links (file:///abs/path or /abs/path) to
+    // repo-relative paths, resolved against the repo root. Hard-coding the
+    // author's checkout path meant the same doc passed locally and failed in
+    // CI (or on any other machine); resolving from the root is portable.
+    let linkPath = rawLink.replace(/^file:\/\//, "");
+    if (linkPath.startsWith("/")) {
+      linkPath = path.relative(rootDir, linkPath) || ".";
     }
 
     // Strip line anchors (e.g. #L100-L120)

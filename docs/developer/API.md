@@ -1,6 +1,6 @@
 # Loreweaver Tauri Command API Reference
 
-This document catalogs all registered `#[tauri::command]` functions defined in the backend crate [src-tauri/src/lib.rs](file:///Users/chris/Development/loreweaver/src-tauri/src/lib.rs).
+This document catalogs all registered `#[tauri::command]` functions defined in the backend crate [src-tauri/src/lib.rs](src-tauri/src/lib.rs).
 
 ---
 

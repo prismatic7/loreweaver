@@ -19,7 +19,7 @@ None. The technical paths and parameter names match existing working invocations
 
 ---
 
-#### [MODIFY] [App.tsx](file:///Users/chris/Development/loreweaver/src/App.tsx)
+#### [MODIFY] [App.tsx](src/App.tsx)
 
 - **Import `FolderCanvas`:** Statically or lazily import the `FolderCanvas` component at the top of the file:
   ```javascript
@@ -37,7 +37,7 @@ None. The technical paths and parameter names match existing working invocations
 ### Task 1: Add Canvas Handlers & Fix Creation API Call in App.tsx
 
 **Files:**
-- Modify: [App.tsx](file:///Users/chris/Development/loreweaver/src/App.tsx)
+- Modify: [App.tsx](src/App.tsx)
 
 **Steps:**
 - [ ] **Step 1: Lazy-load FolderCanvas**
@@ -96,7 +96,7 @@ None. The technical paths and parameter names match existing working invocations
 ### Task 2: Update Layout and Render FolderCanvas in App.tsx
 
 **Files:**
-- Modify: [App.tsx](file:///Users/chris/Development/loreweaver/src/App.tsx)
+- Modify: [App.tsx](src/App.tsx)
 
 **Steps:**
 - [ ] **Step 1: Include canvas view in Vault Breadcrumbs**

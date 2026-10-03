@@ -37,12 +37,12 @@
   - `docs/developer/`: Technical developer guides (Tauri commands API, plugin authoring, troubleshooting).
   - `docs/DOCUMENTATION_PLAN.md`: Roadmap detailing the documentation updates.
 
-- [index.html](/Users/chris/Development/loreweaver/index.html)
-- [src/main.tsx](/Users/chris/Development/loreweaver/src/main.tsx)
-- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
-- [src/App.css](/Users/chris/Development/loreweaver/src/App.css)
-- [src/index.css](/Users/chris/Development/loreweaver/src/index.css)
-- [src-tauri/src/main.rs](/Users/chris/Development/loreweaver/src-tauri/src/main.rs)
-- [src-tauri/src/lib.rs](/Users/chris/Development/loreweaver/src-tauri/src/lib.rs)
-- [plugins/character-roller/manifest.json](/Users/chris/Development/loreweaver/plugins/character-roller/manifest.json)
-- [plugins/threat-evaluator/manifest.json](/Users/chris/Development/loreweaver/plugins/threat-evaluator/manifest.json)
+- [index.html](index.html)
+- [src/main.tsx](src/main.tsx)
+- [src/App.tsx](src/App.tsx)
+- [src/App.css](src/App.css)
+- [src/index.css](src/index.css)
+- [src-tauri/src/main.rs](src-tauri/src/main.rs)
+- [src-tauri/src/lib.rs](src-tauri/src/lib.rs)
+- [plugins/character-roller/manifest.json](plugins/character-roller/manifest.json)
+- [plugins/threat-evaluator/manifest.json](plugins/threat-evaluator/manifest.json)

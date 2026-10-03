@@ -29,10 +29,10 @@
 
 ## Evidence
 
-- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
-- [src-tauri/src/plugins.rs](/Users/chris/Development/loreweaver/src-tauri/src/plugins.rs)
-- [src-tauri/src/search.rs](/Users/chris/Development/loreweaver/src-tauri/src/search.rs)
-- [src-tauri/src/watcher.rs](/Users/chris/Development/loreweaver/src-tauri/src/watcher.rs)
-- [src-tauri/src/lib.rs](/Users/chris/Development/loreweaver/src-tauri/src/lib.rs)
-- [README.md](/Users/chris/Development/loreweaver/README.md)
-- [ARCHITECTURE.md](/Users/chris/Development/loreweaver/ARCHITECTURE.md)
+- [src/App.tsx](src/App.tsx)
+- [src-tauri/src/plugins.rs](src-tauri/src/plugins.rs)
+- [src-tauri/src/search.rs](src-tauri/src/search.rs)
+- [src-tauri/src/watcher.rs](src-tauri/src/watcher.rs)
+- [src-tauri/src/lib.rs](src-tauri/src/lib.rs)
+- [README.md](README.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)

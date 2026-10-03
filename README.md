@@ -64,4 +64,4 @@ To run the automated tests:
 - **Frontend tests:** `npm run test`
 - **Backend Rust tests:** `cd src-tauri && cargo test`
 
-For detailed setup, see [QUICKSTART.md](file:///Users/chris/Development/loreweaver/docs/user/QUICKSTART.md) and [CONTRIBUTING.md](file:///Users/chris/Development/loreweaver/docs/developer/CONTRIBUTING.md).
+For detailed setup, see [QUICKSTART.md](docs/user/QUICKSTART.md) and [CONTRIBUTING.md](docs/developer/CONTRIBUTING.md).

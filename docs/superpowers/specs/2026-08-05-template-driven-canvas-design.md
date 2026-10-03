@@ -59,7 +59,7 @@ Template default content sheet...
 *   **Safety validation:** All paths are resolved through the safe path validator to guarantee vault encapsulation.
 
 ### 2.2 Frontend Dynamic Metadata Panel
-*   **Component:** `CampaignVaultView` ([`src/components/CampaignVaultView.tsx`](file:///Users/chris/Development/loreweaver/src/components/CampaignVaultView.tsx))
+*   **Component:** `CampaignVaultView` ([`src/components/CampaignVaultView.tsx`](src/components/CampaignVaultView.tsx))
     *   When editing a note, the panel queries the template registry for the note's frontmatter `type`.
     *   If a template matches, the metadata property details section renders:
         *   Numeric inputs for properties marked `type: "number"`.
@@ -68,7 +68,7 @@ Template default content sheet...
     *   Modifications save directly back into the note's YAML frontmatter in the background.
 
 ### 2.3 Canvas Node Context Actions
-*   **Component:** `FolderCanvas` ([`src/components/FolderCanvas.tsx`](file:///Users/chris/Development/loreweaver/src/components/FolderCanvas.tsx))
+*   **Component:** `FolderCanvas` ([`src/components/FolderCanvas.tsx`](src/components/FolderCanvas.tsx))
     *   Right-clicking a node checks its `type`.
     *   Appends the list of custom `actions` defined by its template (e.g. *Roll Initiative*).
     *   Clicking an action triggers the Tauri IPC command `execute_plugin_hook` with payload:

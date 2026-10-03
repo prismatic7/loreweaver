@@ -37,25 +37,25 @@ aspirational numbers that fail on day one.
 (Vitest picks up all `src/**/*.test.{ts,tsx}` files — 40 suites as of 2026-10-01.
 Notable ones:)
 
-- [App.test.tsx](file:///Users/chris/Development/loreweaver/src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
-- [DashboardView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/DashboardView.test.tsx): Verifies rendering of campaign notes and rule entries.
-- [MarkdownEditor.test.tsx](file:///Users/chris/Development/loreweaver/src/components/MarkdownEditor.test.tsx): Verifies rendering of CodeMirror bindings, input changes, and prop propagation.
-- [TrashView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/TrashView.test.tsx): Verifies rendering of trashed notes and restore/delete actions.
-- [SettingsView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/SettingsView.test.tsx): Verifies settings form rendering and provider configuration.
-- [FolderCanvas.test.tsx](file:///Users/chris/Development/loreweaver/src/components/FolderCanvas.test.tsx): Verifies folder canvas rendering and interactions.
-- [RulesView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/RulesView.test.tsx): Verifies rule list rendering and editing behavior.
-- [CampaignVaultView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/CampaignVaultView.test.tsx): Verifies campaign vault note rendering and interactions.
-- [EntityGraphView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/EntityGraphView.test.tsx): Verifies entity graph rendering and provenance filtering.
-- [RightDrawer.test.tsx](file:///Users/chris/Development/loreweaver/src/components/RightDrawer.test.tsx): Verifies drawer tabs, capture inbox actions, and chat wiring.
-- [WorldShelf.test.tsx](file:///Users/chris/Development/loreweaver/src/components/WorldShelf.test.tsx): Verifies world switcher, new-world flow, Liminal entry, export/import triggers.
-- [LiminalView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/LiminalView.test.tsx): Verifies the Liminal list, claim-into-world (with default-target fallback), birth-a-world, back navigation, and error state.
-- [types.test.ts](file:///Users/chris/Development/loreweaver/src/types.test.ts): Verifies type-level invariants.
-- [MapBuilderView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/MapBuilderView.test.tsx): Verifies map-building canvas rendering and interaction.
-- [CharacterSheetView.test.tsx](file:///Users/chris/Development/loreweaver/src/components/CharacterSheetView.test.tsx): Verifies character sheet rendering.
-- [CommandPalette.test.tsx](file:///Users/chris/Development/loreweaver/src/components/CommandPalette.test.tsx): Verifies palette open/filter/execute behavior.
-- [useSearch.test.ts](file:///Users/chris/Development/loreweaver/src/hooks/useSearch.test.ts): Verifies search invocation and result state handling.
-- [useWorld.test.ts](file:///Users/chris/Development/loreweaver/src/hooks/useWorld.test.ts): Verifies world manifest loading and theme override application.
-- [useSessionTools.test.ts](file:///Users/chris/Development/loreweaver/src/hooks/useSessionTools.test.ts): Verifies session tool flows including note-to-illustrate image generation.
+- [App.test.tsx](src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
+- [DashboardView.test.tsx](src/components/DashboardView.test.tsx): Verifies rendering of campaign notes and rule entries.
+- [MarkdownEditor.test.tsx](src/components/MarkdownEditor.test.tsx): Verifies rendering of CodeMirror bindings, input changes, and prop propagation.
+- [TrashView.test.tsx](src/components/TrashView.test.tsx): Verifies rendering of trashed notes and restore/delete actions.
+- [SettingsView.test.tsx](src/components/SettingsView.test.tsx): Verifies settings form rendering and provider configuration.
+- [FolderCanvas.test.tsx](src/components/FolderCanvas.test.tsx): Verifies folder canvas rendering and interactions.
+- [RulesView.test.tsx](src/components/RulesView.test.tsx): Verifies rule list rendering and editing behavior.
+- [CampaignVaultView.test.tsx](src/components/CampaignVaultView.test.tsx): Verifies campaign vault note rendering and interactions.
+- [EntityGraphView.test.tsx](src/components/EntityGraphView.test.tsx): Verifies entity graph rendering and provenance filtering.
+- [RightDrawer.test.tsx](src/components/RightDrawer.test.tsx): Verifies drawer tabs, capture inbox actions, and chat wiring.
+- [WorldShelf.test.tsx](src/components/WorldShelf.test.tsx): Verifies world switcher, new-world flow, Liminal entry, export/import triggers.
+- [LiminalView.test.tsx](src/components/LiminalView.test.tsx): Verifies the Liminal list, claim-into-world (with default-target fallback), birth-a-world, back navigation, and error state.
+- [types.test.ts](src/types.test.ts): Verifies type-level invariants.
+- [MapBuilderView.test.tsx](src/components/MapBuilderView.test.tsx): Verifies map-building canvas rendering and interaction.
+- [CharacterSheetView.test.tsx](src/components/CharacterSheetView.test.tsx): Verifies character sheet rendering.
+- [CommandPalette.test.tsx](src/components/CommandPalette.test.tsx): Verifies palette open/filter/execute behavior.
+- [useSearch.test.ts](src/hooks/useSearch.test.ts): Verifies search invocation and result state handling.
+- [useWorld.test.ts](src/hooks/useWorld.test.ts): Verifies world manifest loading and theme override application.
+- [useSessionTools.test.ts](src/hooks/useSessionTools.test.ts): Verifies session tool flows including note-to-illustrate image generation.
 
 ---
 
@@ -88,7 +88,7 @@ Currently **121 Rust tests** pass (as of 2026-10-01: 119 unit + 2 integration). 
 
 ## 2.5 Continuous Integration
 
-CI runs on every push/PR via [`.github/workflows/ci.yml`](file:///Users/chris/Development/loreweaver/.github/workflows/ci.yml) (added 2026-08-27, Increment F):
+CI runs on every push/PR via [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (added 2026-08-27, Increment F):
 
 - **Frontend job** (Node 22, `npm ci`): `npm run lint` → `npm run build` (tsc strict + vite) → `npm run test` → `npm run coverage` → `npm run verify-docs`.
 - **Backend job** (Rust stable, `cargo test --locked` from `src-tauri/`). `test_api_key_round_trip` self-skips headless (no OS keyring), so plain `cargo test` is expected to pass on runners.

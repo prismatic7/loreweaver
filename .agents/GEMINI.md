@@ -16,16 +16,16 @@ Loreweaver is a Tauri v2 desktop app that acts as an AI-powered campaign planner
 
 ## 3. Directory Map
 
-- [`src/`](file:///Users/chris/Development/loreweaver/src/) - React + TypeScript frontend code.
-  - [`src/App.tsx`](file:///Users/chris/Development/loreweaver/src/App.tsx) - Central state and layout shell.
-  - [`src/components/`](file:///Users/chris/Development/loreweaver/src/components/) - UI views (Canvas, Editor, Settings, Rulebooks).
-- [`src-tauri/`](file:///Users/chris/Development/loreweaver/src-tauri/) - Rust Tauri backend.
-  - [`src-tauri/src/lib.rs`](file:///Users/chris/Development/loreweaver/src-tauri/src-tauri/src/lib.rs) - State handling and Tauri command IPC routes.
-  - [`src-tauri/src/db.rs`](file:///Users/chris/Development/loreweaver/src-tauri/src-tauri/src/db.rs) - SQLite schemas and initialization.
-  - [`src-tauri/src/search.rs`](file:///Users/chris/Development/loreweaver/src-tauri/src-tauri/src/search.rs) - Embedding generation and similarity search.
-  - [`src-tauri/src/watcher.rs`](file:///Users/chris/Development/loreweaver/src-tauri/src-tauri/src/watcher.rs) - Filesystem watcher and frontmatter/header indexing.
-  - [`src-tauri/src/plugins.rs`](file:///Users/chris/Development/loreweaver/src-tauri/src/plugins.rs) - JS plugin runtime host using Boa.
-- [`plugins/`](file:///Users/chris/Development/loreweaver/plugins/) - Bundle directory for campaign plugins.
+- [`src/`](src/) - React + TypeScript frontend code.
+  - [`src/App.tsx`](src/App.tsx) - Central state and layout shell.
+  - [`src/components/`](src/components/) - UI views (Canvas, Editor, Settings, Rulebooks).
+- [`src-tauri/`](src-tauri/) - Rust Tauri backend.
+  - [`src-tauri/src/lib.rs`](src-tauri/src-tauri/src/lib.rs) - State handling and Tauri command IPC routes.
+  - [`src-tauri/src/db.rs`](src-tauri/src-tauri/src/db.rs) - SQLite schemas and initialization.
+  - [`src-tauri/src/search.rs`](src-tauri/src-tauri/src/search.rs) - Embedding generation and similarity search.
+  - [`src-tauri/src/watcher.rs`](src-tauri/src-tauri/src/watcher.rs) - Filesystem watcher and frontmatter/header indexing.
+  - [`src-tauri/src/plugins.rs`](src-tauri/src/plugins.rs) - JS plugin runtime host using Boa.
+- [`plugins/`](plugins/) - Bundle directory for campaign plugins.
 
 ## 4. Development Commands
 

@@ -54,7 +54,7 @@ Rules for adding selectors:
 
 ## Evidence
 
-- [src/App.tsx](/Users/chris/Development/loreweaver/src/App.tsx)
-- [src-tauri/src/lib.rs](/Users/chris/Development/loreweaver/src-tauri/src/lib.rs)
-- [tsconfig.json](/Users/chris/Development/loreweaver/tsconfig.json)
-- [src-tauri/src/db.rs](/Users/chris/Development/loreweaver/src-tauri/src/db.rs)
+- [src/App.tsx](src/App.tsx)
+- [src-tauri/src/lib.rs](src-tauri/src/lib.rs)
+- [tsconfig.json](tsconfig.json)
+- [src-tauri/src/db.rs](src-tauri/src/db.rs)
