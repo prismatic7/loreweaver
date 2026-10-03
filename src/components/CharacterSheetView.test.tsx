@@ -75,6 +75,12 @@ describe("CharacterSheetView", () => {
     );
 
     await screen.findByRole("heading", { name: "Character" });
+    // Settle barrier: "Fighter" only exists in the template's defaults, so it
+    // proves templates committed AND the defaults effect has run. Without it we
+    // race the async template load — if that commit lands after the change
+    // below, its default-reset wipes the typed value (green locally on a fast
+    // machine, red on CI).
+    await screen.findByDisplayValue("Fighter");
     fireEvent.change(screen.getByLabelText("name"), {
       target: { value: "Elira" },
     });
