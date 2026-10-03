@@ -18,7 +18,7 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**40 Vitest suites / 258 tests** pass (as of 2026-10-01). Note: `npm run test`
+**41 Vitest suites / 264 tests** pass (as of 2026-10-03). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
@@ -34,7 +34,7 @@ aspirational numbers that fail on day one.
 
 ### Notable Suites
 
-(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 40 suites as of 2026-10-01.
+(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 41 suites as of 2026-10-03.
 Notable ones:)
 
 - [App.test.tsx](src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
@@ -73,7 +73,7 @@ cd src-tauri
 cargo test
 ```
 
-Currently **121 Rust tests** pass (as of 2026-10-01: 119 unit + 2 integration). `test_api_key_round_trip` self-skips when the OS keyring is unavailable (headless/CI environments) — defined at `lib.rs:3677`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
+Currently **126 Rust tests** pass (as of 2026-10-03: 124 unit + 2 integration). `test_api_key_round_trip` self-skips when the OS keyring is unavailable (headless/CI environments) — defined at `lib.rs:3677`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
 
 ### Coverage
 - **Database (`db.rs`):** Validates CRUD queries for campaign notes, rulebooks, and settings.
