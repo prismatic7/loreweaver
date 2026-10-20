@@ -709,6 +709,24 @@ pub fn expand_query(query_text: &str, vault_path: &str) -> (Vec<String>, bool) {
 /// query was expanded (the frontend shows an expansion indicator). When nothing
 /// was expanded, FTS runs the whole query as one phrase — exactly the
 /// pre-Increment-B behaviour.
+/// Computes the dot product of two embedding vectors, failing loudly on a
+/// dimension mismatch instead of silently truncating to the shorter length.
+///
+/// A length mismatch means the query was embedded with a different model than
+/// the stored corpus (e.g. an embedding-provider swap without a full reindex).
+/// Truncating to `min(len)` produced quietly degraded rankings; this returns an
+/// `Err` so callers can skip the chunk and log the mismatch.
+pub fn dot_product(a: &[f32], b: &[f32]) -> Result<f32, String> {
+    if a.len() != b.len() {
+        return Err(format!(
+            "embedding dimension mismatch: query {} vs chunk {} (reindex required)",
+            a.len(),
+            b.len()
+        ));
+    }
+    Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
+}
+
 pub fn hybrid_query(
     conn: &rusqlite::Connection,
     query_text: &str,
@@ -807,11 +825,13 @@ pub fn hybrid_query(
     // Query Notes Chunks (vector cache dot-product evaluation)
     if category == "all" || category == "notes" {
         for (_chunk_id, _note_id, chunk_embedding, chunk_text, title, path) in &cache.note_chunks {
-            let mut score = 0.0f32;
-            let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
-            for d in 0..dims {
-                score += query_vector[d] * chunk_embedding[d];
-            }
+            let score = match dot_product(&query_vector, chunk_embedding) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("skipping note chunk \"{}\": {}", title, e);
+                    continue;
+                }
+            };
 
             if score > 0.4 {
                 let key = format!("note:{}", title);
@@ -838,11 +858,13 @@ pub fn hybrid_query(
     // Query Rules Chunks (vector cache dot-product evaluation)
     if category == "all" || category == "rules" {
         for (_chunk_id, rule_id, chunk_embedding, chunk_text, title, source) in &cache.rule_chunks {
-            let mut score = 0.0f32;
-            let dims = std::cmp::min(query_vector.len(), chunk_embedding.len());
-            for d in 0..dims {
-                score += query_vector[d] * chunk_embedding[d];
-            }
+            let score = match dot_product(&query_vector, chunk_embedding) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("skipping rule chunk \"{}\": {}", title, e);
+                    continue;
+                }
+            };
 
             if score > 0.4 {
                 let key = format!("rule:{}", title);
@@ -954,6 +976,22 @@ mod tests {
             score_ac += vec_a[d] * vec_c[d];
         }
         assert!(score_ac.abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_dot_product_rejects_mismatched_dims() {
+        // A dimension mismatch must fail loudly, not silently truncate.
+        let a = vec![1.0f32, 2.0, 3.0];
+        let b = vec![1.0f32, 2.0];
+        assert!(
+            dot_product(&a, &b).is_err(),
+            "mismatched dims must return Err, not truncate"
+        );
+
+        // Equal-dimension vectors produce the expected dot product.
+        let c = vec![1.0f32, 2.0, 3.0];
+        let d = vec![4.0f32, 5.0, 6.0];
+        assert_eq!(dot_product(&c, &d).unwrap(), 32.0);
     }
 
     // --- Increment B: query expansion (synonym service + fuzzy layer) ---
