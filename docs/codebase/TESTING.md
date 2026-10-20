@@ -73,7 +73,7 @@ cd src-tauri
 cargo test
 ```
 
-Currently **126 Rust tests** pass (as of 2026-10-03: 124 unit + 2 integration). `test_api_key_round_trip` self-skips when the OS keyring is unavailable (headless/CI environments) — defined at `lib.rs:3677`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root. To get a full pass without a keychain unlock prompt: `cargo test -- --skip test_api_key_round_trip`.
+Currently **127 Rust tests** pass (as of 2026-10-21: 125 unit + 2 integration). `test_api_key_round_trip` is opt-in: it exercises the real macOS keychain and skips by default because the `keyring` v3 `apple-native` backend blocks on an interactive SecurityAgent prompt in automated/headless sessions — run `LOREWEAVER_TEST_KEYRING=1 cargo test` to include it. The legacy (non-keychain) fallback path is covered by `test_legacy_api_key_round_trip`, which always runs. Defined at `lib.rs:3681`. Run from `src-tauri/` — Cargo.toml lives there, not the repo root.
 
 ### Coverage
 - **Database (`db.rs`):** Validates CRUD queries for campaign notes, rulebooks, and settings.
