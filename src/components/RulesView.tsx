@@ -529,7 +529,7 @@ export const RulesView: React.FC<RulesViewProps> = ({
             style={{
               padding: "40px 48px",
               width: "100%",
-              maxWidth: "840px",
+              maxWidth: "var(--sheet-max)",
             }}
           >
             {/* Top Action Bar (Matching Vault conventions) */}

@@ -66,14 +66,16 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
         data-od-id="timeline-view"
         style={{ padding: "40px 32px" }}
       >
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
-          Campaign Timeline
-        </h2>
-        <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
-          No dated events found. Add a <code>date</code> field to a note's
-          frontmatter (e.g. <code>date: 1245-03-17</code>) to place it on the
-          timeline.
-        </p>
+        <div style={{ width: "100%", maxWidth: "var(--list-max)" }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
+            Campaign Timeline
+          </h2>
+          <p style={{ fontSize: "12px", color: "var(--muted)", marginTop: "8px" }}>
+            No dated events found. Add a <code>date</code> field to a note's
+            frontmatter (e.g. <code>date: 1245-03-17</code>) to place it on the
+            timeline.
+          </p>
+        </div>
       </div>
     );
   }
@@ -84,14 +86,15 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       data-od-id="timeline-view"
       style={{ padding: "40px 32px", overflowY: "auto" }}
     >
-      <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
-        Campaign Timeline
-      </h2>
-      <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 24px 0" }}>
-        {events.length} dated events, sorted chronologically.
-      </p>
+      <div style={{ width: "100%", maxWidth: "var(--list-max)" }}>
+        <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
+          Campaign Timeline
+        </h2>
+        <p style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 24px 0" }}>
+          {events.length} dated events, sorted chronologically.
+        </p>
 
-      <div style={{ position: "relative", paddingLeft: "24px", maxWidth: "720px" }}>
+        <div style={{ position: "relative", paddingLeft: "24px" }}>
         {/* Vertical line */}
         <div
           style={{
@@ -155,7 +158,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
                     fontSize: "10px",
                     color: "var(--muted)",
                     textTransform: "uppercase",
-                    letterSpacing: "0.05em",
+                    letterSpacing: "0.06em",
                   }}
                 >
                   {ev.type}
@@ -179,6 +182,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             </button>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );

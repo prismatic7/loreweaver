@@ -352,7 +352,7 @@ const ScratchpadTab: React.FC<RightDrawerProps> = ({
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.08em",
-        color: "var(--accent)",
+        color: "var(--muted)",
       }}
     >
       Secret GM Scratchpad
@@ -476,6 +476,7 @@ const CaptureInbox: React.FC<
           fontWeight: 700,
           textTransform: "uppercase",
           color: "var(--muted)",
+          letterSpacing: "0.06em",
           display: "block",
           marginBottom: "8px",
         }}
@@ -665,7 +666,8 @@ const DiceRoller: React.FC<
         fontWeight: 700,
         textTransform: "uppercase",
         color: "var(--muted)",
-        display: "block",
+          letterSpacing: "0.06em",
+          display: "block",
         marginBottom: "8px",
       }}
     >
@@ -719,7 +721,7 @@ const DiceRoller: React.FC<
           borderRadius: 0,
           padding: "6px",
           fontSize: "11px",
-          color: "var(--accent)",
+          color: "var(--fg)",
         }}
       >
         {diceHistory.slice(0, 5).map((entry, i) => (
@@ -776,7 +778,8 @@ const PluginButtons: React.FC<
         fontWeight: 700,
         textTransform: "uppercase",
         color: "var(--muted)",
-        display: "block",
+          letterSpacing: "0.06em",
+          display: "block",
         marginBottom: "8px",
       }}
     >
@@ -973,7 +976,7 @@ const AiTab: React.FC<RightDrawerProps> = ({
           fontWeight: 700,
           textTransform: "uppercase",
           letterSpacing: "0.08em",
-          color: "var(--accent)",
+          color: "var(--muted)",
         }}
       >
         Campaign Architect
@@ -1026,7 +1029,6 @@ const AiTab: React.FC<RightDrawerProps> = ({
               overflowY: "auto",
               background: "var(--surface)",
               border: "1px solid var(--border)",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               zIndex: 20,
               padding: 8,
             }}
@@ -1197,7 +1199,8 @@ const AiTab: React.FC<RightDrawerProps> = ({
             fontWeight: 700,
             textTransform: "uppercase",
             color: "var(--muted)",
-            display: "block",
+          letterSpacing: "0.06em",
+          display: "block",
             marginBottom: "6px",
           }}
         >
@@ -1283,7 +1286,8 @@ const AiTab: React.FC<RightDrawerProps> = ({
             fontWeight: 700,
             textTransform: "uppercase",
             color: "var(--muted)",
-            display: "block",
+          letterSpacing: "0.06em",
+          display: "block",
             marginBottom: "6px",
           }}
         >
@@ -1552,7 +1556,7 @@ const AssetTab: React.FC<RightDrawerProps> = ({
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.08em",
-        color: "var(--accent)",
+        color: "var(--muted)",
       }}
     >
       Local Stable Diffusion
@@ -1959,7 +1963,7 @@ const BacklinksTab: React.FC<
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.08em",
-        color: "var(--accent)",
+        color: "var(--muted)",
       }}
     >
       Incoming Backlinks
@@ -2017,7 +2021,7 @@ const TagsTab: React.FC<
         fontWeight: 700,
         textTransform: "uppercase",
         letterSpacing: "0.08em",
-        color: "var(--accent)",
+        color: "var(--muted)",
       }}
     >
       Tag Hierarchy

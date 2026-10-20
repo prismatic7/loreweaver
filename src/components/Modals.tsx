@@ -793,7 +793,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: 0,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           padding: "4px 0",
           minWidth: "140px",
           display: "flex",

@@ -712,7 +712,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          <MapIcon size={16} style={{ color: "var(--accent)" }} />
+          <MapIcon size={16} style={{ color: "var(--muted)" }} />
           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--fg)" }}>
             Map Builder ({tokens.length} tokens, {fog.length} fog regions)
           </span>
@@ -1385,7 +1385,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
                 marginLeft: "8px",
                 background: "transparent",
                 border: "none",
-                color: "var(--accent)",
+                color: "var(--fg)",
                 cursor: "pointer",
                 fontSize: "11px",
               }}
@@ -1437,7 +1437,7 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               style={{
                 background: "transparent",
                 border: "none",
-                color: "var(--accent)",
+                color: "var(--fg)",
                 cursor: "pointer",
                 fontSize: "11px",
               }}
@@ -1480,7 +1480,6 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               background: "var(--surface)",
               border: "1px solid var(--border)",
               borderRadius: 0,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: "16px",
               width: 320,
             }}
@@ -1682,7 +1681,6 @@ export const MapBuilderView: React.FC<MapBuilderViewProps> = ({
               background: "var(--surface)",
               border: "1px solid var(--border)",
               borderRadius: 0,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: "8px",
               width: 220,
             }}

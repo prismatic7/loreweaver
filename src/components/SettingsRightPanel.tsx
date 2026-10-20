@@ -83,7 +83,7 @@ export const SettingsRightPanel: React.FC<SettingsRightPanelProps> = ({
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
-              color: "var(--accent)",
+              color: "var(--muted)",
             }}
           >
             Build &amp; Update Info
@@ -125,7 +125,7 @@ export const SettingsRightPanel: React.FC<SettingsRightPanelProps> = ({
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
-              color: "var(--accent)",
+              color: "var(--muted)",
             }}
           >
             Contributors
@@ -159,7 +159,7 @@ export const SettingsRightPanel: React.FC<SettingsRightPanelProps> = ({
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
-              color: "var(--accent)",
+              color: "var(--muted)",
             }}
           >
             Licenses
@@ -197,7 +197,7 @@ export const SettingsRightPanel: React.FC<SettingsRightPanelProps> = ({
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
-              color: "var(--accent)",
+              color: "var(--muted)",
             }}
           >
             Developer / Company Profile

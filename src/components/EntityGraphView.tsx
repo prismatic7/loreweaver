@@ -553,7 +553,7 @@ export const EntityGraphView: React.FC<EntityGraphViewProps> = ({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Network size={16} style={{ color: "var(--accent)" }} />
+          <Network size={16} style={{ color: "var(--muted)" }} />
           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--fg)" }}>
             Entity &amp; Relationship Graph
           </span>

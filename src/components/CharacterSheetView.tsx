@@ -250,7 +250,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
           marginBottom: "20px",
           alignItems: "center",
           width: "100%",
-          maxWidth: "720px",
+          maxWidth: "var(--list-max)",
         }}
       >
         <select
@@ -316,7 +316,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
             borderRadius: 0,
             padding: "32px 24px",
             width: "100%",
-            maxWidth: "720px",
+            maxWidth: "var(--list-max)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -359,7 +359,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
             borderRadius: 0,
             padding: "20px",
             width: "100%",
-            maxWidth: "720px",
+            maxWidth: "var(--list-max)",
           }}
         >
           <div
@@ -434,7 +434,7 @@ export const CharacterSheetView: React.FC<CharacterSheetViewProps> = ({
                   fontWeight: 700,
                   textTransform: "uppercase",
                   color: "var(--muted)",
-                  letterSpacing: "0.05em",
+                  letterSpacing: "0.06em",
                   marginBottom: "8px",
                 }}
               >

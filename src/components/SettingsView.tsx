@@ -293,7 +293,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         className="settings-list"
         style={{
           width: "100%",
-          maxWidth: "720px",
+          maxWidth: "var(--list-max)",
           display: "flex",
           flexDirection: "column",
           gap: "28px",

@@ -621,7 +621,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
       {/* Top Toolbar */}
       <div style={{ height: "44px", borderBottom: "1px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          <Layers size={16} style={{ color: "var(--accent)" }} />
+          <Layers size={16} style={{ color: "var(--muted)" }} />
           <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--fg)" }}>
             Canvas: {currentFolder ? currentFolder : "Vault Root"} ({folderNotes.length} Notes)
           </span>
@@ -803,7 +803,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                     fontWeight: 700,
                     color: isDynamic ? borderColor : "var(--accent)",
                     textTransform: "uppercase",
-                    letterSpacing: "0.05em",
+                    letterSpacing: "0.06em",
                     background: "var(--surface)",
                     padding: "2px 6px",
                     borderRadius: 0,
@@ -930,7 +930,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                 className={connectingFromId === note.id ? "connecting-pulse" : undefined}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: isCanvas ? "var(--accent)" : "var(--muted)", fontWeight: 700 }}>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em", color: isCanvas ? "var(--fg)" : "var(--muted)", fontWeight: 700 }}>
                     {isCanvas ? "Canvas" : String(note.frontmatter?.type || "Note")}
                   </span>
                   <div style={{ display: "flex", gap: "4px" }}>
@@ -1040,7 +1040,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
 
       {/* Edit Connection Label Dialog */}
       {selectedEdgeId && (
-        <div style={{ position: "absolute", bottom: 20, right: 20, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 0, padding: "12px", boxShadow: "0 4px 12px rgba(0,0,0,0.15)", zIndex: 100, width: 260 }}>
+        <div style={{ position: "absolute", bottom: 20, right: 20, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 0, padding: "12px" , zIndex: 100, width: 260 }}>
           {selectedEdgeId.startsWith("dynamic-") ? (
             <div>
               <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--fg)", marginBottom: "4px" }}>Dynamic Relationship</div>
@@ -1109,7 +1109,6 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
               background: "var(--surface)",
               border: "1px solid var(--border)",
               borderRadius: 0,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
               padding: "6px",
               minWidth: "180px",
               display: "flex",
@@ -1123,7 +1122,7 @@ export const FolderCanvas: React.FC<FolderCanvasProps> = ({
                 fontWeight: 700,
                 color: "var(--muted)",
                 textTransform: "uppercase",
-                letterSpacing: "0.05em",
+                letterSpacing: "0.06em",
                 padding: "4px 8px",
                 borderBottom: "1px solid var(--border)",
                 marginBottom: "2px",

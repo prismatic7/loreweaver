@@ -88,7 +88,6 @@ export const Toast: React.FC<ToastProps> = ({ message, onDismiss }) => {
         border: "1px solid var(--border)",
         borderRadius: 0,
         padding: "12px 16px",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
         maxWidth: "360px",
         color: "var(--fg)",
         fontSize: "13px",

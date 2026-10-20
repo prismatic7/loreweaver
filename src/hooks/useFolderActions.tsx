@@ -451,7 +451,6 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
             background: "var(--surface)",
             border: "1px solid var(--border)",
             borderRadius: 0,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
             zIndex: 1001,
             width: "180px",
             display: "flex",
@@ -467,7 +466,7 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
               fontWeight: 700,
               textTransform: "uppercase",
               color: "var(--muted)",
-              letterSpacing: "0.05em",
+              letterSpacing: "0.06em",
               borderBottom: "1px solid var(--border)",
               marginBottom: "2px",
             }}
@@ -561,8 +560,8 @@ export const useFolderActions = (deps: FolderActionsDeps) => {
                 fontSize: "9px",
                 fontWeight: 700,
                 textTransform: "uppercase",
-                color: "var(--accent)",
-                letterSpacing: "0.05em",
+                color: "var(--muted)",
+                letterSpacing: "0.06em",
               }}
             >
               Plugin Extensions

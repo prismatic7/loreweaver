@@ -195,7 +195,6 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             padding: "6px",
             minWidth: "300px",
             maxWidth: "360px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           }}
         >
           {worlds.map((w) => {
@@ -349,7 +348,6 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             borderRadius: 0,
             padding: "12px",
             minWidth: "260px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           }}
         >
           <div style={{ fontSize: "12px", fontWeight: 700, marginBottom: "8px" }}>
@@ -421,7 +419,6 @@ export const WorldShelf: React.FC<WorldShelfProps> = ({
             borderRadius: 0,
             padding: "12px",
             minWidth: "260px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           }}
         >
           <div

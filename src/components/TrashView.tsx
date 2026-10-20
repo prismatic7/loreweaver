@@ -22,7 +22,7 @@ export const TrashView: React.FC<TrashViewProps> = ({
       style={{ padding: "40px 32px", overflowY: "auto" }}
     >
       <div
-        style={{ maxWidth: "800px", margin: "0 auto", width: "100%" }}
+        style={{ maxWidth: "var(--list-max)", margin: "0 auto", width: "100%" }}
       >
         <div
           style={{

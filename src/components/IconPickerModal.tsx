@@ -59,7 +59,6 @@ export const IconPickerModal: React.FC<IconPickerModalProps> = ({
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
           width: "420px",
           maxWidth: "100%",
           maxHeight: "85vh",

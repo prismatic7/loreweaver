@@ -173,7 +173,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           maxWidth: "90vw",
           background: "var(--surface)",
           border: "1px solid var(--border)",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
         }}
       >
         <input

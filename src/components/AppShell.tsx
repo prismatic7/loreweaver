@@ -263,7 +263,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             />
 
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <FolderOpen size={14} style={{ color: "var(--accent)" }} />
+              <FolderOpen size={14} style={{ color: "var(--muted)" }} />
               <WorldShelf
                 worlds={worlds}
                 activeWorldPath={vaultPath}

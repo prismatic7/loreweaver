@@ -1312,6 +1312,25 @@
 }
 
 /* ── View switching ── */
+/* ── Layout width tokens ──
+   Centered working columns scale up on wide/maximised windows so the
+   extra space isn't wasted. Full-bleed views (vault, rules, AI, graph)
+   keep their own sidebars and don't use these caps. */
+:root {
+  --sheet-max: 840px; /* document sheet (vault, rules) */
+  --list-max: 720px; /* settings, timeline, trash columns */
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --sheet-max: 1040px;
+    --list-max: 880px;
+  }
+  .dashboard-grid {
+    max-width: 1320px;
+  }
+}
+
 .view-container {
   flex: 1;
   overflow-y: auto;
@@ -1323,7 +1342,7 @@
 /* ── Settings View ── */
 .settings-list {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--list-max);
 }
 
 .settings-item {

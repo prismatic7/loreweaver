@@ -349,7 +349,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 style={{
                   padding: "40px 48px",
                   width: "100%",
-                  maxWidth: "840px",
+                  maxWidth: "var(--sheet-max)",
                 }}
               >
                 {/* Mode Toggle at top-right */}
@@ -989,7 +989,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               fontWeight: 600,
                               color: "var(--muted)",
                               textTransform: "uppercase",
-                              letterSpacing: "0.05em",
+                              letterSpacing: "0.06em",
                               marginBottom: "8px",
                             }}
                           >
@@ -1054,7 +1054,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                               fontWeight: 600,
                               color: "var(--muted)",
                               textTransform: "uppercase",
-                              letterSpacing: "0.05em",
+                              letterSpacing: "0.06em",
                               marginBottom: "8px",
                             }}
                           >
