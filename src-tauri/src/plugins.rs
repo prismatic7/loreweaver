@@ -779,4 +779,53 @@ mod tests {
         let dup = scaffold_plugin(plugins_dir.to_str().unwrap(), "my-cool-roller", "Dup");
         assert!(dup.is_err(), "duplicate scaffold must be refused");
     }
+
+    #[test]
+    fn test_unslop_plugin_humanizes_campaign_lore() {
+        let _guard = plugin_test_guard();
+        let unslop_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("plugins/unslop");
+        assert!(unslop_dir.join("manifest.json").exists(), "unslop manifest must exist");
+        assert!(unslop_dir.join("index.js").exists(), "unslop index.js must exist");
+
+        let script = fs::read_to_string(unslop_dir.join("index.js")).unwrap();
+        register_test_plugin("unslop", &script, vec!["hooks".to_string()]);
+
+        let input_text = "It's important to note that this fortress is a testament to the rich tapestry of the realm. The heroes delve into [[Shadow keep]] to find the lost sword.";
+        let res = run_plugin_hook("/tmp/vault", "unslop", "humanize_prose", input_text)
+            .expect("hook execution should succeed");
+
+        let parsed: serde_json::Value = serde_json::from_str(&res).unwrap();
+        let cleaned = parsed["cleaned_text"].as_str().unwrap();
+
+        // AI clichés stripped or replaced
+        assert!(!cleaned.contains("It's important to note that"), "hedging must be stripped");
+        assert!(!cleaned.contains("a testament to"), "stock praise must be transformed");
+        assert!(!cleaned.contains("rich tapestry of"), "stock metaphor must be transformed");
+        assert!(!cleaned.contains("delve into"), "delve must be transformed");
+
+        // Wiki-link and key nouns preserved
+        assert!(cleaned.contains("[[Shadow keep]]"), "wiki link must be preserved byte-exact");
+        assert!(cleaned.contains("heroes"), "context nouns must be preserved");
+
+        // Replacements count tracked
+        assert!(parsed["replacements_count"].as_i64().unwrap() >= 4);
+
+        // Test clean_note hook
+        let note_payload = serde_json::json!({
+            "title": "Ancient Lore",
+            "content": "Certainly! Nestled in the heart of the valley, this beacon of hope stands strong."
+        }).to_string();
+
+        let note_res = run_plugin_hook("/tmp/vault", "unslop", "clean_note", &note_payload)
+            .expect("clean_note should succeed");
+        let note_parsed: serde_json::Value = serde_json::from_str(&note_res).unwrap();
+        let note_cleaned = note_parsed["content"].as_str().unwrap();
+
+        assert!(!note_cleaned.starts_with("Certainly!"), "sycophancy must be stripped");
+        assert!(!note_cleaned.contains("beacon of hope"), "cliche must be transformed");
+    }
 }
+

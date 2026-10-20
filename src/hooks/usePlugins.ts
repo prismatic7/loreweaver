@@ -214,6 +214,32 @@ export function usePlugins(vaultPath: string) {
     [executeHook],
   );
 
+  // --- P3: Prose Humaniser (Unslop) ---
+  const handleHumanizeNote = useCallback(
+    async (
+      content: string,
+      title: string = "Untitled",
+      onCleaned?: (cleanedContent: string, summary: string) => void,
+      onError?: (error: string) => void,
+    ) => {
+      try {
+        const resStr = await executeHook(
+          "unslop",
+          "clean_note",
+          JSON.stringify({ title, content }),
+        );
+        const data = JSON.parse(resStr);
+        onCleaned?.(data.content, data.summary);
+        return data;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        onError?.(message);
+        throw err;
+      }
+    },
+    [executeHook],
+  );
+
   return {
     pluginsList,
     loadPlugins,
@@ -223,5 +249,7 @@ export function usePlugins(vaultPath: string) {
     handleEvaluateEncounterThreat,
     handleInitiativeTracker,
     handleEncounterBuilder,
+    handleHumanizeNote,
   };
 }
+

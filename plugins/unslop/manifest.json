@@ -1,0 +1,8 @@
+{
+  "id": "unslop",
+  "name": "Campaign Prose Humaniser (Unslop)",
+  "version": "1.0.0",
+  "description": "Strips AI clichés, sycophancy, stock fillers, and em-dash pileups from campaign notes and generated lore.",
+  "permissions": ["hooks"],
+  "entry": "index.js"
+}

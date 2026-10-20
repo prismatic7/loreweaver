@@ -13,6 +13,14 @@ export default defineConfig(async () => ({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    // Pin NODE_ENV for test workers. If the host shell exports
+    // NODE_ENV=production, react's production CJS build is loaded, which
+    // does not export `act` — every RTL render then dies with
+    // "React.act is not a function". Forcing 'test' here keeps
+    // `npx vitest run` working regardless of the invoking shell.
+    env: {
+      NODE_ENV: "test",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
