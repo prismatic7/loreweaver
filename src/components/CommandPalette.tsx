@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { parseIntent, describeIntent, type Intent } from "../utils/intent";
 
 /* eslint-disable react-refresh/only-export-components -- fuzzyScore is exported alongside the palette it belongs to */
 
@@ -26,7 +27,7 @@ export interface PaletteNote {
 }
 
 export interface PaletteSelection {
-  kind: "view" | "note";
+  kind: "view" | "note" | "undo" | "redo";
   id: string;
 }
 
@@ -38,6 +39,12 @@ interface CommandPaletteProps {
   /** Note ids opened most recently, newest first (for the empty-query list). */
   recentNoteIds: string[];
   onSelect: (selection: PaletteSelection) => void;
+  /** When set, renders an "Undo <label>" entry pinned to the top. */
+  undoLabel?: string;
+  /** When set, renders a "Redo <label>" entry pinned to the top. */
+  redoLabel?: string;
+  /** Executes the parsed one-box intent (rendered as the first row when the query is non-empty). */
+  onIntent?: (intent: Intent) => void;
 }
 
 /** Score a query against a target string. Infinity = no match; lower = better. */
@@ -60,11 +67,12 @@ export function fuzzyScore(query: string, target: string): number {
 
 interface Row {
   key: string;
-  kind: "view" | "note";
+  kind: "view" | "note" | "undo" | "redo" | "intent";
   id: string;
   label: string;
   detail: string;
   score: number;
+  intent?: Intent;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -74,6 +82,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   notes,
   recentNoteIds,
   onSelect,
+  undoLabel,
+  redoLabel,
+  onIntent,
 }) => {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -125,8 +136,42 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
     out.sort((a, b) => a.score - b.score || a.label.localeCompare(b.label));
-    return out.slice(0, 12);
-  }, [query, views, notes, recentNoteIds]);
+    const pinned: Row[] = [];
+    const trimmed = query.trim();
+    if (onIntent && trimmed) {
+      const intent = parseIntent(trimmed);
+      pinned.push({
+        key: "intent",
+        kind: "intent",
+        id: "",
+        label: describeIntent(intent),
+        detail: "↵",
+        score: -3,
+        intent,
+      });
+    }
+    if (undoLabel) {
+      pinned.push({
+        key: "undo",
+        kind: "undo",
+        id: "",
+        label: `Undo ${undoLabel}`,
+        detail: "⌘Z",
+        score: -2,
+      });
+    }
+    if (redoLabel) {
+      pinned.push({
+        key: "redo",
+        kind: "redo",
+        id: "",
+        label: `Redo ${redoLabel}`,
+        detail: "⇧⌘Z",
+        score: -1,
+      });
+    }
+    return [...pinned, ...out].slice(0, 12);
+  }, [query, views, notes, recentNoteIds, undoLabel, redoLabel, onIntent]);
 
   useEffect(() => {
     setActiveIndex((i) => Math.min(i, Math.max(rows.length - 1, 0)));
@@ -144,7 +189,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const choose = (row: Row | undefined) => {
     if (!row) return;
-    onSelect({ kind: row.kind, id: row.id });
+    if (row.kind === "intent") {
+      if (row.intent) onIntent?.(row.intent);
+    } else {
+      onSelect({ kind: row.kind, id: row.id });
+    }
     onClose();
   };
 
@@ -241,7 +290,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               }}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {row.kind === "view" ? "⌘ " : "📄 "}
+                {row.kind === "intent"
+                  ? "→ "
+                  : row.kind === "undo"
+                    ? "↩ "
+                    : row.kind === "redo"
+                      ? "↪ "
+                      : row.kind === "view"
+                        ? "⌘ "
+                        : "📄 "}
                 {row.label}
               </span>
               <span style={{ color: "var(--muted)", fontSize: 11, flexShrink: 0 }}>

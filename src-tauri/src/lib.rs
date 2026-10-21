@@ -46,6 +46,7 @@ use tokio::sync::Mutex as TokioMutex;
 
 pub mod agent;
 mod bundles;
+mod continuity;
 mod db;
 mod dice;
 mod event_bus;
@@ -575,7 +576,7 @@ async fn resolve_wiki_link(
 }
 
 #[tauri::command]
-async fn trash_note(state: State<'_, AppState>, note_path: &str) -> Result<(), String> {
+async fn trash_note(state: State<'_, AppState>, note_path: &str) -> Result<String, String> {
     let vault_path = state.vault_path.lock().await;
     let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
@@ -586,7 +587,7 @@ fn trash_note_impl(
     vault_path: &str,
     conn: &rusqlite::Connection,
     note_path: &str,
-) -> Result<(), String> {
+) -> Result<String, String> {
     // Normalize the relative path: strip leading slashes, "./" prefixes, and whitespace
     // so that "notes/foo.md", "/notes/foo.md", and "./notes/foo.md" all resolve identically.
     let clean_path = note_path
@@ -643,7 +644,9 @@ fn trash_note_impl(
     let _ = db::delete_note_by_path(conn, clean_path);
     search::invalidate_cache();
 
-    Ok(())
+    // Return the relative trash path so the caller (and the frontend undo store)
+    // can restore this exact note without re-discovering it by UUID.
+    Ok(format!(".trash/{}", trash_filename))
 }
 
 #[tauri::command]
@@ -1234,6 +1237,15 @@ async fn evaluate_expression(
     // Fan the roll out to plugins (Increment E3) so they can react to dice.
     let vault_path = state.vault_path.lock().await.clone();
     event_bus::emit(&vault_path, event_bus::EVENT_DICE_ROLL, payload.clone());
+
+    // Record the roll in the session ledger (append-only; best-effort, never
+    // fails the roll itself).
+    {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        let _ = db::log_session_event(&conn, "dice_roll", &payload.to_string());
+    }
+
     Ok(payload)
 }
 
@@ -1253,6 +1265,19 @@ async fn search_vault(
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     let (results, expanded) = search::hybrid_query(&conn, query, category, &vault_path)?;
     Ok(SearchResponse { results, expanded })
+}
+
+/// Returns the `k` notes most semantically similar to `note_id` ("related by
+/// meaning"), using the cached chunk embeddings.
+#[tauri::command]
+async fn nearest_notes(
+    state: State<'_, AppState>,
+    note_id: &str,
+    k: usize,
+) -> Result<Vec<RelatedNote>, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    search::nearest_notes(&conn, note_id, k)
 }
 
 /// Saves (creates or updates) a rule entry to the database.
@@ -1401,6 +1426,172 @@ async fn delete_session_memory(state: State<'_, AppState>, id: &str) -> Result<(
     let conn_arc = state.conn.lock().await;
     let conn = conn_arc.lock().map_err(|e| e.to_string())?;
     db::delete_session_memory(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Appends an event to the session ledger and fans it out to plugins.
+///
+/// The DB insert is the durable record; the plugin fan-out is fire-and-forget
+/// and must never block the caller (live-play writes stay cheap).
+#[tauri::command]
+async fn log_session_event(
+    state: State<'_, AppState>,
+    kind: &str,
+    payload: &str,
+) -> Result<String, String> {
+    // Scope the DB write so the non-`Send` connection guard is dropped before
+    // the `vault_path` await below (Tauri command futures must be `Send`).
+    let id = {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        db::log_session_event(&conn, kind, payload).map_err(|e| e.to_string())?
+    };
+
+    let vault_path = state.vault_path.lock().await.clone();
+    event_bus::emit(
+        &vault_path,
+        event_bus::EVENT_SESSION_EVENT,
+        serde_json::json!({ "id": id.as_str(), "kind": kind, "payload": payload }),
+    );
+    Ok(id)
+}
+
+/// Lists session events newer than `since` (Unix seconds), oldest first.
+#[tauri::command]
+async fn list_session_events(
+    state: State<'_, AppState>,
+    since: i64,
+) -> Result<Vec<SessionEvent>, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::list_session_events(&conn, since).map_err(|e| e.to_string())
+}
+
+/// Returns Run Mode's vault-scoped live-play state (scene + pinned rules).
+#[tauri::command]
+async fn get_run_state(state: State<'_, AppState>) -> Result<RunState, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+
+    let scene_note_id = db::get_setting(&conn, "run.scene_note_id")
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty());
+    let pinned_json = db::get_setting(&conn, "run.pinned_rule_ids")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "[]".to_string());
+    let pinned_rule_ids: Vec<String> =
+        serde_json::from_str(&pinned_json).unwrap_or_default();
+
+    Ok(RunState {
+        scene_note_id,
+        pinned_rule_ids,
+    })
+}
+
+/// Sets a single Run Mode state key (`scene_note_id` or `pinned_rule_ids`).
+///
+/// The value is stored under a `run.<key>` key in `app_settings`, so run state
+/// is vault-scoped (the DB is re-initialised per vault).
+#[tauri::command]
+async fn set_run_state(
+    state: State<'_, AppState>,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
+    let full_key = match key {
+        "scene_note_id" | "pinned_rule_ids" => format!("run.{}", key),
+        _ => return Err(format!("Unknown run state key: {}", key)),
+    };
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::set_setting(&conn, &full_key, value).map_err(|e| e.to_string())?;
+
+    // A scene change is a live-play event worth recording (best-effort).
+    if key == "scene_note_id" && !value.is_empty() {
+        let _ = db::log_session_event(
+            &conn,
+            "scene_changed",
+            &serde_json::json!({ "note_id": value }).to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+/// Runs the continuity audit over all notes in the active vault.
+///
+/// Returns the entity/alias registry plus every contradiction finding
+/// (dead actors, date conflicts, faction drift, duplicate entities, orphan
+/// threads). Read-only — "fixing" is always a *suggestion*, never a write.
+#[tauri::command]
+async fn audit_continuity(state: State<'_, AppState>) -> Result<ContinuityReport, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    let notes = db::load_all_notes(&conn).map_err(|e| e.to_string())?;
+    Ok(continuity::audit(&notes))
+}
+
+/// Merges two entities: rewrites wikilinks from `drop_id` (and its aliases) to
+/// `keep_id`, folds `drop`'s names into `keep`'s aliases, and trashes the
+/// `drop` note (never deletes). Destructive — the frontend confirms first.
+#[tauri::command]
+async fn merge_entities(
+    state: State<'_, AppState>,
+    keep_id: &str,
+    drop_id: &str,
+) -> Result<String, String> {
+    let vault_path = state.vault_path.lock().await.clone();
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+
+    let notes = db::load_all_notes(&conn).map_err(|e| e.to_string())?;
+    let plan = continuity::plan_merge(&notes, keep_id, drop_id)
+        .ok_or_else(|| "Merge failed: keep or drop entity not found".to_string())?;
+
+    // Apply content rewrites (link drop → keep).
+    for (note_id, new_content) in &plan.rewrites {
+        let Some(note) = notes.iter().find(|n| &n.id == note_id) else {
+            continue;
+        };
+        let file_path = validate_safe_path(&vault_path, &note.path)?;
+        write_note_to_disk(&file_path, new_content, &note.frontmatter)?;
+        let _ = db::upsert_note(
+            &conn,
+            &note.path,
+            &note.title,
+            new_content,
+            &note.frontmatter,
+            Some(&note.id),
+        );
+    }
+
+    // Update the keep note's aliases.
+    {
+        let file_path = validate_safe_path(&vault_path, &plan.keep_note.path)?;
+        write_note_to_disk(
+            &file_path,
+            &plan.keep_note.content,
+            &plan.keep_note.frontmatter,
+        )?;
+        let _ = db::upsert_note(
+            &conn,
+            &plan.keep_note.path,
+            &plan.keep_note.title,
+            &plan.keep_note.content,
+            &plan.keep_note.frontmatter,
+            Some(&plan.keep_note.id),
+        );
+    }
+
+    // Trash the drop note (recoverable), never delete.
+    trash_note_impl(&vault_path, &conn, &plan.drop_note.path)?;
+    search::invalidate_cache();
+
+    Ok(format!(
+        "Merged \"{}\" into \"{}\".",
+        plan.drop_note.title, plan.keep_note.title
+    ))
 }
 
 /// Lists all provenance sources for the active vault.
@@ -1922,6 +2113,110 @@ async fn summarize_session(
             &model_owned,
             api_key_owned.as_deref(),
             base_url_owned.as_deref(),
+            allow_local,
+            sampling_params,
+            &crate::providers::http_client(),
+        )
+    })
+    .await
+}
+
+/// Revises a piece of text according to an instruction (co-writer).
+///
+/// No tools, no vault writes: the LLM returns a revised string which the
+/// frontend shows in a diff for accept/reject. The active LLM provider
+/// settings are read internally, so the caller only supplies text + instruction.
+#[tauri::command]
+async fn revise_text(
+    state: State<'_, AppState>,
+    text: &str,
+    instruction: &str,
+) -> Result<String, String> {
+    let allow_local;
+    let sampling_params;
+    let provider;
+    let model;
+    let api_key;
+    let base_url;
+    {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|_| "Mutex poisoned".to_string())?;
+        allow_local = db::get_setting(&conn, "allow_local_providers")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(true);
+        provider = db::get_setting(&conn, "llm_provider")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "ollama".to_string());
+        model = db::get_setting(&conn, "llm_model")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "llama3:8b".to_string());
+        base_url = db::get_setting(&conn, "llm_base_url")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "http://localhost:11434".to_string());
+        api_key = decrypt_api_key(
+            &db::get_setting(&conn, "llm_api_key")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            &provider,
+        )
+        .unwrap_or_default();
+        sampling_params = crate::providers::llm::SamplingParams {
+            temperature: db::get_setting(&conn, "llm_temperature")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.8),
+            top_p: db::get_setting(&conn, "llm_top_p")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(1.0),
+            max_tokens: db::get_setting(&conn, "llm_max_tokens")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(4096),
+            seed: db::get_setting(&conn, "llm_seed")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok()),
+        };
+    }
+
+    validate_provider_url(&base_url, allow_local)?;
+
+    let prompt = format!(
+        "Revise the following text according to the instruction.\n\
+         Return ONLY the revised text — no preamble, no commentary, no code fences.\n\n\
+         --- INSTRUCTION ---\n{}\n\n--- TEXT ---\n{}\n--- END ---",
+        instruction, text
+    );
+
+    let prompt_owned = prompt;
+
+    run_blocking(move || {
+        let system_context = crate::providers::llm::SystemContext {
+            system_prompt: "You are a precise prose editor. Return only the revised text."
+                .to_string(),
+            active_note_context: String::new(),
+        };
+        crate::providers::llm::generate_response(
+            &system_context,
+            &prompt_owned,
+            &provider,
+            &model,
+            if api_key.is_empty() {
+                None
+            } else {
+                Some(api_key.as_str())
+            },
+            Some(base_url.as_str()),
             allow_local,
             sampling_params,
             &crate::providers::http_client(),
@@ -2608,6 +2903,12 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
         .unwrap_or(None)
         .unwrap_or_default();
 
+    let font_scale = db::get_setting(&conn, "font_scale")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(1.0);
+
     Ok(AppSettings {
         allow_local_providers,
         llm_provider,
@@ -2634,6 +2935,7 @@ async fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String
         stt_provider,
         stt_api_key,
         stt_base_url,
+        font_scale,
     })
 }
 
@@ -2652,6 +2954,9 @@ async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Res
         },
     )
     .map_err(|e| e.to_string())?;
+
+    db::set_setting(&conn, "font_scale", &settings.font_scale.to_string())
+        .map_err(|e| e.to_string())?;
 
     db::set_setting(&conn, "llm_provider", &settings.llm_provider).map_err(|e| e.to_string())?;
     db::set_setting(&conn, "llm_model", &settings.llm_model).map_err(|e| e.to_string())?;
@@ -3460,7 +3765,15 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             save_session_memory,
             list_session_memory,
             delete_session_memory,
+            log_session_event,
+            list_session_events,
+            get_run_state,
+            set_run_state,
+            audit_continuity,
+            merge_entities,
+            nearest_notes,
             summarize_session,
+            revise_text,
             extract_session_memories,
             list_sources,
             save_source,

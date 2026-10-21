@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PenLine, Brain, Layers, Link2, Tags, Swords, Map, Image as ImageIcon, Square, ShieldAlert, Check, Ban } from "lucide-react";
+import { PenLine, Brain, Layers, Link2, Tags, Swords, Map, Image as ImageIcon, Square, ShieldAlert, Check, Ban, Puzzle } from "lucide-react";
 import {
   CampaignNote,
   DEFAULT_PROVENANCE_TAXONOMY,
@@ -7,10 +7,13 @@ import {
   WebClip,
 } from "../types";
 import type { ChatMessage } from "../hooks/useAgent";
+import type { Plugin } from "../hooks/usePlugins";
 import type { ContextItem, PendingToolApproval } from "../bindings";
 import { AgentMessageBlock } from "./AgentMessageBlock";
 import { TagTree } from "./TagTree";
 import { NotePreviewTooltip } from "./NotePreviewTooltip";
+import { PluginPanel } from "./PluginPanel";
+import { useRelatedNotes } from "../hooks/useRelatedNotes";
 
 export type RightDrawerTab =
   | "search"
@@ -19,7 +22,8 @@ export type RightDrawerTab =
   | "backlinks"
   | "tags"
   | "asset"
-  | "voice";
+  | "voice"
+  | "plugins";
 
 export interface RightDrawerProps {
   activeView: string;
@@ -33,7 +37,7 @@ export interface RightDrawerProps {
   setDiceNotation: (value: string) => void;
   diceHistory: string[];
   rollDiceNotation: (notation: string) => void;
-  pluginsList: Array<{ id: string; name: string; active?: boolean }>;
+  pluginsList: Plugin[];
   handleRollCharacterSheet: () => void;
   handleEvaluateEncounterThreat: () => void;
   handleInitiativeTracker: () => void;
@@ -55,6 +59,8 @@ export interface RightDrawerProps {
   addContextItem: (item: ContextItem) => void;
   removeContextItem: (id: string) => void;
   notes: CampaignNote[];
+  /** The currently open note id, used for the "related by meaning" panel. */
+  selectedNoteId?: string;
   rules: Array<{ id: string; title: string; content: string }>;
   renderMarkdown: (markdown: string) => React.ReactNode;
   vaultPath: string;
@@ -181,6 +187,12 @@ export const RightDrawer: React.FC<RightDrawerProps> = (props) => {
           title="Open Tag Hierarchy"
           {...props}
         />
+        <CollapsedButton
+          targetTab="plugins"
+          icon={<Puzzle size={18} />}
+          title="Open Plugin Panels"
+          {...props}
+        />
       </div>
     );
   }
@@ -206,6 +218,7 @@ export const RightDrawer: React.FC<RightDrawerProps> = (props) => {
         {props.tab === "voice" && <VoiceTab {...props} />}
         {props.tab === "backlinks" && <BacklinksTab {...props} />}
         {props.tab === "tags" && <TagsTab {...props} />}
+        {props.tab === "plugins" && <PluginsTab {...props} />}
       </div>
     </div>
   );
@@ -286,6 +299,7 @@ const TabBar: React.FC<RightDrawerProps> = ({
     <TabButton tab={tab} setTab={setTab} target="voice" label="Voice" />
     <TabButton tab={tab} setTab={setTab} target="backlinks" label="Links" />
     <TabButton tab={tab} setTab={setTab} target="tags" label="Tags" />
+    <TabButton tab={tab} setTab={setTab} target="plugins" label="Plugins" />
     <button
       onClick={() => setIsOpen(false)}
       style={{
@@ -909,6 +923,63 @@ const PluginButtons: React.FC<
     )}
   </div>
 );
+
+const PluginsTab: React.FC<RightDrawerProps> = ({
+  pluginsList,
+  setSelectedNoteId,
+}) => {
+  const uiPlugins = pluginsList.filter(
+    (p) => p.permissions?.includes("ui") && (p.ui_panels?.length ?? 0) > 0,
+  );
+
+  return (
+    <div
+      style={{
+        padding: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
+      <span
+        style={{
+          fontSize: "11px",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--muted)",
+        }}
+      >
+        Plugin Panels
+      </span>
+
+      {uiPlugins.length === 0 ? (
+        <div
+          style={{
+            fontSize: "12px",
+            color: "var(--muted)",
+            fontStyle: "italic",
+          }}
+        >
+          No plugins with a UI are installed. Plugins that declare the{" "}
+          <code>ui</code> permission and a <code>panels</code> section render
+          here.
+        </div>
+      ) : (
+        uiPlugins.map((plugin) =>
+          (plugin.ui_panels ?? []).map((panel) => (
+            <PluginPanel
+              key={`${plugin.id}-${panel.id}`}
+              pluginId={plugin.id}
+              panel={panel}
+              onOpenNote={setSelectedNoteId}
+            />
+          )),
+        )
+      )}
+    </div>
+  );
+};
 
 const AiTab: React.FC<RightDrawerProps> = ({
   currentChatMessages,
@@ -1947,62 +2018,125 @@ const VoiceTab: React.FC<RightDrawerProps> = ({
 );
 
 const BacklinksTab: React.FC<
-  Pick<RightDrawerProps, "backlinks" | "setSelectedNoteId">
-> = ({ backlinks, setSelectedNoteId }) => (
-  <div
-    style={{
-      padding: "16px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-    }}
-  >
-    <span
+  Pick<RightDrawerProps, "backlinks" | "setSelectedNoteId" | "notes" | "selectedNoteId">
+> = ({ backlinks, setSelectedNoteId, selectedNoteId }) => {
+  const { related, loading } = useRelatedNotes(selectedNoteId);
+  return (
+    <div
       style={{
-        fontSize: "11px",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "var(--muted)",
+        padding: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
       }}
     >
-      Incoming Backlinks
-    </span>
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-      {backlinks.length === 0 ? (
-        <div
-          style={{
-            fontSize: "12px",
-            color: "var(--muted)",
-            fontStyle: "italic",
-          }}
-        >
-          No incoming links to this note.
-        </div>
-      ) : (
-        backlinks.map((note) => (
-          <NotePreviewTooltip key={note.id} note={note}>
+      <span
+        style={{
+          fontSize: "11px",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--muted)",
+        }}
+      >
+        Incoming Backlinks
+      </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {backlinks.length === 0 ? (
+          <div
+            style={{
+              fontSize: "12px",
+              color: "var(--muted)",
+              fontStyle: "italic",
+            }}
+          >
+            No incoming links to this note.
+          </div>
+        ) : (
+          backlinks.map((note) => (
+            <NotePreviewTooltip key={note.id} note={note}>
+              <button
+                className="nav-item"
+                onClick={() => setSelectedNoteId(note.id)}
+                style={{
+                  padding: "6px 8px",
+                  fontSize: "12px",
+                  textAlign: "left",
+                  justifyContent: "flex-start",
+                  cursor: "pointer",
+                  width: "100%",
+                }}
+                type="button"
+              >
+                {note.title}
+              </button>
+            </NotePreviewTooltip>
+          ))
+        )}
+      </div>
+
+      <span
+        style={{
+          fontSize: "11px",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--muted)",
+          marginTop: "8px",
+        }}
+      >
+        Related by meaning
+      </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {loading ? (
+          <div style={{ fontSize: "12px", color: "var(--muted)" }}>Finding…</div>
+        ) : related.length === 0 ? (
+          <div
+            style={{
+              fontSize: "12px",
+              color: "var(--muted)",
+              fontStyle: "italic",
+            }}
+          >
+            No semantically related notes.
+          </div>
+        ) : (
+          related.map((item) => (
             <button
+              key={item.note_id}
               className="nav-item"
-              onClick={() => setSelectedNoteId(note.id)}
+              onClick={() => setSelectedNoteId(item.note_id)}
               style={{
                 padding: "6px 8px",
                 fontSize: "12px",
                 textAlign: "left",
-                justifyContent: "flex-start",
+                justifyContent: "space-between",
+                display: "flex",
                 cursor: "pointer",
                 width: "100%",
               }}
               type="button"
+              data-od-id={`related-note-${item.note_id}`}
             >
-              {note.title}
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.title}
+              </span>
+              <span style={{ color: "var(--muted)", fontSize: "11px" }}>
+                {(item.score ?? 0).toFixed(2)}
+              </span>
             </button>
-          </NotePreviewTooltip>
-        ))
-      )}
+          ))
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const TagsTab: React.FC<
   Pick<RightDrawerProps, "notes" | "setSelectedNoteId">

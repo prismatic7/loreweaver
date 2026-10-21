@@ -147,6 +147,21 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
+    // 7b2. Session Events Table (Session Ledger):
+    // Append-only log of live-play events (dice rolls, note saves, scene
+    // changes, AI answers). Cheap to write — the ledger is written during play
+    // and must never block the UI or agent loop. Scoped per-vault because the
+    // DB is re-initialized on vault switch.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS session_events (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL DEFAULT '{}',
+            created_at INTEGER NOT NULL
+        );",
+        [],
+    )?;
+
     // 7c. Sources Table:
     // Stores provenance records (canon, history, invention, or user-defined types)
     // that notes can link to via the `source_id` frontmatter key. Kept separate from
@@ -563,6 +578,41 @@ pub fn delete_session_memory(conn: &Connection, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Appends a session event to the ledger. Returns the new event id.
+///
+/// `created_at` uses millisecond precision so the frontend's `since` cursor
+/// does not skip events logged in the same second as a prior poll.
+pub fn log_session_event(conn: &Connection, kind: &str, payload: &str) -> Result<String> {
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    conn.execute(
+        "INSERT INTO session_events (id, kind, payload, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![id, kind, payload, now],
+    )?;
+    Ok(id)
+}
+
+/// Returns session events newer than `since` (Unix seconds), oldest first.
+pub fn list_session_events(conn: &Connection, since: i64) -> Result<Vec<super::SessionEvent>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, kind, payload, created_at FROM session_events \
+         WHERE created_at > ?1 ORDER BY created_at ASC",
+    )?;
+    let rows = stmt.query_map(params![since], |row| {
+        Ok(super::SessionEvent {
+            id: row.get(0)?,
+            kind: row.get(1)?,
+            payload: row.get(2)?,
+            created_at: row.get(3)?,
+        })
+    })?;
+    let mut events = Vec::new();
+    for r in rows {
+        events.push(r?);
+    }
+    Ok(events)
+}
+
 /// Returns every source row in the database.
 pub fn list_sources(conn: &Connection) -> Result<Vec<super::SourceEntry>> {
     let mut stmt = conn.prepare(
@@ -819,6 +869,29 @@ mod tests {
         set_setting(&conn, "test_key", "test_value").expect("Failed to set setting");
         let setting = get_setting(&conn, "test_key").expect("Failed to get setting");
         assert_eq!(setting, Some("test_value".to_string()));
+    }
+
+    #[test]
+    fn test_session_event_log_and_list_round_trip() {
+        let conn = init_db(":memory:").expect("Failed to initialize memory DB");
+
+        let id = log_session_event(&conn, "dice_roll", r#"{"total":14}"#).unwrap();
+        assert!(!id.is_empty());
+
+        let events = list_session_events(&conn, 0).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, id);
+        assert_eq!(events[0].kind, "dice_roll");
+        assert_eq!(events[0].payload, r#"{"total":14}"#);
+
+        // A second event appends.
+        log_session_event(&conn, "note_saved", r#"{"title":"Eldoria"}"#).unwrap();
+        let events = list_session_events(&conn, 0).unwrap();
+        assert_eq!(events.len(), 2);
+
+        // `since` in the far future returns nothing.
+        let future = chrono::Utc::now().timestamp_millis() + 100_000;
+        assert!(list_session_events(&conn, future).unwrap().is_empty());
     }
 
     #[test]

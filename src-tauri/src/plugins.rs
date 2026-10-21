@@ -7,7 +7,10 @@
 //! 1. **Embedded Synchronous JS Sandbox**: Plugins run strictly within synchronous Boa `Context`s
 //!    without access to Node.js / browser APIs or direct file system access.
 //! 2. **Strict Permission Allow-List**: Plugins must declare explicit permissions in `manifest.json`.
-//!    Currently, only the `"hooks"` permission (`ALLOWED_PERMISSIONS`) is permitted.
+//!    Only `"hooks"`, `"ui"`, and `"media"` (`ALLOWED_PERMISSIONS`) are permitted. The `"ui"`
+//!    permission lets a plugin declare *declarative* panels (data rendered by the host, never
+//!    plugin-supplied HTML); the `"media"` permission is reserved for cue-pack data. Unknown
+//!    permissions are rejected at discovery.
 //! 3. **Per-Vault State Isolation**: State mutated by plugins (`globalThis.__state`) is serialized
 //!    to JSON and isolated per vault path in `PLUGIN_STATES`, preventing cross-vault state leakage.
 //! 4. **Resource Constraints & Safety Caps**:
@@ -23,7 +26,7 @@
 //! 5. **Safe Injection**: Plugin state is converted from `serde_json::Value` into native Boa values
 //!    and set on `globalThis` directly, eliminating code injection through string interpolation.
 
-use crate::PluginInfo;
+use crate::{PluginInfo, UiAction, UiField, UiPanel};
 use boa_engine::{
     js_string,
     object::{builtins::JsArray, JsObject},
@@ -38,10 +41,10 @@ use std::sync::{Mutex, OnceLock};
 
 /// Validates requested permissions against the host's strict allow-list.
 ///
-/// Currently, only `"hooks"` is permitted. Any plugin requesting undeclared or unknown
-/// permissions will be rejected during discovery.
+/// Only `"hooks"`, `"ui"`, and `"media"` are permitted. Any plugin requesting
+/// undeclared or unknown permissions will be rejected during discovery.
 fn validate_permissions(permissions: &[String]) -> Result<(), String> {
-    const ALLOWED_PERMISSIONS: [&str; 1] = ["hooks"];
+    const ALLOWED_PERMISSIONS: [&str; 3] = ["hooks", "ui", "media"];
 
     for permission in permissions {
         if !ALLOWED_PERMISSIONS.contains(&permission.as_str()) {
@@ -285,6 +288,12 @@ fn load_single_plugin(plugin_dir: &Path, manifest_path: &Path) -> Result<PluginI
 
     validate_permissions(&permissions)?;
 
+    let ui_panels = if permissions.iter().any(|p| p == "ui") {
+        parse_ui_panels(&manifest_json)?
+    } else {
+        Vec::new()
+    };
+
     let entry_path = plugin_dir.join(entry_file);
     if !entry_path.exists() {
         return Err(format!("Entry file '{}' not found", entry_file));
@@ -308,7 +317,138 @@ fn load_single_plugin(plugin_dir: &Path, manifest_path: &Path) -> Result<PluginI
         permissions,
         script_content,
         active: true,
+        ui_panels,
     })
+}
+
+/// The closed set of field types a plugin `ui` panel may declare.
+const ALLOWED_FIELD_TYPES: [&str; 4] = ["text", "textarea", "select", "number"];
+
+/// Parses and validates the `ui.panels` section of a plugin manifest.
+///
+/// Returns an empty vector when the manifest declares no `ui` section (or the
+/// plugin lacks the `ui` permission — see the caller). Panels are validated
+/// structurally: unknown field types, missing action hooks, and colliding panel
+/// ids are all rejected so a malformed panel never reaches the host renderer.
+fn parse_ui_panels(manifest: &serde_json::Value) -> Result<Vec<UiPanel>, String> {
+    let panels_json = match manifest.get("ui").and_then(|ui| ui.get("panels")) {
+        Some(serde_json::Value::Array(panels)) => panels,
+        _ => return Ok(Vec::new()),
+    };
+
+    let mut panels: Vec<UiPanel> = Vec::with_capacity(panels_json.len());
+    let mut seen_ids = std::collections::HashSet::new();
+
+    for panel_json in panels_json {
+        let id = panel_json
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or("ui panel is missing a non-empty 'id'")?
+            .to_string();
+        if !seen_ids.insert(id.clone()) {
+            return Err(format!("duplicate ui panel id: {}", id));
+        }
+        let title = panel_json
+            .get("title")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| id.clone());
+
+        let fields = parse_ui_fields(panel_json.get("fields"))?;
+        let actions = parse_ui_actions(panel_json.get("actions"))?;
+
+        panels.push(UiPanel {
+            id,
+            title,
+            fields,
+            actions,
+        });
+    }
+
+    Ok(panels)
+}
+
+/// Parses a panel's `fields` array, rejecting unknown field types.
+fn parse_ui_fields(fields_json: Option<&serde_json::Value>) -> Result<Vec<UiField>, String> {
+    let Some(serde_json::Value::Array(fields)) = fields_json else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(fields.len());
+    for field in fields {
+        let key = field
+            .get("key")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or("ui field is missing a non-empty 'key'")?
+            .to_string();
+        let field_type = field
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or(format!("ui field '{}' is missing a 'type'", key))?
+            .to_string();
+        if !ALLOWED_FIELD_TYPES.contains(&field_type.as_str()) {
+            return Err(format!(
+                "ui field '{}' has unknown type '{}' (allowed: {})",
+                key,
+                field_type,
+                ALLOWED_FIELD_TYPES.join(", ")
+            ));
+        }
+        let label = field
+            .get("label")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| key.clone());
+        let options = field
+            .get("options")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        out.push(UiField {
+            key,
+            field_type,
+            label,
+            options,
+        });
+    }
+    Ok(out)
+}
+
+/// Parses a panel's `actions` array, requiring each action to name a hook.
+fn parse_ui_actions(actions_json: Option<&serde_json::Value>) -> Result<Vec<UiAction>, String> {
+    let Some(serde_json::Value::Array(actions)) = actions_json else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(actions.len());
+    for action in actions {
+        let id = action
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or("ui action is missing a non-empty 'id'")?
+            .to_string();
+        let label = action
+            .get("label")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| id.clone());
+        let hook = action
+            .get("hook")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or(format!("ui action '{}' is missing a 'hook'", id))?
+            .to_string();
+        out.push(UiAction { id, label, hook });
+    }
+    Ok(out)
 }
 
 /// Recursively converts a `serde_json::Value` into a native Boa `JsValue`.
@@ -635,6 +775,7 @@ mod tests {
             permissions,
             script_content: script_content.to_string(),
             active: true,
+            ui_panels: vec![],
         };
 
         let mut active = active_plugins().lock().unwrap_or_else(|e| e.into_inner());
@@ -663,6 +804,7 @@ mod tests {
             permissions: vec!["hooks".to_string()],
             script_content: script.to_string(),
             active: true,
+            ui_panels: vec![],
         };
 
         // Insert into ACTIVE_PLUGINS global state
@@ -826,6 +968,187 @@ mod tests {
 
         assert!(!note_cleaned.starts_with("Certainly!"), "sycophancy must be stripped");
         assert!(!note_cleaned.contains("beacon of hope"), "cliche must be transformed");
+    }
+
+    #[test]
+    fn test_permission_allow_list_ui_and_media() {
+        // `ui` accepted, `media` accepted, `hooks` still accepted.
+        assert!(validate_permissions(&["ui".to_string()]).is_ok());
+        assert!(validate_permissions(&["media".to_string()]).is_ok());
+        assert!(validate_permissions(&["hooks".to_string()]).is_ok());
+        // Unknown permissions are still rejected.
+        assert!(validate_permissions(&["filesystem".to_string()]).is_err());
+        assert!(validate_permissions(&["network".to_string()]).is_err());
+    }
+
+    fn write_plugin(plugin_dir: &std::path::Path, manifest: &str, script: &str) {
+        fs::create_dir_all(plugin_dir).unwrap();
+        fs::write(plugin_dir.join("manifest.json"), manifest).unwrap();
+        fs::write(plugin_dir.join("index.js"), script).unwrap();
+    }
+
+    #[test]
+    fn test_ui_manifest_parsing() {
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("npc-generator");
+        write_plugin(
+            &plugin_dir,
+            r#"{
+  "id": "npc-generator",
+  "name": "NPC Generator",
+  "version": "1.0.0",
+  "description": "test",
+  "permissions": ["hooks", "ui"],
+  "entry": "index.js",
+  "ui": {
+    "panels": [{
+      "id": "npc-panel",
+      "title": "NPC Generator",
+      "fields": [
+        { "key": "faction", "type": "text", "label": "Faction" },
+        { "key": "tone", "type": "select", "label": "Tone", "options": ["grim","heroic","comic"] }
+      ],
+      "actions": [{ "id": "generate", "label": "Generate", "hook": "generate_npc" }]
+    }]
+  }
+}"#,
+            "function generate_npc(p){ return '{}'; }",
+        );
+
+        let manifest_path = plugin_dir.join("manifest.json");
+        let info = load_single_plugin(&plugin_dir, &manifest_path).unwrap();
+        assert_eq!(info.ui_panels.len(), 1);
+        let panel = &info.ui_panels[0];
+        assert_eq!(panel.id, "npc-panel");
+        assert_eq!(panel.title, "NPC Generator");
+        assert_eq!(panel.fields.len(), 2);
+        assert_eq!(panel.fields[0].key, "faction");
+        assert_eq!(panel.fields[0].field_type, "text");
+        assert_eq!(panel.fields[1].field_type, "select");
+        assert_eq!(panel.fields[1].options, vec!["grim", "heroic", "comic"]);
+        assert_eq!(panel.actions.len(), 1);
+        assert_eq!(panel.actions[0].hook, "generate_npc");
+    }
+
+    #[test]
+    fn test_ui_unknown_field_type_rejected() {
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("bad-plugin");
+        write_plugin(
+            &plugin_dir,
+            r#"{
+  "id": "bad-plugin",
+  "name": "Bad",
+  "permissions": ["ui"],
+  "entry": "index.js",
+  "ui": { "panels": [{ "id": "p", "fields": [{ "key": "x", "type": "html" }] }] }
+}"#,
+            "",
+        );
+        let manifest_path = plugin_dir.join("manifest.json");
+        let err = load_single_plugin(&plugin_dir, &manifest_path).unwrap_err();
+        assert!(err.contains("unknown type"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_ui_missing_action_hook_rejected() {
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("bad-action");
+        write_plugin(
+            &plugin_dir,
+            r#"{
+  "id": "bad-action",
+  "name": "Bad Action",
+  "permissions": ["ui"],
+  "entry": "index.js",
+  "ui": { "panels": [{ "id": "p", "actions": [{ "id": "a", "label": "A" }] }] }
+}"#,
+            "",
+        );
+        let manifest_path = plugin_dir.join("manifest.json");
+        let err = load_single_plugin(&plugin_dir, &manifest_path).unwrap_err();
+        assert!(err.contains("missing a 'hook'"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_ui_duplicate_panel_id_rejected() {
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("dup-panel");
+        write_plugin(
+            &plugin_dir,
+            r#"{
+  "id": "dup-panel",
+  "name": "Dup",
+  "permissions": ["ui"],
+  "entry": "index.js",
+  "ui": { "panels": [{ "id": "p" }, { "id": "p" }] }
+}"#,
+            "",
+        );
+        let manifest_path = plugin_dir.join("manifest.json");
+        let err = load_single_plugin(&plugin_dir, &manifest_path).unwrap_err();
+        assert!(err.contains("duplicate ui panel id"), "got: {}", err);
+    }
+
+    #[test]
+    fn test_ui_panels_ignored_without_permission() {
+        let _guard = plugin_test_guard();
+        let tmp = tempfile::tempdir().unwrap();
+        let plugin_dir = tmp.path().join("no-ui-perm");
+        write_plugin(
+            &plugin_dir,
+            r#"{
+  "id": "no-ui-perm",
+  "name": "No UI",
+  "permissions": ["hooks"],
+  "entry": "index.js",
+  "ui": { "panels": [{ "id": "p", "title": "Hidden" }] }
+}"#,
+            "function f(p){ return '{}'; }",
+        );
+        let manifest_path = plugin_dir.join("manifest.json");
+        let info = load_single_plugin(&plugin_dir, &manifest_path).unwrap();
+        assert!(
+            info.ui_panels.is_empty(),
+            "ui section should be ignored without ui permission"
+        );
+    }
+
+    #[test]
+    fn test_npc_generator_example_loads_and_returns_table() {
+        let _guard = plugin_test_guard();
+        let npc_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("plugins/npc-generator");
+        assert!(npc_dir.join("manifest.json").exists(), "npc-generator manifest must exist");
+        assert!(npc_dir.join("index.js").exists(), "npc-generator index.js must exist");
+
+        // The shipped manifest parses to one ui panel whose action names a hook.
+        let manifest_path = npc_dir.join("manifest.json");
+        let info = load_single_plugin(&npc_dir, &manifest_path).unwrap();
+        assert_eq!(info.ui_panels.len(), 1, "npc-generator should declare one panel");
+        assert_eq!(info.ui_panels[0].actions[0].hook, "generate_npc");
+
+        // The hook runs and returns a table result.
+        let script = fs::read_to_string(npc_dir.join("index.js")).unwrap();
+        register_test_plugin("npc-generator", &script, info.permissions.clone());
+        let res = run_plugin_hook(
+            "/tmp/vault",
+            "npc-generator",
+            "generate_npc",
+            r#"{"faction":"Ironclads","tone":"grim"}"#,
+        )
+        .expect("generate_npc hook should succeed");
+
+        let parsed: serde_json::Value = serde_json::from_str(&res).unwrap();
+        assert_eq!(parsed["type"], "table");
+        assert_eq!(parsed["columns"].as_array().unwrap().len(), 3);
+        assert_eq!(parsed["rows"].as_array().unwrap().len(), 5);
     }
 }
 

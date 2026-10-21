@@ -12,6 +12,7 @@ import { CampaignNote, DEFAULT_PROVENANCE_TAXONOMY, ProvenanceType } from "../ty
 import { NoteOutline } from "./NoteOutline";
 import { parseNoteTags } from "../utils/tags";
 import { VaultTree } from "./VaultTree";
+import { CoWriterDiff } from "./CoWriterDiff";
 
 export interface TemplateProperty {
   type: "number" | "boolean" | "string";
@@ -64,7 +65,7 @@ export interface CampaignVaultViewProps {
   handleGenerateImageFromNote?: (title: string, content: string) => void;
   isGeneratingImage?: boolean;
   renderFolderDropdown: (folderName: string, isRulebook?: boolean) => React.ReactNode;
-  handleNewNote: (folder?: string) => void;
+  handleNewNote: (folder?: string, templateType?: string) => void;
   handleNewFolder: (parentFolder?: string) => void;
   handleTrashNote: (path: string) => void;
   renderMarkdown: (content: string) => React.ReactNode;
@@ -158,6 +159,49 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
 }) => {
   const [templates, setTemplates] = useState<TemplateEntry[]>([]);
   const [splitMode, setSplitMode] = useState(false);
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [reviseLeft, setReviseLeft] = useState("");
+  const [reviseRight, setReviseRight] = useState("");
+  const [reviseInstruction, setReviseInstruction] = useState("");
+  const [revisePromptOpen, setRevisePromptOpen] = useState(false);
+  const [isRevising, setIsRevising] = useState(false);
+
+  const handleRevise = async () => {
+    const instruction = reviseInstruction.trim();
+    if (!instruction) return;
+    setIsRevising(true);
+    try {
+      const revised = await invoke<string>("revise_text", {
+        text: editContent,
+        instruction,
+      });
+      setReviseLeft(editContent);
+      setReviseRight(revised);
+      setRevisePromptOpen(false);
+      setReviseOpen(true);
+    } catch (err) {
+      console.error("Revise failed:", err);
+    } finally {
+      setIsRevising(false);
+    }
+  };
+
+  const handleHumanise = async () => {
+    try {
+      const raw = await invoke<string>("execute_plugin_hook", {
+        pluginId: "unslop",
+        hook: "clean_note",
+        payload: JSON.stringify({ title: editTitle, content: editContent }),
+      });
+      const parsed = JSON.parse(raw) as { content?: string };
+      const cleaned = typeof parsed?.content === "string" ? parsed.content : editContent;
+      setReviseLeft(editContent);
+      setReviseRight(cleaned);
+      setReviseOpen(true);
+    } catch (err) {
+      console.error("Humanise failed:", err);
+    }
+  };
 
   const effectiveNotes = useMemo(() => {
     if (notes && notes.length > 0) return notes;
@@ -250,8 +294,8 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                 setActiveView("vault");
               }
             }}
-            onNewNote={(targetFolder) => {
-              handleNewNote(targetFolder);
+            onNewNote={(targetFolder, templateType) => {
+              handleNewNote(targetFolder, templateType);
             }}
             onNewFolder={(parentFolder) => {
               handleNewFolder(parentFolder);
@@ -985,15 +1029,100 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
                         >
                           <div
                             style={{
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              color: "var(--muted)",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.06em",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: "8px",
                               marginBottom: "8px",
                             }}
                           >
-                            Markdown Editor
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                color: "var(--muted)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
+                              }}
+                            >
+                              Markdown Editor
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              {revisePromptOpen ? (
+                                <>
+                                  <input
+                                    value={reviseInstruction}
+                                    onChange={(e) =>
+                                      setReviseInstruction(e.target.value)
+                                    }
+                                    placeholder="e.g. tighten the prose"
+                                    aria-label="Revise instruction"
+                                    style={{
+                                      padding: "4px 8px",
+                                      fontSize: "12px",
+                                      background: "var(--bg)",
+                                      border: "1px solid var(--border)",
+                                      borderRadius: 0,
+                                      color: "var(--fg)",
+                                      width: "180px",
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") void handleRevise();
+                                    }}
+                                  />
+                                  <button
+                                    className="btn btn-sm"
+                                    type="button"
+                                    onClick={() => void handleRevise()}
+                                    disabled={isRevising}
+                                    style={{
+                                      fontSize: "11px",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {isRevising ? "Revising…" : "Go"}
+                                  </button>
+                                  <button
+                                    className="btn btn-sm"
+                                    type="button"
+                                    onClick={() => setRevisePromptOpen(false)}
+                                    style={{
+                                      fontSize: "11px",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="btn btn-sm"
+                                    type="button"
+                                    onClick={() => setRevisePromptOpen(true)}
+                                    style={{ fontSize: "11px", cursor: "pointer" }}
+                                    data-od-id="editor-revise"
+                                  >
+                                    Revise…
+                                  </button>
+                                  <button
+                                    className="btn btn-sm"
+                                    type="button"
+                                    onClick={() => void handleHumanise()}
+                                    style={{ fontSize: "11px", cursor: "pointer" }}
+                                    data-od-id="editor-humanise"
+                                  >
+                                    Humanise
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                           <Suspense
                             fallback={
@@ -1207,6 +1336,13 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
             )}
           </div>
         )}
+        <CoWriterDiff
+          open={reviseOpen}
+          leftText={reviseLeft}
+          rightText={reviseRight}
+          onAccept={(result) => setEditContent(result)}
+          onClose={() => setReviseOpen(false)}
+        />
       </div>
     </div>
   );

@@ -1,0 +1,28 @@
+{
+  "id": "npc-generator",
+  "name": "NPC Generator",
+  "version": "1.0.0",
+  "description": "Generates a small table of NPCs for a given faction and tone, rendered as a host panel.",
+  "permissions": ["hooks", "ui"],
+  "entry": "index.js",
+  "ui": {
+    "panels": [
+      {
+        "id": "npc-panel",
+        "title": "NPC Generator",
+        "fields": [
+          { "key": "faction", "type": "text", "label": "Faction" },
+          {
+            "key": "tone",
+            "type": "select",
+            "label": "Tone",
+            "options": ["grim", "heroic", "comic"]
+          }
+        ],
+        "actions": [
+          { "id": "generate", "label": "Generate", "hook": "generate_npc" }
+        ]
+      }
+    ]
+  }
+}

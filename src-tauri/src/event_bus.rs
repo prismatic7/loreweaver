@@ -48,6 +48,12 @@ pub const EVENT_WORLD_STATE_CHANGED: &str = "world_state_changed";
 /// chat. Lets plugins react to dice (e.g. a weather plugin keyed to a roll).
 pub const EVENT_DICE_ROLL: &str = "dice_roll";
 
+/// Fired after a session event is appended to the ledger (`log_session_event`).
+///
+/// Payload: `{ id, kind, payload }` — a summary, never large artifacts. Lets
+/// plugins observe the live-play ledger (e.g. an XP tracker keyed to dice rolls).
+pub const EVENT_SESSION_EVENT: &str = "session_event";
+
 /// Maps an event name to the plugin hook that listens for it (`on_<event>`).
 ///
 /// Event names must be ASCII alphanumeric + underscore (the same character set

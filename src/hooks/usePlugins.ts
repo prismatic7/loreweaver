@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { UiPanel } from "../bindings";
 
 export interface Plugin {
   id: string;
   name: string;
   active?: boolean;
+  permissions?: string[];
+  ui_panels?: UiPanel[];
 }
 
 export function usePlugins(vaultPath: string) {

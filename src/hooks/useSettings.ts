@@ -6,6 +6,7 @@ import { z } from "zod";
 
 export const settingsSchema = z.object({
   allow_local_providers: z.boolean(),
+  font_scale: z.coerce.number().min(0.8).max(1.5),
   llm_provider: z.string().min(1, "Provider is required"),
   llm_model: z.string().min(1, "Model is required"),
   llm_api_key: z.string(),
@@ -49,6 +50,7 @@ export type SettingsForm = z.infer<typeof settingsSchema>;
 
 export const DEFAULT_SETTINGS: SettingsForm = {
   allow_local_providers: true,
+  font_scale: 1.0,
   llm_provider: "ollama",
   llm_model: "llama3:8b",
   llm_api_key: "",
@@ -107,6 +109,7 @@ export function useSettings() {
           allow_local_providers:
             settings.allow_local_providers ??
             DEFAULT_SETTINGS.allow_local_providers,
+          font_scale: settings.font_scale ?? DEFAULT_SETTINGS.font_scale,
           llm_provider: settings.llm_provider || DEFAULT_SETTINGS.llm_provider,
           llm_model: settings.llm_model || DEFAULT_SETTINGS.llm_model,
           llm_api_key: settings.llm_api_key || "",
@@ -169,6 +172,11 @@ export function useSettings() {
     document.documentElement.setAttribute("data-theme", resolvedTheme);
   }, [resolvedTheme]);
 
+  const fontScale = watch("font_scale");
+  useEffect(() => {
+    document.documentElement.style.setProperty("--font-scale", String(fontScale));
+  }, [fontScale]);
+
   const handleSaveSettings = useCallback(
     async (data: SettingsForm, alert: (message: string) => void) => {
       try {
@@ -219,6 +227,7 @@ export function useSettings() {
     isValid,
     loadSettings,
     handleSaveSettings,
+    fontScale,
     llmProvider,
     llmModel,
     llmApiKey,

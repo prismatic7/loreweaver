@@ -39,7 +39,7 @@ export interface VaultTreeProps {
   onToggleFolder: (folderPath: string) => void;
   selectedNoteId: string;
   onSelectNote: (noteId: string) => void;
-  onNewNote: (targetFolder?: string) => void;
+  onNewNote: (targetFolder?: string, templateType?: string) => void;
   onNewFolder: (parentFolder?: string) => void;
   onRenameNote: (note: CampaignNote, newTitle: string) => Promise<void> | void;
   onRenameFolder: (oldFolder: string, newFolderName: string) => Promise<void> | void;
@@ -729,6 +729,35 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
           >
             <FolderPlus size={12} /> Folder
           </button>
+
+          <select
+            value=""
+            onChange={(e) => {
+              const template = e.target.value;
+              if (template) onNewNote(undefined, template);
+              e.target.value = "";
+            }}
+            aria-label="New note from template"
+            data-od-id="vault-new-template"
+            style={{
+              padding: "5px 4px",
+              fontSize: "11px",
+              cursor: "pointer",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: 0,
+              color: "var(--fg)",
+            }}
+            title="New note from template"
+          >
+            <option value="">Template…</option>
+            <option value="npc">NPC</option>
+            <option value="location">Location</option>
+            <option value="faction">Faction</option>
+            <option value="item">Item</option>
+            <option value="thread">Thread</option>
+            <option value="event">Event</option>
+          </select>
 
           <button
             type="button"

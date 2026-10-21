@@ -53,6 +53,11 @@ export type AppSettings = {
 	stt_api_key: string,
 	stt_base_url: string,
 	allow_local_providers: boolean,
+	/**
+	 *  UI type scale (0.9 / 1.0 / 1.15 / 1.3), applied as `--font-scale`.
+	 *  Defaults to 1.0 for existing vaults.
+	 */
+	font_scale?: number | null,
 };
 
 export type CampaignNote = {
@@ -80,6 +85,42 @@ export type ContextItem = {
 	id: string,
 	title: string,
 	content: string,
+};
+
+/**  The full continuity audit result: the entity/alias registry + findings. */
+export type ContinuityReport = {
+	entities: Entity[],
+	findings: Finding[],
+};
+
+/**
+ *  A campaign entity (person/place/faction/thing) and its aliases.
+ * 
+ *  Entities are extracted from note titles + `aliases` frontmatter; aliases
+ *  and title collisions collapse into a single entity.
+ */
+export type Entity = {
+	id: string,
+	name: string,
+	aliases: string[],
+	note_ids: string[],
+};
+
+/**  A continuity problem found by the audit (dead actor, date conflict, …). */
+export type Finding = {
+	id: string,
+	/**
+	 *  Detector kind: `dead_actor`, `date_conflict`, `faction_drift`,
+	 *  `duplicate_entity`, `orphan_thread`.
+	 */
+	kind: string,
+	/**  `high` | `medium` | `low`. */
+	severity: string,
+	note_ids: string[],
+	/**  Human-readable explanation. */
+	evidence: string,
+	/**  Where to look: `note_path` (or `note_path:line`). */
+	citation: string,
 };
 
 /**  A single note-type registry entry declared by a world's manifest. */
@@ -118,12 +159,27 @@ export type PluginInfo = {
 	permissions: string[],
 	script_content: string,
 	active: boolean,
+	/**
+	 *  Declarative UI panels contributed by this plugin (empty unless the
+	 *  plugin declares the `"ui"` permission). Rendered by the host, never by
+	 *  plugin-supplied HTML.
+	 */
+	ui_panels?: UiPanel[],
 };
 
 /**  A single provenance-taxonomy entry declared by a world's manifest. */
 export type ProvenanceType = {
 	id: string,
 	label: string,
+};
+
+/**  A note semantically related to the target note ("related by meaning"). */
+export type RelatedNote = {
+	note_id: string,
+	title: string,
+	path: string,
+	/**  Cosine similarity (0.0–1.0) against the target note's averaged vector. */
+	score: number | null,
 };
 
 export type RuleEntry = {
@@ -133,6 +189,19 @@ export type RuleEntry = {
 	category: string,
 	source: string,
 	content: string,
+};
+
+/**
+ *  Run Mode's vault-scoped live-play state.
+ * 
+ *  `scene_note_id` is the note currently "on stage"; `pinned_rule_ids` are the
+ *  rule ids shown as compact cards in the Run Mode right rail. Both persist
+ *  under `run.*` keys in `app_settings` (vault-scoped because the DB is
+ *  re-initialised per vault).
+ */
+export type RunState = {
+	scene_note_id?: string | null,
+	pinned_rule_ids?: string[],
 };
 
 /**
@@ -151,6 +220,20 @@ export type SearchResult = {
 	snippet: string,
 	score: number | null,
 	path: string,
+};
+
+/**
+ *  A single append-only session ledger entry, written during live play.
+ * 
+ *  `kind` is a short event tag (`dice_roll`, `note_saved`, `scene_changed`,
+ *  `ai_answer`, …) and `payload` is a JSON summary. The ledger is cheap and
+ *  append-only — a write must never block the UI or the agent loop.
+ */
+export type SessionEvent = {
+	id: string,
+	kind: string,
+	payload: string,
+	created_at: number,
 };
 
 export type SourceEntry = {
@@ -195,6 +278,45 @@ export type ToolSpec = {
 	name: string,
 	description: string,
 	parameters: unknown,
+};
+
+/**
+ *  A single action button declared by a plugin's `ui` manifest section.
+ * 
+ *  `hook` names the plugin's global hook function invoked with the panel's
+ *  field values serialized as JSON when the action is clicked.
+ */
+export type UiAction = {
+	id: string,
+	label: string,
+	hook: string,
+};
+
+/**
+ *  A single form field declared by a plugin's `ui` manifest section.
+ * 
+ *  `field_type` is a closed set: `"text"`, `"textarea"`, `"select"`, `"number"`.
+ *  Anything else is rejected at discovery time.
+ */
+export type UiField = {
+	key: string,
+	field_type: string,
+	label: string,
+	options?: string[],
+};
+
+/**
+ *  A declarative UI panel contributed by a plugin.
+ * 
+ *  The host renders `fields` from this typed schema and invokes `actions` via
+ *  the existing `execute_plugin_hook` command. Plugins never receive DOM,
+ *  filesystem, or network handles for their panels — panels are data only.
+ */
+export type UiPanel = {
+	id: string,
+	title: string,
+	fields?: UiField[],
+	actions?: UiAction[],
 };
 
 export type VaultSettings = {

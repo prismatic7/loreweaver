@@ -727,6 +727,96 @@ pub fn dot_product(a: &[f32], b: &[f32]) -> Result<f32, String> {
     Ok(a.iter().zip(b.iter()).map(|(x, y)| x * y).sum())
 }
 
+/// Averages the cached embeddings of one note's chunks into a single vector.
+fn average_note_vector(
+    chunks: &[(String, String, Vec<f32>, String, String, String)],
+    note_id: &str,
+) -> Vec<f32> {
+    let mut sum: Vec<f32> = Vec::new();
+    let mut count = 0usize;
+    for (_, nid, embedding, _, _, _) in chunks {
+        if nid != note_id {
+            continue;
+        }
+        if sum.is_empty() {
+            sum = vec![0.0; embedding.len()];
+        }
+        if sum.len() == embedding.len() {
+            for (i, v) in embedding.iter().enumerate() {
+                sum[i] += *v;
+            }
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Vec::new();
+    }
+    sum.iter().map(|v| v / count as f32).collect()
+}
+
+/// Returns the `k` notes most semantically similar to `note_id`, using the
+/// cached chunk embeddings (cosine similarity == dot product, since vectors are
+/// L2-normalised at index time).
+pub fn nearest_notes(
+    conn: &rusqlite::Connection,
+    note_id: &str,
+    k: usize,
+) -> Result<Vec<crate::RelatedNote>, String> {
+    let cache = get_cache(conn)?;
+    let target = average_note_vector(&cache.note_chunks, note_id);
+    if target.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    struct Acc {
+        sum: Vec<f32>,
+        count: usize,
+        title: String,
+        path: String,
+    }
+    let mut by_note: HashMap<String, Acc> = HashMap::new();
+    for (_, nid, embedding, _, title, path) in &cache.note_chunks {
+        if nid == note_id {
+            continue;
+        }
+        let acc = by_note.entry(nid.clone()).or_insert_with(|| Acc {
+            sum: vec![0.0; embedding.len()],
+            count: 0,
+            title: title.clone(),
+            path: path.clone(),
+        });
+        if acc.sum.len() == embedding.len() {
+            for (i, v) in embedding.iter().enumerate() {
+                acc.sum[i] += *v;
+            }
+            acc.count += 1;
+        }
+    }
+
+    let mut results: Vec<crate::RelatedNote> = Vec::new();
+    for (nid, acc) in by_note {
+        if acc.count == 0 {
+            continue;
+        }
+        let avg: Vec<f32> = acc.sum.iter().map(|v| v / acc.count as f32).collect();
+        if let Ok(score) = dot_product(&target, &avg) {
+            results.push(crate::RelatedNote {
+                note_id: nid,
+                title: acc.title,
+                path: acc.path,
+                score,
+            });
+        }
+    }
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(k);
+    Ok(results)
+}
+
 pub fn hybrid_query(
     conn: &rusqlite::Connection,
     query_text: &str,

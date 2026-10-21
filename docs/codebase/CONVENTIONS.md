@@ -34,7 +34,7 @@ Rules for adding selectors:
 - Shared app state is held in `AppState` with `Mutex` guards around paths and the filesystem watcher.
 - Persistence and command handlers generally return `Result<..., String>` for error propagation.
 - Vault writes are checked with `validate_safe_path` before file output.
-- Every new `#[tauri::command]` must get a matching `allow-*` entry in `src-tauri/capabilities/default.json` (as of 2026-10-01 this was a real gap for `cancel_agent_stream`, `approve_agent_tool`, `reject_agent_tool`, `scaffold_plugin`, `run_schedule_now`, `evaluate_expression`, `extract_session_memories`, `list_bible_files`, and `update_bible_files`) — otherwise the frontend `invoke` is rejected.
+- Every new `#[tauri::command]` must get a matching `allow-*` entry in `src-tauri/capabilities/default.json` **and** a matching `[[permission]]` block in `src-tauri/permissions/allow-all.toml` (defining the `allow-<command>` identifier). The capabilities entry alone is not enough — `tauri_build` validates capability permissions against the identifiers defined in `permissions/*.toml`, so a missing `.toml` block fails the build with "Permission allow-<command> not found". (As of 2026-10-01 this was a real gap for `cancel_agent_stream`, `approve_agent_tool`, `reject_agent_tool`, `scaffold_plugin`, `run_schedule_now`, `evaluate_expression`, `extract_session_memories`, `list_bible_files`, and `update_bible_files`; the `allow-all.toml` file is hand-maintained, not auto-generated.)
 
 ## Naming and Data Shape
 

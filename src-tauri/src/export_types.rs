@@ -36,6 +36,78 @@ pub struct SourceEntry {
     pub date: String,
 }
 
+/// A single append-only session ledger entry, written during live play.
+///
+/// `kind` is a short event tag (`dice_roll`, `note_saved`, `scene_changed`,
+/// `ai_answer`, …) and `payload` is a JSON summary. The ledger is cheap and
+/// append-only — a write must never block the UI or the agent loop.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct SessionEvent {
+    pub id: String,
+    pub kind: String,
+    pub payload: String,
+    pub created_at: i64,
+}
+
+/// Run Mode's vault-scoped live-play state.
+///
+/// `scene_note_id` is the note currently "on stage"; `pinned_rule_ids` are the
+/// rule ids shown as compact cards in the Run Mode right rail. Both persist
+/// under `run.*` keys in `app_settings` (vault-scoped because the DB is
+/// re-initialised per vault).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct RunState {
+    #[serde(default)]
+    pub scene_note_id: Option<String>,
+    #[serde(default)]
+    pub pinned_rule_ids: Vec<String>,
+}
+
+/// A campaign entity (person/place/faction/thing) and its aliases.
+///
+/// Entities are extracted from note titles + `aliases` frontmatter; aliases
+/// and title collisions collapse into a single entity.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct Entity {
+    pub id: String,
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub note_ids: Vec<String>,
+}
+
+/// A continuity problem found by the audit (dead actor, date conflict, …).
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct Finding {
+    pub id: String,
+    /// Detector kind: `dead_actor`, `date_conflict`, `faction_drift`,
+    /// `duplicate_entity`, `orphan_thread`.
+    pub kind: String,
+    /// `high` | `medium` | `low`.
+    pub severity: String,
+    pub note_ids: Vec<String>,
+    /// Human-readable explanation.
+    pub evidence: String,
+    /// Where to look: `note_path` (or `note_path:line`).
+    pub citation: String,
+}
+
+/// The full continuity audit result: the entity/alias registry + findings.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct ContinuityReport {
+    pub entities: Vec<Entity>,
+    pub findings: Vec<Finding>,
+}
+
+/// A note semantically related to the target note ("related by meaning").
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct RelatedNote {
+    pub note_id: String,
+    pub title: String,
+    pub path: String,
+    /// Cosine similarity (0.0–1.0) against the target note's averaged vector.
+    pub score: f32,
+}
+
 /// Result of a web clipping operation: the fetched page's readable content
 /// converted to clean Markdown, plus provenance metadata.
 #[derive(Serialize, Deserialize, Clone, Debug, Type)]
@@ -97,6 +169,15 @@ pub struct AppSettings {
     pub stt_base_url: String,
 
     pub allow_local_providers: bool,
+
+    /// UI type scale (0.9 / 1.0 / 1.15 / 1.3), applied as `--font-scale`.
+    /// Defaults to 1.0 for existing vaults.
+    #[serde(default = "default_font_scale")]
+    pub font_scale: f64,
+}
+
+fn default_font_scale() -> f64 {
+    1.0
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Type)]
@@ -149,6 +230,50 @@ pub struct PluginInfo {
     pub permissions: Vec<String>,
     pub script_content: String,
     pub active: bool,
+    /// Declarative UI panels contributed by this plugin (empty unless the
+    /// plugin declares the `"ui"` permission). Rendered by the host, never by
+    /// plugin-supplied HTML.
+    #[serde(default)]
+    pub ui_panels: Vec<UiPanel>,
+}
+
+/// A single form field declared by a plugin's `ui` manifest section.
+///
+/// `field_type` is a closed set: `"text"`, `"textarea"`, `"select"`, `"number"`.
+/// Anything else is rejected at discovery time.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct UiField {
+    pub key: String,
+    pub field_type: String,
+    pub label: String,
+    #[serde(default)]
+    pub options: Vec<String>,
+}
+
+/// A single action button declared by a plugin's `ui` manifest section.
+///
+/// `hook` names the plugin's global hook function invoked with the panel's
+/// field values serialized as JSON when the action is clicked.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct UiAction {
+    pub id: String,
+    pub label: String,
+    pub hook: String,
+}
+
+/// A declarative UI panel contributed by a plugin.
+///
+/// The host renders `fields` from this typed schema and invokes `actions` via
+/// the existing `execute_plugin_hook` command. Plugins never receive DOM,
+/// filesystem, or network handles for their panels — panels are data only.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct UiPanel {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub fields: Vec<UiField>,
+    #[serde(default)]
+    pub actions: Vec<UiAction>,
 }
 
 /// A single note-type registry entry declared by a world's manifest.
@@ -299,6 +424,12 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<SearchResult>()
         .typ::<SearchResponse>()
         .typ::<SourceEntry>()
+        .typ::<SessionEvent>()
+        .typ::<RunState>()
+        .typ::<Entity>()
+        .typ::<Finding>()
+        .typ::<ContinuityReport>()
+        .typ::<RelatedNote>()
         .typ::<WebClip>()
         .typ::<AppSettings>()
         .typ::<VaultSettings>()
@@ -306,6 +437,9 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<TemplateProperty>()
         .typ::<TemplateAction>()
         .typ::<PluginInfo>()
+        .typ::<UiField>()
+        .typ::<UiAction>()
+        .typ::<UiPanel>()
         .typ::<NoteType>()
         .typ::<ProvenanceType>()
         .typ::<WorldTheme>()

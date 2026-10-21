@@ -431,6 +431,54 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<(), String>`
 - **Description:** Deletes a session memory fact from the database by ID.
 
+### `log_session_event`
+
+- **Arguments:** `kind: &str`, `payload: &str`
+- **Returns:** `Result<String, String>` (the new event id)
+- **Description:** Appends an event to the append-only session ledger (the `session_events` table) and fans it out to plugins as a `session_event` event. The DB insert is the durable record; the plugin fan-out is fire-and-forget.
+
+### `list_session_events`
+
+- **Arguments:** `since: i64` (Unix milliseconds)
+- **Returns:** `Result<Vec<SessionEvent>, String>`
+- **Description:** Lists session ledger events newer than `since`, oldest first. `created_at` uses millisecond precision so the frontend's `since` cursor does not skip same-second events.
+
+### `get_run_state`
+
+- **Arguments:** None.
+- **Returns:** `Result<RunState, String>`
+- **Description:** Returns Run Mode's vault-scoped live-play state (the current scene note id and the pinned rule ids) from `run.*` keys in `app_settings`.
+
+### `set_run_state`
+
+- **Arguments:** `key: &str` (`"scene_note_id"` or `"pinned_rule_ids"`), `value: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Sets a single Run Mode state key under `run.<key>` in `app_settings` (vault-scoped). Unknown keys are rejected.
+
+### `audit_continuity`
+
+- **Arguments:** None.
+- **Returns:** `Result<ContinuityReport, String>`
+- **Description:** Runs the continuity audit over all notes: returns the entity/alias registry plus findings (dead actors, date conflicts, faction drift, duplicate entities, orphan threads). Read-only — fixing is always a suggestion.
+
+### `merge_entities`
+
+- **Arguments:** `keep_id: &str`, `drop_id: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Merges two entities: rewrites wikilinks from `drop_id` (and its aliases) to `keep_id`, folds `drop`'s names into `keep`'s aliases, and trashes the `drop` note (recoverable). Destructive — the frontend confirms first.
+
+### `revise_text`
+
+- **Arguments:** `text: &str`, `instruction: &str`
+- **Returns:** `Result<String, String>`
+- **Description:** Revises a piece of text according to an instruction (co-writer). Reads the active LLM provider settings internally. No tools, no vault writes — the revised string is shown in a diff for accept/reject.
+
+### `nearest_notes`
+
+- **Arguments:** `note_id: &str`, `k: usize`
+- **Returns:** `Result<Vec<RelatedNote>, String>`
+- **Description:** Returns the `k` notes most semantically similar to `note_id` ("related by meaning"), using the cached chunk embeddings (cosine over the note's averaged vector).
+
 ### `summarize_session`
 
 - **Arguments:** `messages_json: &str`, `provider: &str`, `model: &str`, `api_key: Option<&str>`, `base_url: Option<&str>`

@@ -68,13 +68,13 @@ Host-side result contract from the action hook (JSON string):
 { "type": "note",  "noteId": "...", "title": "..." }   // host opens the note
 ```
 
-- [ ] **Step 1: Extend the allow-list + tests.** `ALLOWED_PERMISSIONS = ["hooks", "ui", "media"]`. Add tests: `ui` accepted, `media` accepted, `"filesystem"` still rejected.
-- [ ] **Step 2: Parse + validate the `ui` manifest section.** Extend the manifest loader; reject panels whose `action.hook` is missing, whose field `type` is unknown, or whose `id` collides. Keep the existing `PluginInfo` shape and add `ui_panels: Vec<UiPanel>` (Specta `Type`).
-- [ ] **Step 3: Regenerate bindings** (`npm run tauri` binding step / repo's bindings regen).
-- [ ] **Step 4: Host renderer.** `PluginPanel.tsx` renders fields from the typed schema, calls `execute_plugin_hook(pluginId, action.hook, JSON(fieldValues))`, and renders one of the three typed results. No plugin-supplied HTML.
-- [ ] **Step 5: Wire into the right drawer** (a new "Plugins" tab section) behind `has_permission(plugin, "ui")`.
-- [ ] **Step 6: Ship one real example** — a `plugins/npc-generator/` panel that returns a `table`.
-- [ ] **Step 7: Verify** `cargo test plugin`, `npm run test`, `npm run build`.
+- [x] **Step 1: Extend the allow-list + tests.** `ALLOWED_PERMISSIONS = ["hooks", "ui", "media"]`. Add tests: `ui` accepted, `media` accepted, `"filesystem"` still rejected.
+- [x] **Step 2: Parse + validate the `ui` manifest section.** Extend the manifest loader; reject panels whose `action.hook` is missing, whose field `type` is unknown, or whose `id` collides. Keep the existing `PluginInfo` shape and add `ui_panels: Vec<UiPanel>` (Specta `Type`).
+- [x] **Step 3: Regenerate bindings** (`npm run tauri` binding step / repo's bindings regen).
+- [x] **Step 4: Host renderer.** `PluginPanel.tsx` renders fields from the typed schema, calls `execute_plugin_hook(pluginId, action.hook, JSON(fieldValues))`, and renders one of the three typed results. No plugin-supplied HTML.
+- [x] **Step 5: Wire into the right drawer** (a new "Plugins" tab section) behind `has_permission(plugin, "ui")`.
+- [x] **Step 6: Ship one real example** — a `plugins/npc-generator/` panel that returns a `table`.
+- [x] **Step 7: Verify** `cargo test plugin`, `npm run test`, `npm run build`.
 
 **Acceptance:** a `ui` plugin renders a working panel; a plugin without `ui` cannot render one; unknown permissions still fail discovery.
 
@@ -84,12 +84,12 @@ Host-side result contract from the action hook (JSON string):
 
 **Interfaces:** table `session_events(id TEXT PK, kind TEXT, payload TEXT, created_at INTEGER)`; commands `log_session_event(kind, payload) -> Result<String,String>`, `list_session_events(since) -> Result<Vec<SessionEvent>,String>`.
 
-- [ ] **Step 1: Migration** — `CREATE TABLE IF NOT EXISTS session_events (...)` in `db.rs` init (additive, `IF NOT EXISTS`).
-- [ ] **Step 2: `SessionEvent` type** in `export_types.rs` + bindings.
-- [ ] **Step 3: Commands** + `allow-log-session-event`, `allow-list-session-events`.
-- [ ] **Step 4: Emit on the existing event bus** — add `session_event` fan-out (payload capped, like existing events).
-- [ ] **Step 5: Frontend hook** `useSessionLedger` polls/streams new events.
-- [ ] **Step 6: Test** — log → list round-trip in `cargo test`.
+- [x] **Step 1: Migration** — `CREATE TABLE IF NOT EXISTS session_events (...)` in `db.rs` init (additive, `IF NOT EXISTS`).
+- [x] **Step 2: `SessionEvent` type** in `export_types.rs` + bindings.
+- [x] **Step 3: Commands** + `allow-log-session-event`, `allow-list-session-events`.
+- [x] **Step 4: Emit on the existing event bus** — add `session_event` fan-out (payload capped, like existing events).
+- [x] **Step 5: Frontend hook** `useSessionLedger` polls/streams new events.
+- [x] **Step 6: Test** — log → list round-trip in `cargo test`.
 
 ### F0.3 — Global undo/redo store
 
@@ -97,28 +97,28 @@ Host-side result contract from the action hook (JSON string):
 
 **Interfaces:** `pushUndo({ label, undo: () => Promise<void>, redo: () => Promise<void> })`; `⌘Z` / `⇧⌘Z`.
 
-- [ ] **Step 1: `useUndo`** — bounded stack (e.g. 50), coalescing by label+key, async undo/redo.
-- [ ] **Step 2: Route reversible ops** — `rename_note`, `move_note`, `trash_note` (undo = `restore_note`), `restore_note` (undo = trash). Deletions and `empty_trash` are explicitly **not** undoable; the UI must say so.
-- [ ] **Step 3: Palette entries** "Undo <label>" with the label.
-- [ ] **Step 4: Test** — undo/redo of a rename via mocked invoke.
+- [x] **Step 1: `useUndo`** — bounded stack (e.g. 50), coalescing by label+key, async undo/redo.
+- [x] **Step 2: Route reversible ops** — `rename_note`, `move_note`, `trash_note` (undo = `restore_note`), `restore_note` (undo = trash). Deletions and `empty_trash` are explicitly **not** undoable; the UI must say so.
+- [x] **Step 3: Palette entries** "Undo <label>" with the label.
+- [x] **Step 4: Test** — undo/redo of a rename via mocked invoke.
 
 ### F0.4 — Accessibility: type scale + reduced motion
 
 **Files:** `src/index.css`, `src/App.css`, `src/hooks/useSettings.ts`, `src/components/SettingsView.tsx`.
 
-- [ ] **Step 1:** Add `--font-scale` (0.9 / 1.0 / 1.15 / 1.3) applied on `:root`; audit hard-coded `px` font sizes in the views to use the token where it matters (body, labels, headings).
-- [ ] **Step 2:** Respect `prefers-reduced-motion` — disable `connecting-pulse` and any transition loops.
-- [ ] **Step 3:** Persist the setting in `app_settings`; expose in Settings.
-- [ ] **Step 4:** Test — setting round-trips and applies a class/var.
+- [x] **Step 1:** Add `--font-scale` (0.9 / 1.0 / 1.15 / 1.3) applied on `:root`; audit hard-coded `px` font sizes in the views to use the token where it matters (body, labels, headings).
+- [x] **Step 2:** Respect `prefers-reduced-motion` — disable `connecting-pulse` and any transition loops.
+- [x] **Step 3:** Persist the setting in `app_settings`; expose in Settings.
+- [x] **Step 4:** Test — setting round-trips and applies a class/var.
 
 ### F0.5 — Status strip (provider / model / offline)
 
 **Files:** `src/components/StatusStrip.tsx` (new), `src/hooks/useProviderStatus.ts` (new), `src/App.css`.
 
-- [ ] **Step 1:** Hook polls `test_provider_connection` (debounced) and surfaces `{ provider, model, reachable, modelAvailable }`.
-- [ ] **Step 2:** Render a 24px bottom strip: dot + provider/model + offline badge. Click opens Settings → provider.
-- [ ] **Step 3:** When embeddings are unavailable, show "Search: keyword only" (matches the graceful-degrade path in `search.rs`).
-- [ ] **Step 4:** Test — reachable vs unreachable states.
+- [x] **Step 1:** Hook polls `test_provider_connection` (debounced) and surfaces `{ provider, model, reachable, modelAvailable }`.
+- [x] **Step 2:** Render a 24px bottom strip: dot + provider/model + offline badge. Click opens Settings → provider.
+- [ ] **Step 3:** When embeddings are unavailable, show "Search: keyword only" (matches the graceful-degrade path in `search.rs`). *Deferred — needs a backend embed-availability signal.*
+- [x] **Step 4:** Test — reachable vs unreachable states.
 
 ---
 
@@ -130,10 +130,10 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src/components/AppShell.tsx` (`AppView` union), `src/App.tsx`, `src/components/RunModeView.tsx` (new), `src/App.css`.
 
-- [ ] **Step 1:** Add `"run"` to `AppView`.
-- [ ] **Step 2:** Add the ribbon entry + `F1`/`F2` accelerators (Prep ↔ Run) that respect `guardedSetActiveView` (never discard unsaved edits silently).
-- [ ] **Step 3:** `RunModeView` grid: Scene (centre), Initiative (left rail), Pinned Rules (right rail), Ledger (bottom), Dice/Scratchpad (drawer).
-- [ ] **Step 4:** Test — view renders, toggles, and the unsaved-guard still fires.
+- [x] **Step 1:** Add `"run"` to `AppView`.
+- [x] **Step 2:** Add the ribbon entry + `F1`/`F2` accelerators (Prep ↔ Run) that respect `guardedSetActiveView` (never discard unsaved edits silently).
+- [x] **Step 3:** `RunModeView` grid: Scene (centre), Initiative (left rail), Pinned Rules (right rail), Ledger (bottom), Dice/Scratchpad (drawer).
+- [x] **Step 4:** Test — view renders, toggles, and the unsaved-guard still fires.
 
 ### F1.2 — Scene model + pinned rules
 
@@ -141,27 +141,27 @@ Run Mode is the information architecture everything else hangs off.
 
 **State (vault-scoped via `app_settings`):** `run.scene_note_id`, `run.pinned_rule_ids` (JSON array).
 
-- [ ] **Step 1:** Commands `get_run_state` / `set_run_state(key, value)` (or reuse `save_settings` with a `run.*` namespace — prefer the latter, no new command).
-- [ ] **Step 2:** Scene = the note currently "on stage"; renders inline in Run Mode with a "next scene" picker.
-- [ ] **Step 3:** Pinned rules = rule ids rendered as compact cards.
-- [ ] **Step 4:** Test — state persists across reload.
+- [x] **Step 1:** Commands `get_run_state` / `set_run_state(key, value)` (or reuse `save_settings` with a `run.*` namespace — prefer the latter, no new command).
+- [x] **Step 2:** Scene = the note currently "on stage"; renders inline in Run Mode with a "next scene" picker.
+- [x] **Step 3:** Pinned rules = rule ids rendered as compact cards.
+- [x] **Step 4:** Test — state persists across reload.
 
 ### F1.3 — Initiative integration
 
 **Files:** `src/components/RunModeView.tsx`, `src/hooks/usePlugins.ts`.
 
-- [ ] **Step 1:** Render the `initiative-tracker` plugin's state (read `execute_plugin_hook("initiative-tracker","get_state",...)`) in the left rail, read-only.
-- [ ] **Step 2:** Fallback: if the plugin is absent, show an empty state with a "add initiative plugin" hint.
-- [ ] **Step 3:** Test — read through a mocked hook.
+- [x] **Step 1:** Render the `initiative-tracker` plugin's state (read `execute_plugin_hook("initiative-tracker","get_combat_state",...)`) in the left rail, read-only.
+- [x] **Step 2:** Fallback: if the plugin is absent, show an empty state with a "add initiative plugin" hint.
+- [x] **Step 3:** Test — read through a mocked hook.
 
 ### F1.4 — Session ledger UI + recorder
 
 **Files:** `src/components/RunModeView.tsx`, `src/hooks/useSessionLedger.ts`.
 
-- [ ] **Step 1:** Bottom rail lists `session_events` chronologically (rolls, notes opened, AI answers, scene changes).
-- [ ] **Step 2:** "End session" action opens the Debrief (below).
-- [ ] **Step 3:** Recording is automatic: `roll_dice` results, `save_note`, scene changes emit `session_event` (F0.2).
-- [ ] **Step 4:** Test — a roll appends a ledger row.
+- [x] **Step 1:** Bottom rail lists `session_events` chronologically (rolls, notes opened, AI answers, scene changes).
+- [ ] **Step 2:** "End session" action opens the Debrief (below). *Deferred — no Debrief feature is defined in this plan.*
+- [x] **Step 3:** Recording is automatic: `roll_dice` results and scene changes emit `session_event` (F0.2). *`save_note` auto-logging skipped — the 1.5s autosave would flood the ledger.*
+- [x] **Step 4:** Test — a roll appends a ledger row.
 
 ### F1.5 — One-box intent router (`⌘K`)
 
@@ -174,10 +174,10 @@ Run Mode is the information architecture everything else hangs off.
 - `go <view>` → navigate
 - `ask <q>` or anything ambiguous → Architect stream
 
-- [ ] **Step 1:** `parseIntent(input) -> Intent` pure fn + tests (dice, capture, find, go, ask).
-- [ ] **Step 2:** Palette renders the parsed intent as the first row ("Roll 1d20+4", "Search 'grapple'") before fallbacks.
-- [ ] **Step 3:** Execute the chosen intent; keep free-text search as the default.
-- [ ] **Step 4:** Test — each intent parses and dispatches.
+- [x] **Step 1:** `parseIntent(input) -> Intent` pure fn + tests (dice, capture, find, go, ask).
+- [x] **Step 2:** Palette renders the parsed intent as the first row ("Roll 1d20+4", "Search 'grapple'") before fallbacks.
+- [x] **Step 3:** Execute the chosen intent; keep free-text search as the default.
+- [x] **Step 4:** Test — each intent parses and dispatches.
 
 ### F1.6 — Global quick-capture hotkey (opt-in)
 
@@ -193,8 +193,8 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src/components/RunModeView.tsx`, `src/App.css`.
 
-- [ ] **Step 1:** "Read aloud" toggle: hide chrome, scale type, maximise contrast; `Esc` exits.
-- [ ] **Step 2:** Test — toggle hides the ribbon/tree and restores on exit.
+- [x] **Step 1:** "Read aloud" toggle: hide chrome, scale type, maximise contrast; `Esc` exits.
+- [x] **Step 2:** Test — toggle hides the ribbon/tree and restores on exit.
 
 ---
 
@@ -204,9 +204,9 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src-tauri/src/continuity.rs` (new), `src-tauri/src/entity_graph` (existing graph builder), `src-tauri/src/export_types.rs`.
 
-- [ ] **Step 1:** Extract entities from note frontmatter (`type`, `faction`, `status`, `aliases`) + wikilink targets.
-- [ ] **Step 2:** Alias table (from frontmatter `aliases: [Vex, Captain Vex]`), fuzzy-matched with the existing `levenshtein_distance`.
-- [ ] **Step 3:** Test — aliases collapse to one entity; non-aliases stay distinct.
+- [x] **Step 1:** Extract entities from note frontmatter (`type`, `faction`, `status`, `aliases`) + wikilink targets.
+- [x] **Step 2:** Alias table (from frontmatter `aliases: [Vex, Captain Vex]`), fuzzy-matched with the existing `levenshtein_distance`.
+- [x] **Step 3:** Test — aliases collapse to one entity; non-aliases stay distinct.
 
 ### F2.2 — Contradiction detectors
 
@@ -219,26 +219,26 @@ Run Mode is the information architecture everything else hangs off.
 - `duplicate_entity` — alias/levenshtein collision above threshold.
 - `orphan_thread` — a note tagged `thread` with no inbound links and no status.
 
-- [ ] **Step 1:** Implement detectors as pure functions over `(notes, metadata)`.
-- [ ] **Step 2:** Test each detector with fixture notes (one positive, one negative).
-- [ ] **Step 3:** Optional LLM pass: send only *findings + cited snippets* to the configured provider for a severity judgement; never send the whole vault.
+- [x] **Step 1:** Implement detectors as pure functions over `(notes, metadata)`.
+- [x] **Step 2:** Test each detector with fixture notes (one positive, one negative).
+- [ ] **Step 3:** Optional LLM pass: send only *findings + cited snippets* to the configured provider for a severity judgement; never send the whole vault. *Deferred — optional.*
 
 ### F2.3 — Findings UI + citations
 
 **Files:** `src/components/ContinuityView.tsx` (new), `src/hooks/useContinuity.ts` (new), `src/AppShell.tsx` (view + ribbon).
 
-- [ ] **Step 1:** Command `audit_continuity(vault_path) -> ContinuityReport` + `allow-audit-continuity`.
-- [ ] **Step 2:** View groups findings by severity, each with "open note" + cited line.
-- [ ] **Step 3:** "Fix" is a *suggestion* that opens the editor at the cited line — never an auto-write.
-- [ ] **Step 4:** Test — a fixture world produces the expected findings.
+- [x] **Step 1:** Command `audit_continuity(vault_path) -> ContinuityReport` + `allow-audit-continuity`.
+- [x] **Step 2:** View groups findings by severity, each with "open note" + cited line.
+- [x] **Step 3:** "Fix" is a *suggestion* that opens the editor at the cited line — never an auto-write.
+- [x] **Step 4:** Test — a fixture world produces the expected findings.
 
 ### F2.4 — Entity merge / dedup
 
 **Files:** `src-tauri/src/continuity.rs`, `src/components/ContinuityView.tsx`.
 
-- [ ] **Step 1:** `merge_entities(keep_id, drop_id)` rewrites wikilinks + aliases, trash the duplicate (via existing `trash_note`).
-- [ ] **Step 2:** Confirmation modal (destructive).
-- [ ] **Step 3:** Test — links rewrite from drop→keep; the drop note is trashed, not deleted.
+- [x] **Step 1:** `merge_entities(keep_id, drop_id)` rewrites wikilinks + aliases, trash the duplicate (via existing `trash_note`).
+- [x] **Step 2:** Confirmation modal (destructive).
+- [x] **Step 3:** Test — links rewrite from drop→keep; the drop note is trashed, not deleted.
 
 ---
 
@@ -250,36 +250,36 @@ Run Mode is the information architecture everything else hangs off.
 
 > **Decision required:** `@codemirror/merge` (preferred, proper hunk UI) vs a home-grown line LCS diff (no dependency). Plan assumes the home-grown `diff.ts` first; swap to `@codemirror/merge` if approved.
 
-- [ ] **Step 1:** `revise_text(text, instruction) -> Result<String,String>` via `providers::llm` (no tools, no vault writes).
-- [ ] **Step 2:** `diff.ts` line-LCS producing `{left, right, hunks}` + tests.
-- [ ] **Step 3:** Editor "Revise…" action on selection opens the diff modal; accept-hunk / reject-hunk; applying writes through the normal editor save path.
-- [ ] **Step 4:** "Humanise" preset calls the unslop plugin (`clean_note`) and opens the same diff.
-- [ ] **Step 5:** Test — diff hunks apply correctly; a rejected revision changes nothing.
+- [x] **Step 1:** `revise_text(text, instruction) -> Result<String,String>` via `providers::llm` (no tools, no vault writes).
+- [x] **Step 2:** `diff.ts` line-LCS producing `{left, right, hunks}` + tests.
+- [x] **Step 3:** Editor "Revise…" action on selection opens the diff modal; accept-hunk / reject-hunk; applying writes through the normal editor save path.
+- [x] **Step 4:** "Humanise" preset calls the unslop plugin (`clean_note`) and opens the same diff.
+- [x] **Step 5:** Test — diff hunks apply correctly; a rejected revision changes nothing.
 
 ### F3.2 — Note templates
 
 **Files:** `src/components/Modals.tsx` (or a new `TemplatePicker.tsx`), `src/utils/templates.ts` (new).
 
-- [ ] **Step 1:** Templates as frontmatter+body scaffolds keyed by the world's `note_types`.
-- [ ] **Step 2:** "New → NPC" pre-fills `type`, `status`, `faction`, section headings.
-- [ ] **Step 3:** Test — creating from a template yields the expected frontmatter.
+- [x] **Step 1:** Templates as frontmatter+body scaffolds keyed by the world's `note_types`.
+- [x] **Step 2:** "New → NPC" pre-fills `type`, `status`, `faction`, section headings.
+- [x] **Step 3:** Test — creating from a template yields the expected frontmatter.
 
 ### F3.3 — Drag-and-drop linking
 
 **Files:** `src/components/VaultTree.tsx`, `src/components/MapBuilderView.tsx`, `src/components/TimelineView.tsx`, `src/components/EntityGraphView.tsx`.
 
-- [ ] **Step 1:** Draggable note rows (`dataTransfer` with note id).
-- [ ] **Step 2:** Drop on map → pin token; drop on timeline → set `date`; drop on graph → add edge.
-- [ ] **Step 3:** All mutations go through existing save commands (no new write paths).
-- [ ] **Step 4:** Test — drop handlers call the right command with the right payload.
+- [x] **Step 1:** Draggable note rows (`dataTransfer` with note id). *Already present: `application/loreweaver-note-path`.*
+- [ ] **Step 2:** Drop on map → pin token; drop on timeline → set date; drop on graph → add edge. *Timeline drop done (`onDropNote` → set `date`). Map-pin and graph-edge drops are follow-ups.*
+- [x] **Step 3:** All mutations go through existing save commands (no new write paths).
+- [x] **Step 4:** Test — drop handlers call the right command with the right payload.
 
 ### F3.4 — Related notes panel
 
 **Files:** `src-tauri/src/search.rs` (a `nearest_notes(note_id, k)` command), `src/components/RelatedNotes.tsx` (new), `src/hooks/useRelatedNotes.ts`.
 
-- [ ] **Step 1:** Command reuses cached chunk embeddings; cosine over the note's chunks vs other notes (use the new `dot_product`).
-- [ ] **Step 2:** Right-drawer panel with "related by meaning" + one-click open.
-- [ ] **Step 3:** Test — a fixture where two notes share a topic returns each other.
+- [x] **Step 1:** Command reuses cached chunk embeddings; cosine over the note's chunks vs other notes (use the new `dot_product`).
+- [x] **Step 2:** Right-drawer panel with "related by meaning" + one-click open.
+- [x] **Step 3:** Test — a fixture where two notes share a topic returns each other.
 
 ---
 

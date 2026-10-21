@@ -811,6 +811,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </label>
           </div>
 
+          {/* Type scale */}
+          <div>
+            <div className="settings-label">Type Scale</div>
+            <div className="settings-desc">
+              Adjusts the base text size across the interface. Larger values help
+              readability; smaller values fit more on screen.
+            </div>
+            <select
+              value={String(watch("font_scale"))}
+              onChange={(e) =>
+                setValue("font_scale", parseFloat(e.target.value), {
+                  shouldDirty: true,
+                })
+              }
+              data-od-id="settings-font-scale"
+              style={{
+                width: "100%",
+                padding: "6px 8px",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 0,
+                color: "var(--fg)",
+                fontSize: "12px",
+              }}
+            >
+              <option value="0.9">Small (0.9×)</option>
+              <option value="1">Default (1.0×)</option>
+              <option value="1.15">Large (1.15×)</option>
+              <option value="1.3">Larger (1.3×)</option>
+            </select>
+          </div>
+
           {/* Type Tabs */}
           <div>
             <label className="settings-field-label">Category</label>

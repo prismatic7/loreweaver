@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CampaignNote } from "../types";
+import { buildNoteScaffold } from "../utils/templates";
+import type { UndoEntry } from "./useUndo";
 
-export function useNotes(vaultPath: string) {
+export function useNotes(
+  vaultPath: string,
+  pushUndo?: (entry: UndoEntry) => void,
+) {
   const [notes, setNotes] = useState<CampaignNote[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string>("");
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -137,7 +142,7 @@ export function useNotes(vaultPath: string) {
       const cleanPath = notePath.replace(/^\/+/, "");
       try {
         activeEditingNoteIdRef.current = null;
-        await invoke("trash_note", { notePath: cleanPath });
+        const trashPath = await invoke<string>("trash_note", { notePath: cleanPath });
         await refresh();
         const remaining = notes.filter((n) => n.path !== cleanPath);
         if (remaining.length > 0) {
@@ -146,12 +151,24 @@ export function useNotes(vaultPath: string) {
           setSelectedNoteId("");
         }
         setIsEditingNote(false);
+        pushUndo?.({
+          label: `Trash "${cleanPath}"`,
+          key: `trash:${cleanPath}`,
+          undo: async () => {
+            await invoke("restore_note", { trashNotePath: trashPath });
+            await refresh();
+          },
+          redo: async () => {
+            await invoke("trash_note", { notePath: cleanPath });
+            await refresh();
+          },
+        });
       } catch (err) {
         console.error("[frontend] trash_note error:", err);
         throw err;
       }
     },
-    [notes, refresh],
+    [notes, refresh, pushUndo],
   );
 
   const trashFolder = useCallback(
@@ -171,14 +188,31 @@ export function useNotes(vaultPath: string) {
   const restoreNote = useCallback(
     async (trashNotePath: string) => {
       try {
+        const trashed = trashedNotes.find((n) => n.path === trashNotePath);
+        const originalPath =
+          (trashed?.frontmatter?.original_path as string | undefined) ?? null;
         await invoke("restore_note", { trashNotePath });
         await refresh();
+        if (originalPath) {
+          pushUndo?.({
+            label: `Restore "${trashed?.title ?? trashNotePath}"`,
+            key: `restore:${originalPath}`,
+            undo: async () => {
+              await invoke("trash_note", { notePath: originalPath });
+              await refresh();
+            },
+            redo: async () => {
+              await invoke("restore_note", { trashNotePath });
+              await refresh();
+            },
+          });
+        }
       } catch (err) {
         console.error("Error restoring note:", err);
         throw err;
       }
     },
-    [refresh],
+    [refresh, trashedNotes, pushUndo],
   );
 
   const deleteTrashedNote = useCallback(
@@ -206,16 +240,23 @@ export function useNotes(vaultPath: string) {
   }, [loadTrashNotes, loadFolders]);
 
   const handleNewNote = useCallback(
-    async (folder = "Worldbuilding") => {
+    async (folder = "Worldbuilding", templateType?: string) => {
       const newId = `note-${Date.now()}`;
       const cleanFolder = folder === "Root" ? "" : folder;
       const prefix = cleanFolder ? `${cleanFolder}/` : "";
+      const scaffold = templateType
+        ? buildNoteScaffold(templateType, "New Note")
+        : null;
       const newNote: CampaignNote = {
         id: newId,
         title: "New Note",
         path: `${prefix}New_Note_${newId}.md`,
-        frontmatter: { type: "Note", tags: ["draft"] },
-        content: `# New Note\n\nStart writing your campaign details here...`,
+        frontmatter: scaffold
+          ? { ...scaffold.frontmatter, tags: ["draft"] }
+          : { type: "Note", tags: ["draft"] },
+        content: scaffold
+          ? scaffold.content
+          : `# New Note\n\nStart writing your campaign details here...`,
       };
       setEditTitle(newNote.title);
       setEditContent(newNote.content);
@@ -265,12 +306,24 @@ export function useNotes(vaultPath: string) {
         if (selectedNoteId === note.id) {
           setEditTitle(updated.title);
         }
+        pushUndo?.({
+          label: `Rename "${note.title}"`,
+          key: `rename:${note.id}`,
+          undo: async () => {
+            await invoke("rename_note", { oldPath: newPath, newPath: note.path });
+            await refresh();
+          },
+          redo: async () => {
+            await invoke("rename_note", { oldPath: note.path, newPath });
+            await refresh();
+          },
+        });
       } catch (err) {
         console.error("Failed to rename note:", err);
         throw err;
       }
     },
-    [refresh, selectedNoteId],
+    [refresh, selectedNoteId, pushUndo],
   );
 
   const renameFolder = useCallback(
@@ -300,18 +353,34 @@ export function useNotes(vaultPath: string) {
   const moveNote = useCallback(
     async (notePath: string, targetFolder: string) => {
       const cleanTarget = targetFolder.replace(/^\/+|\/+$/g, "");
+      const parts = notePath.split("/");
+      const filename = parts.pop() || "Note.md";
+      const originalFolder = parts.join("/");
+      const newPath = cleanTarget ? `${cleanTarget}/${filename}` : filename;
       try {
         await invoke<CampaignNote>("move_note", {
           notePath,
           targetFolder: cleanTarget,
         });
         await refresh();
+        pushUndo?.({
+          label: `Move "${filename}"`,
+          key: `move:${notePath}`,
+          undo: async () => {
+            await invoke("move_note", { notePath: newPath, targetFolder: originalFolder });
+            await refresh();
+          },
+          redo: async () => {
+            await invoke("move_note", { notePath, targetFolder: cleanTarget });
+            await refresh();
+          },
+        });
       } catch (err) {
         console.error("Failed to move note:", err);
         throw err;
       }
     },
-    [refresh],
+    [refresh, pushUndo],
   );
 
   const moveFolder = useCallback(

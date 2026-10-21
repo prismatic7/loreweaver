@@ -10,8 +10,10 @@ import {
   Monitor,
   Moon,
   Network,
+  Play,
   Search,
   Settings as SettingsIcon,
+  ShieldCheck,
   Sun,
   Trash2,
   Users,
@@ -24,6 +26,7 @@ import { SearchExpansionBadge } from "./SearchExpansionBadge";
 export type AppView =
   | "dashboard"
   | "vault"
+  | "run"
   | "rules"
   | "ai"
   | "settings"
@@ -32,7 +35,8 @@ export type AppView =
   | "character-sheets"
   | "map"
   | "graph"
-  | "timeline";
+  | "timeline"
+  | "continuity";
 
 export interface AppShellProps {
   activeView: AppView;
@@ -64,6 +68,10 @@ export interface AppShellProps {
   onClipUrl: () => void;
   /** Opens the Ctrl/Cmd+K command palette (Increment D1 header affordance). */
   onOpenCommandPalette: () => void;
+  /** Bottom status strip (provider/model/offline), rendered under the workspace. */
+  statusStrip?: React.ReactNode;
+  /** Hides the ribbon and toolbar chrome (Run Mode presentation). */
+  hideChrome?: boolean;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -92,10 +100,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   onLoadTrash,
   onClipUrl,
   onOpenCommandPalette,
+  statusStrip,
+  hideChrome,
 }) => {
   return (
     <div className="app-container">
-      <nav className="ribbon" data-od-id="ribbon">
+      {!hideChrome && (
+        <nav className="ribbon" data-od-id="ribbon">
         <div
           className="ribbon-logo"
           title="Loreweaver"
@@ -141,6 +152,13 @@ export const AppShell: React.FC<AppShellProps> = ({
           />
           <RibbonButton
             activeView={activeView}
+            target="run"
+            title="Run Mode (live play)"
+            icon={<Play size={18} />}
+            onClick={() => setActiveView("run")}
+          />
+          <RibbonButton
+            activeView={activeView}
             target="rules"
             title="Rulebooks & SRDs"
             icon={<BookOpen size={18} />}
@@ -180,6 +198,13 @@ export const AppShell: React.FC<AppShellProps> = ({
             title="Timeline"
             icon={<Layers size={18} />}
             onClick={() => setActiveView("timeline")}
+          />
+          <RibbonButton
+            activeView={activeView}
+            target="continuity"
+            title="Continuity"
+            icon={<ShieldCheck size={18} />}
+            onClick={() => setActiveView("continuity")}
           />
         </div>
 
@@ -227,8 +252,10 @@ export const AppShell: React.FC<AppShellProps> = ({
           </button>
         </div>
       </nav>
+      )}
 
       <main className="main-area" data-od-id="main-area">
+        {!hideChrome && (
         <header className="toolbar" data-od-id="toolbar">
           <div
             className="breadcrumb"
@@ -246,12 +273,14 @@ export const AppShell: React.FC<AppShellProps> = ({
               </>
             )}
             {activeView === "ai" && "AI & Generations"}
+            {activeView === "run" && "Run Mode"}
             {activeView === "settings" && "Settings"}
             {activeView === "trash" && "Vault & Rulebook Trash"}
             {activeView === "character-sheets" && "Character Sheets"}
             {activeView === "map" && "Map Builder"}
             {activeView === "graph" && "Entity Graph"}
             {activeView === "timeline" && "Timeline"}
+            {activeView === "continuity" && "Continuity"}
 
             <div
               style={{
@@ -396,6 +425,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             </div>
           </div>
         </header>
+        )}
 
         <div
           className="workspace-content"
@@ -414,6 +444,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
           {rightPanel}
         </div>
+        {statusStrip}
       </main>
     </div>
   );

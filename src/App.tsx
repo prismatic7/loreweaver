@@ -36,6 +36,12 @@ import { useRules } from "./hooks/useRules";
 import { useSearch } from "./hooks/useSearch";
 import { useAgent } from "./hooks/useAgent";
 import { usePlugins } from "./hooks/usePlugins";
+import { useUndo } from "./hooks/useUndo";
+import { useProviderStatus } from "./hooks/useProviderStatus";
+import { useRunMode } from "./hooks/useRunMode";
+import { useInitiative } from "./hooks/useInitiative";
+import { useSessionLedger } from "./hooks/useSessionLedger";
+import { useContinuity } from "./hooks/useContinuity";
 import { useSettings } from "./hooks/useSettings";
 import { useDialogs } from "./hooks/useDialogs";
 import { useMarkdownRender } from "./hooks/useMarkdownRender";
@@ -48,12 +54,17 @@ import { findBacklinks } from "./utils/links";
 
 import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
 import { CommandPalette, type PaletteSelection } from "./components/CommandPalette";
+import { type Intent } from "./utils/intent";
+import { StatusStrip } from "./components/StatusStrip";
+import { RunModeView } from "./components/RunModeView";
+import { ContinuityView } from "./components/ContinuityView";
 import { Toast, useToast } from "./components/Toast";
 
 // Views offered by the Ctrl/Cmd+K palette, in nav order.
 const PALETTE_VIEWS: Array<{ id: AppView; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
   { id: "vault", label: "Vault" },
+  { id: "run", label: "Run Mode" },
   { id: "rules", label: "Rules" },
   { id: "ai", label: "AI & Generations" },
   { id: "canvas", label: "Folder Canvas" },
@@ -61,6 +72,7 @@ const PALETTE_VIEWS: Array<{ id: AppView; label: string }> = [
   { id: "map", label: "Map Builder" },
   { id: "graph", label: "Entity Graph" },
   { id: "timeline", label: "Timeline" },
+  { id: "continuity", label: "Continuity" },
   { id: "trash", label: "Trash" },
   { id: "settings", label: "Settings" },
 ];
@@ -69,10 +81,16 @@ function App() {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [recentNoteIds, setRecentNoteIds] = useState<string[]>([]);
+  const [presentationMode, setPresentationMode] = useState(false);
 
   const { vaultPath, vaults, switchVault, refreshVaultPath, getVaultLabel, loadVaults } = useVault();
   const { noteTypes, provenanceTaxonomy } = useWorld(vaultPath);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
+  const undo = useUndo();
+  const runMode = useRunMode(vaultPath);
+  const initiative = useInitiative(vaultPath);
+  const ledger = useSessionLedger(vaultPath);
+  const continuity = useContinuity(vaultPath);
   const {
     notes,
     notesByFolder,
@@ -115,7 +133,7 @@ function App() {
     importFiles,
     trashFolder,
     normalizeCampaignMarkdown,
-  } = useNotes(vaultPath);
+  } = useNotes(vaultPath, undo.pushUndo);
   const {
     rules,
     setRules,
@@ -181,6 +199,7 @@ function App() {
     sttApiKey,
     sttBaseUrl,
   } = useSettings();
+  const providerStatus = useProviderStatus(llmProvider, llmBaseUrl, llmApiKey);
   const {
     pluginsList,
     handleRollCharacterSheet,
@@ -301,6 +320,14 @@ function App() {
 
   const handlePaletteSelect = useCallback(
     (selection: PaletteSelection) => {
+      if (selection.kind === "undo") {
+        void undo.undo();
+        return;
+      }
+      if (selection.kind === "redo") {
+        void undo.redo();
+        return;
+      }
       if (selection.kind === "view") {
         requestViewChange(selection.id as AppView);
       } else {
@@ -311,10 +338,10 @@ function App() {
         }
       }
     },
-    [requestViewChange, notes, guardedSetSelectedNoteId, guardedSetActiveView],
+    [requestViewChange, notes, guardedSetSelectedNoteId, guardedSetActiveView, undo],
   );
 
-  // Global shortcuts: Ctrl/Cmd+K palette, Ctrl/Cmd+S save.
+  // Global shortcuts: Ctrl/Cmd+K palette, Ctrl/Cmd+S save, Cmd+Z undo, Shift+Cmd+Z redo.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -323,11 +350,28 @@ function App() {
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         immediateSave();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          void undo.redo();
+        } else {
+          void undo.undo();
+        }
+      } else if (e.key === "F1") {
+        e.preventDefault();
+        requestViewChange("run");
+      } else if (e.key === "F2") {
+        e.preventDefault();
+        requestViewChange("vault");
+      } else if (e.key === "Escape") {
+        if (presentationMode) {
+          setPresentationMode(false);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [immediateSave]);
+  }, [immediateSave, undo, requestViewChange, presentationMode]);
 
   const { renderMarkdown } = useMarkdownRender({
     notes,
@@ -541,7 +585,88 @@ function App() {
     handleEncounterBuilder,
   });
 
+  const handleExecuteIntent = useCallback(
+    async (intent: Intent) => {
+      switch (intent.kind) {
+        case "roll":
+          sessionTools.rollDiceNotation(intent.expression);
+          break;
+        case "find":
+          setSearchQuery(intent.query);
+          setIsSearchOpen(true);
+          break;
+        case "go":
+          requestViewChange(intent.view as AppView);
+          break;
+        case "capture":
+          try {
+            await invoke("capture_note", {
+              title: intent.text.slice(0, 60),
+              content: intent.text,
+              sourceType: null,
+              sourceTitle: null,
+              sourceAuthor: null,
+              sourceUrl: null,
+              target: null,
+            });
+            showToast("Captured.");
+          } catch (err) {
+            showToast("Capture failed: " + err);
+          }
+          break;
+        case "ask":
+          agent.setChatInput(intent.query);
+          requestViewChange("ai");
+          break;
+      }
+    },
+    [sessionTools, setSearchQuery, setIsSearchOpen, requestViewChange, agent, showToast],
+  );
+
   const captureInbox = useCaptureInbox({ alert, confirm });
+
+  const handleMergeEntities = useCallback(
+    (keepId: string, dropId: string) => {
+      confirm(
+        "Merge this duplicate entity? Links are rewritten to the kept note, and the dropped note is trashed (recoverable).",
+        async () => {
+          try {
+            const msg = await invoke<string>("merge_entities", {
+              keepId,
+              dropId,
+            });
+            showToast(msg);
+            await continuity.runAudit();
+          } catch (err) {
+            showToast("Merge failed: " + err);
+          }
+        },
+      );
+    },
+    [confirm, showToast, continuity],
+  );
+
+  const handleDropNoteOnTimeline = useCallback(
+    async (notePath: string) => {
+      const date = await showPrompt(
+        "Set this event's date (e.g. 1245-03-17):",
+        "",
+      );
+      if (!date || !date.trim()) return;
+      const note = notes.find((n) => n.path === notePath);
+      if (!note) return;
+      try {
+        await saveNote({
+          ...note,
+          frontmatter: { ...note.frontmatter, date: date.trim() },
+        });
+        showToast("Event date set.");
+      } catch (err) {
+        showToast("Failed to set date: " + err);
+      }
+    },
+    [showPrompt, notes, saveNote, showToast],
+  );
 
   const handleToolbarClipUrl = useCallback(async () => {
     const url = await showPrompt("Enter a URL to clip:", "https://");
@@ -696,6 +821,15 @@ function App() {
       onLoadTrash={loadTrashNotes}
       onClipUrl={handleToolbarClipUrl}
       onOpenCommandPalette={() => setPaletteOpen(true)}
+      statusStrip={
+        <StatusStrip
+          provider={llmProvider}
+          model={llmModel}
+          status={providerStatus}
+          onOpenSettings={() => requestViewChange("settings")}
+        />
+      }
+      hideChrome={presentationMode && activeView === "run"}
       rightPanel={
         !liminalOpen && activeView !== "settings" ? (
           <RightDrawer
@@ -731,6 +865,7 @@ function App() {
             addContextItem={agent.addContextItem}
             removeContextItem={agent.removeContextItem}
             notes={notes}
+            selectedNoteId={selectedNoteId}
             rules={rules}
             renderMarkdown={renderMarkdown}
             vaultPath={vaultPath}
@@ -983,10 +1118,60 @@ function App() {
       {!liminalOpen && activeView === "timeline" && (
         <TimelineView
           notes={notes}
+          onDropNote={handleDropNoteOnTimeline}
           onOpenNote={(noteId) => {
             guardedSetSelectedNoteId(noteId);
             guardedSetActiveView("vault");
           }}
+        />
+      )}
+
+      {!liminalOpen && activeView === "continuity" && (
+        <ContinuityView
+          report={continuity.report}
+          loading={continuity.loading}
+          onRunAudit={continuity.runAudit}
+          onOpenNote={(noteId) => {
+            guardedSetSelectedNoteId(noteId);
+            guardedSetActiveView("vault");
+          }}
+          onMerge={handleMergeEntities}
+        />
+      )}
+
+      {!liminalOpen && activeView === "run" && (
+        <RunModeView
+          sceneNote={
+            (() => {
+              const n = notes.find(
+                (x) => x.id === runMode.runState.scene_note_id,
+              );
+              return n
+                ? { id: n.id, title: n.title, content: n.content }
+                : null;
+            })()
+          }
+          pinnedRules={rules
+            .filter((r) =>
+              (runMode.runState.pinned_rule_ids ?? []).includes(r.id),
+            )
+            .map((r) => ({ id: r.id, title: r.title, content: r.content }))}
+          availableNotes={notes.map((n) => ({ id: n.id, title: n.title }))}
+          availableRules={rules.map((r) => ({ id: r.id, title: r.title }))}
+          pinnedRuleIds={runMode.runState.pinned_rule_ids ?? []}
+          onSelectScene={(id) => runMode.setScene(id || null)}
+          onTogglePinRule={(id) => {
+            const ids = runMode.runState.pinned_rule_ids ?? [];
+            runMode.setPinnedRules(
+              ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+            );
+          }}
+          diceHistory={sessionTools.diceHistory}
+          rollDice={sessionTools.rollDiceNotation}
+          initiativeState={initiative.state}
+          ledgerEvents={ledger.events}
+          presentation={presentationMode}
+          onTogglePresentation={() => setPresentationMode((p) => !p)}
         />
       )}
 
@@ -1197,6 +1382,9 @@ function App() {
         notes={notes.map((n) => ({ id: n.id, title: n.title, path: n.path }))}
         recentNoteIds={recentNoteIds}
         onSelect={handlePaletteSelect}
+        onIntent={handleExecuteIntent}
+        undoLabel={undo.canUndo ? undo.undoLabel : undefined}
+        redoLabel={undo.canRedo ? undo.redoLabel : undefined}
       />
       {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </AppShell>

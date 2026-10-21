@@ -47,7 +47,7 @@ curl -L -o "$HOME/Library/Application Support/com.chronicle.loreweaver/models/al
 ## 3. Plugin Loading and Hook Failures
 
 ### Cause 1: Permission Validation Error
-Plugins must only claim the `"hooks"` permission in their manifest. Declaring unsupported permissions (e.g., `"network"`) triggers:
+Plugins may only claim the `"hooks"`, `"ui"`, or `"media"` permissions in their manifest. Declaring unsupported permissions (e.g., `"network"`) triggers:
 `Unsupported plugin permission: ...`
 
 ### Cause 2: Boa Engine JS Syntax Error

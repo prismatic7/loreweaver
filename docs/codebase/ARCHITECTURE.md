@@ -140,12 +140,18 @@ agent activity over a Tauri `Channel<AgentEvent>`:
 The plugin system is manifest-driven and script-based:
 
 - each plugin directory needs `manifest.json` and an entry script;
-- the manifest declares `id`, `name`, `version`, `description`, and `entry`;
+- the manifest declares `id`, `name`, `version`, `description`, `entry`, and a
+  `permissions` allow-list (`hooks`, `ui`, `media`);
 - plugin scripts are evaluated in Boa and hook functions are called by name;
 - `event_bus.rs` fans app events out to every active plugin as `on_<event>`
   hooks (`image_generated`, `note_saved`, `world_state_changed`);
 - plugin `__state` persists across restarts under `<plugins_dir>/.state/<sanitized-vault>/<plugin_id>.json`
-  (outside the vault so the watcher never indexes plugin runtime state).
+  (outside the vault so the watcher never indexes plugin runtime state);
+- a plugin declaring the `ui` permission may declare **declarative panels** in
+  its manifest (`ui.panels`): a typed field schema plus actions naming a hook.
+  The host renders panels in the right drawer's "Plugins" tab via
+  `PluginPanel.tsx` and invokes action hooks through `execute_plugin_hook`; a
+  plugin never receives DOM/fs/network handles for a panel — panels are data.
 
 ## Intent vs Reality
 

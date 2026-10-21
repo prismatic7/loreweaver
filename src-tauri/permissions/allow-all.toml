@@ -426,3 +426,43 @@ commands = { allow = ["list_bible_files"] }
 identifier = "allow-update-bible-files"
 description = "Allows the update_bible_files command to be invoked by the frontend"
 commands = { allow = ["update_bible_files"] }
+
+[[permission]]
+identifier = "allow-log-session-event"
+description = "Allows the log_session_event command to be invoked by the frontend"
+commands = { allow = ["log_session_event"] }
+
+[[permission]]
+identifier = "allow-list-session-events"
+description = "Allows the list_session_events command to be invoked by the frontend"
+commands = { allow = ["list_session_events"] }
+
+[[permission]]
+identifier = "allow-get-run-state"
+description = "Allows the get_run_state command to be invoked by the frontend"
+commands = { allow = ["get_run_state"] }
+
+[[permission]]
+identifier = "allow-set-run-state"
+description = "Allows the set_run_state command to be invoked by the frontend"
+commands = { allow = ["set_run_state"] }
+
+[[permission]]
+identifier = "allow-audit-continuity"
+description = "Allows the audit_continuity command to be invoked by the frontend"
+commands = { allow = ["audit_continuity"] }
+
+[[permission]]
+identifier = "allow-merge-entities"
+description = "Allows the merge_entities command to be invoked by the frontend"
+commands = { allow = ["merge_entities"] }
+
+[[permission]]
+identifier = "allow-nearest-notes"
+description = "Allows the nearest_notes command to be invoked by the frontend"
+commands = { allow = ["nearest_notes"] }
+
+[[permission]]
+identifier = "allow-revise-text"
+description = "Allows the revise_text command to be invoked by the frontend"
+commands = { allow = ["revise_text"] }

@@ -20,6 +20,8 @@ interface TimelineEvent {
 interface TimelineViewProps {
   notes: CampaignNote[];
   onOpenNote: (noteId: string) => void;
+  /** Called when a note is dropped on the timeline (to set its date). */
+  onDropNote?: (notePath: string) => void;
 }
 
 const parseDateKey = (dateStr: string): number => {
@@ -41,7 +43,19 @@ const parseDateKey = (dateStr: string): number => {
 export const TimelineView: React.FC<TimelineViewProps> = ({
   notes,
   onOpenNote,
+  onDropNote,
 }) => {
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const notePath = e.dataTransfer.getData("application/loreweaver-note-path");
+    if (notePath && onDropNote) onDropNote(notePath);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    if (onDropNote) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
   const events = useMemo<TimelineEvent[]>(() => {
     const list: TimelineEvent[] = [];
     notes.forEach((note) => {
@@ -64,6 +78,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
       <div
         className="view-container"
         data-od-id="timeline-view"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
         style={{ padding: "40px 32px" }}
       >
         <div style={{ width: "100%", maxWidth: "var(--list-max)" }}>
@@ -84,6 +100,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
     <div
       className="view-container"
       data-od-id="timeline-view"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       style={{ padding: "40px 32px", overflowY: "auto" }}
     >
       <div style={{ width: "100%", maxWidth: "var(--list-max)" }}>

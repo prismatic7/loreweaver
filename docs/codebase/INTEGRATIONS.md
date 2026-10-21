@@ -35,7 +35,8 @@
 
 - Plugins are loaded from directories that contain a `manifest.json` and an entry script.
 - `boa_engine` evaluates plugin scripts and executes named hook functions.
-- The repo includes `character-roller` and `threat-evaluator` plugins, and the backend seeds a `dice-bonus` plugin at runtime.
+- The repo includes `character-roller`, `threat-evaluator`, and `npc-generator` plugins, and the backend seeds a `dice-bonus` plugin at runtime.
+- A plugin declaring the `ui` permission contributes declarative panels (`ui.panels`); the host renders them in the right drawer's "Plugins" tab via `PluginPanel.tsx` and invokes action hooks through `execute_plugin_hook`. Panels are data only — plugins never receive DOM/fs/network handles.
 - `event_bus.rs` fans app events out to every active plugin as `on_<event>` hooks (`image_generated`, `note_saved`, `world_state_changed`); event payloads are summaries (never image bytes) so they stay well under the 32 KiB hook payload cap.
 - Plugin `__state` is persisted to disk after every hook execution under `<plugins_dir>/.state/<sanitized-vault>/<plugin_id>.json` and restored on the next `load_all_plugins`, so state survives restarts. State files live outside the vault so the watcher never sees them.
 

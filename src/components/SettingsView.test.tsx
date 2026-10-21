@@ -136,5 +136,21 @@ describe("SettingsView Component", () => {
     expect(screen.getByText(/Failed to connect to ComfyUI/)).toBeInTheDocument();
     expect(screen.queryByText(/Connected/)).not.toBeInTheDocument();
   });
+
+  it("renders the type-scale selector and updates font_scale on change", () => {
+    const setValue = vi.fn();
+    const { container } = render(<SettingsView {...baseProps} setValue={setValue} />);
+
+    expect(screen.getByText("Type Scale")).toBeInTheDocument();
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-od-id="settings-font-scale"]',
+    );
+    expect(select).not.toBeNull();
+
+    fireEvent.change(select!, { target: { value: "1.3" } });
+    expect(setValue).toHaveBeenCalledWith("font_scale", 1.3, {
+      shouldDirty: true,
+    });
+  });
 });
 

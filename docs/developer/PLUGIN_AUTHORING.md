@@ -34,7 +34,40 @@ The manifest defines metadata and access permissions:
 - `permissions`: Whitelisted permissions.
 
 > [!IMPORTANT]
-> **Whitelisted Permissions:** Currently, only `"hooks"` is supported. Declarations containing other permissions will trigger load-time errors.
+> **Whitelisted Permissions:** `"hooks"`, `"ui"`, and `"media"` are supported. Declarations containing any other permission (e.g. `"network"`, `"filesystem"`) trigger load-time errors.
+
+### Declaring a UI panel
+
+A plugin with the `"ui"` permission may declare **declarative panels** under a
+top-level `ui.panels` key. The host renders these panels (in the right drawer's
+"Plugins" tab); a plugin never supplies HTML and never receives DOM, filesystem,
+or network handles. Each panel declares a typed field schema and actions whose
+`hook` names a global function invoked with the field values as a JSON string:
+
+```json
+{
+  "permissions": ["hooks", "ui"],
+  "ui": {
+    "panels": [
+      {
+        "id": "npc-generator",
+        "title": "NPC Generator",
+        "fields": [
+          { "key": "faction", "type": "text", "label": "Faction" },
+          { "key": "tone", "type": "select", "label": "Tone", "options": ["grim", "heroic", "comic"] }
+        ],
+        "actions": [{ "id": "generate", "label": "Generate", "hook": "generate_npc" }]
+      }
+    ]
+  }
+}
+```
+
+- Field `type` is a closed set: `"text"`, `"textarea"`, `"select"`, `"number"`.
+  An unknown type, a missing `action.hook`, or a duplicate panel `id` rejects
+  the plugin at discovery.
+- An action's hook returns a JSON string in one of three shapes the host
+  renders: `{ "type": "text", "text": "..." }`, `{ "type": "table", "columns": [...], "rows": [[...]] }`, or `{ "type": "note", "noteId": "...", "title": "..." }`.
 
 ---
 
