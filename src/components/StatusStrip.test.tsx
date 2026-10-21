@@ -29,6 +29,32 @@ describe("StatusStrip", () => {
     expect(screen.queryByText("offline")).not.toBeInTheDocument();
   });
 
+  it("says search is keyword only when the embedding model is not loaded", () => {
+    render(
+      <StatusStrip
+        provider="ollama"
+        model="bonsai-2:9b"
+        status={{ reachable: true, modelAvailable: true, checking: false }}
+        embeddingReady={false}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Search: keyword only")).toBeInTheDocument();
+  });
+
+  it("shows no search caveat when embeddings are ready", () => {
+    render(
+      <StatusStrip
+        provider="ollama"
+        model="bonsai-2:9b"
+        status={{ reachable: true, modelAvailable: true, checking: false }}
+        embeddingReady
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Search: keyword only")).not.toBeInTheDocument();
+  });
+
   it("opens settings when clicked", () => {
     const onOpenSettings = vi.fn();
     render(

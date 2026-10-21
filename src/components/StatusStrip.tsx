@@ -5,6 +5,12 @@ export interface StatusStripProps {
   provider: string;
   model: string;
   status: ProviderStatus;
+  /**
+   * Whether semantic search is available. `false` means `search_vault` is
+   * returning FTS5 keyword results only, so the strip says so rather than
+   * letting the user believe a semantic search ran.
+   */
+  embeddingReady?: boolean;
   /** Opens the Settings view (the strip is clickable). */
   onOpenSettings: () => void;
 }
@@ -18,6 +24,7 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
   provider,
   model,
   status,
+  embeddingReady = true,
   onOpenSettings,
 }) => {
   const { reachable, modelAvailable, checking } = status;
@@ -80,6 +87,15 @@ export const StatusStrip: React.FC<StatusStripProps> = ({
       )}
       {reachable && !modelAvailable && !checking && (
         <span style={{ fontStyle: "italic" }}>no models</span>
+      )}
+      {!embeddingReady && (
+        <span
+          data-od-id="status-embedding-degraded"
+          title="The embedding model is not loaded — search returns keyword matches only."
+          style={{ fontStyle: "italic" }}
+        >
+          Search: keyword only
+        </span>
       )}
     </div>
   );

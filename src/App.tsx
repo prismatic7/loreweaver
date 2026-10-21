@@ -38,6 +38,7 @@ import { useAgent } from "./hooks/useAgent";
 import { usePlugins } from "./hooks/usePlugins";
 import { useUndo } from "./hooks/useUndo";
 import { useProviderStatus } from "./hooks/useProviderStatus";
+import { useEmbeddingStatus } from "./hooks/useEmbeddingStatus";
 import { useRunMode } from "./hooks/useRunMode";
 import { useInitiative } from "./hooks/useInitiative";
 import { useSessionLedger } from "./hooks/useSessionLedger";
@@ -207,6 +208,7 @@ function App() {
     sttBaseUrl,
   } = useSettings();
   const providerStatus = useProviderStatus(llmProvider, llmBaseUrl, llmApiKey);
+  const embeddingReady = useEmbeddingStatus();
   const {
     pluginsList,
     handleRollCharacterSheet,
@@ -864,6 +866,7 @@ function App() {
           provider={llmProvider}
           model={llmModel}
           status={providerStatus}
+          embeddingReady={embeddingReady}
           onOpenSettings={() => requestViewChange("settings")}
         />
       }

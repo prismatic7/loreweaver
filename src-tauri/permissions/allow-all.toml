@@ -58,6 +58,7 @@ commands = { allow = [
   "export_world",
   "import_world",
   "create_snapshot",
+  "search_engine_ready",
   "list_snapshots",
   "snapshot_diff",
   "restore_note_from_snapshot",
@@ -490,3 +491,8 @@ commands = { allow = ["snapshot_diff"] }
 identifier = "allow-restore-note-from-snapshot"
 description = "Allows the restore_note_from_snapshot command to be invoked by the frontend"
 commands = { allow = ["restore_note_from_snapshot"] }
+
+[[permission]]
+identifier = "allow-search-engine-ready"
+description = "Allows the search_engine_ready command to be invoked by the frontend"
+commands = { allow = ["search_engine_ready"] }

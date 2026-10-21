@@ -1943,6 +1943,14 @@ async fn list_snapshots(state: State<'_, AppState>) -> Result<Vec<SnapshotInfo>,
     snapshots::list_snapshots_impl(&vault_path, &snapshots_root)
 }
 
+/// Reports whether semantic search is available (`true` = the embedding engine
+/// is loaded). `false` means `search_vault` returns FTS5 keyword results only,
+/// which the status strip surfaces as "Search: keyword only".
+#[tauri::command]
+async fn search_engine_ready() -> Result<bool, String> {
+    Ok(search::engine_ready())
+}
+
 /// Diffs a snapshot against the live vault (`added` / `modified` / `removed`).
 #[tauri::command]
 async fn snapshot_diff(
@@ -3865,6 +3873,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             export_world,
             import_world,
             create_snapshot,
+            search_engine_ready,
             list_snapshots,
             snapshot_diff,
             restore_note_from_snapshot,

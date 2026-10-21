@@ -369,6 +369,12 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<Vec<SnapshotInfo>, String>`
 - **Description:** Lists the active vault's snapshots, newest first. Sidecars are read rather than archives; a missing sidecar degrades to filesystem metadata instead of failing the listing.
 
+### `search_engine_ready`
+
+- **Arguments:** None.
+- **Returns:** `Result<bool, String>`
+- **Description:** Reports whether the local embedding engine is loaded, i.e. whether semantic search is available. `false` means `search_vault` returns FTS5 keyword results only (model still downloading, download failed, or the ONNX session failed to load). Reads the process-global engine guard only — no I/O — so the status strip can poll it. The frontend polls every 30 s because a first-launch model download flips the answer mid-session.
+
 ### `snapshot_diff`
 
 - **Arguments:** `id: &str`

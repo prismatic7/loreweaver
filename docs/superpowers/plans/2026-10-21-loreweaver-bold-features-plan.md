@@ -117,7 +117,7 @@ Host-side result contract from the action hook (JSON string):
 
 - [x] **Step 1:** Hook polls `test_provider_connection` (debounced) and surfaces `{ provider, model, reachable, modelAvailable }`.
 - [x] **Step 2:** Render a 24px bottom strip: dot + provider/model + offline badge. Click opens Settings → provider.
-- [ ] **Step 3:** When embeddings are unavailable, show "Search: keyword only" (matches the graceful-degrade path in `search.rs`). *Deferred — needs a backend embed-availability signal.*
+- [x] **Step 3:** When embeddings are unavailable, show "Search: keyword only" (matches the graceful-degrade path in `search.rs`). *Unparked 2026-10-21 (owner) and shipped: `search::engine_ready()` reads the process-global engine guard (no I/O), exposed as `search_engine_ready`, polled by `useEmbeddingStatus` (a first-launch model download legitimately flips the answer mid-session), rendered as a strip badge. A failed probe counts as not-ready — we don't claim semantic results we can't promise.*
 - [x] **Step 4:** Test — reachable vs unreachable states.
 
 ---
@@ -159,7 +159,7 @@ Run Mode is the information architecture everything else hangs off.
 **Files:** `src/components/RunModeView.tsx`, `src/hooks/useSessionLedger.ts`.
 
 - [x] **Step 1:** Bottom rail lists `session_events` chronologically (rolls, notes opened, AI answers, scene changes).
-- [ ] **Step 2:** "End session" action opens the Debrief (below). *Deferred — no Debrief feature is defined in this plan.*
+- [ ] **Step 2:** "End session" action opens the Debrief (below). *Parked 2026-10-21 (owner) — no Debrief feature is defined in this plan, and F4.1's Run Mode "Snapshot & end session" already gives the action a real job. Do not invent a Debrief to satisfy a checkbox.*
 - [x] **Step 3:** Recording is automatic: `roll_dice` results and scene changes emit `session_event` (F0.2). *`save_note` auto-logging skipped — the 1.5s autosave would flood the ledger.*
 - [x] **Step 4:** Test — a roll appends a ledger row.
 
@@ -183,7 +183,7 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src-tauri/Cargo.toml`, `src-tauri/src/lib.rs`, `src-tauri/capabilities/default.json`, `src/hooks/useSettings.ts`.
 
-> **Decision required:** `tauri-plugin-global-shortcut` (new dependency). The plan assumes approval; if declined, this feature is dropped and quick-capture stays in-app only.
+> **Decision required:** `tauri-plugin-global-shortcut` (new dependency). **D3 declined 2026-10-21 (owner) — F1.6 is dropped; quick-capture stays in-app only (⌘K `@capture`).** The steps below are kept for the record, not for execution.
 
 - [ ] **Step 1:** Add the plugin behind a `quick_capture` setting; register `⌥Space` only when enabled and a vault is open.
 - [ ] **Step 2:** Opens the app, focuses a minimal capture input, writes via `capture_note` to the **current** vault; refuses if none is open.
@@ -221,7 +221,7 @@ Run Mode is the information architecture everything else hangs off.
 
 - [x] **Step 1:** Implement detectors as pure functions over `(notes, metadata)`.
 - [x] **Step 2:** Test each detector with fixture notes (one positive, one negative).
-- [ ] **Step 3:** Optional LLM pass: send only *findings + cited snippets* to the configured provider for a severity judgement; never send the whole vault. *Deferred — optional.*
+- [ ] **Step 3:** Optional LLM pass: send only *findings + cited snippets* to the configured provider for a severity judgement; never send the whole vault. *Decided 2026-10-21 (owner, see D8) — opt-in, local-first, model `bonsai-2:9b` (not `llama3:8b`, which is unreliable for this judgement). Not yet built; no blocker.*
 
 ### F2.3 — Findings UI + citations
 
@@ -269,7 +269,7 @@ Run Mode is the information architecture everything else hangs off.
 **Files:** `src/components/VaultTree.tsx`, `src/components/MapBuilderView.tsx`, `src/components/TimelineView.tsx`, `src/components/EntityGraphView.tsx`.
 
 - [x] **Step 1:** Draggable note rows (`dataTransfer` with note id). *Already present: `application/loreweaver-note-path`.*
-- [ ] **Step 2:** Drop on map → pin token; drop on timeline → set date; drop on graph → add edge. *Timeline drop done (`onDropNote` → set `date`). Map-pin and graph-edge drops are follow-ups.*
+- [ ] **Step 2:** Drop on map → pin token; drop on timeline → set date; drop on graph → add edge. *Timeline drop done (`onDropNote` → set `date`). Map-pin and graph-edge drops parked 2026-10-21 (owner) — same `dataTransfer` contract against existing save commands; unpark when the map is next worked on.*
 - [x] **Step 3:** All mutations go through existing save commands (no new write paths).
 - [x] **Step 4:** Test — drop handlers call the right command with the right payload.
 
@@ -410,12 +410,12 @@ Wave 6 (ambience)  — depends on F0.1 media permission
 |---|---|---|
 | D1 | Plugin `ui` permission (declarative, host-rendered panels) | **Approved 2026-10-21** (owner) |
 | D2 | Plugin `media` permission (cue data only; host plays) | **Approved 2026-10-21** (owner) — design constraint: no plugin audio binding |
-| D3 | Global shortcut dependency (`tauri-plugin-global-shortcut`) | Open — needed for F1.6 only |
-| D4 | PDF generation path (`printpdf` vs `jsPDF` vs WebView print) | Open — needed for F5.1 |
-| D5 | Diff library (`@codemirror/merge` vs home-grown `diff.ts`) | Open — plan defaults to home-grown |
-| D6 | Audio playback dependency (`rodio` vs existing stack) | Open — needed for F6 |
-| D7 | Cross-world semantic search (global index vs per-world fan-out) | Open — plan scopes F4.4 to title/tag fan-out first |
-| D8 | Continuity LLM pass (send findings + citations to provider) | Open — opt-in; findings are suggestions only |
+| D3 | Global shortcut dependency (`tauri-plugin-global-shortcut`) | **Declined 2026-10-21** (owner). F1.6 is dropped: in-app ⌘K capture already covers the case, and a process-wide hotkey can write into the wrong world before the app has been driven in a live session. Revisit after real play. |
+| D4 | PDF generation path (`printpdf` vs `jsPDF` vs WebView print) | **Decided 2026-10-21 (owner): (c) WebView print-to-PDF.** Zero new dependencies, and the same `@media print` stylesheet serves F5.2 (print any note). Requires `core:webview:allow-print` in the capability and accepts the system save dialog instead of a silent file write. `printpdf` stays in reserve only if one-click export without a dialog is later wanted. |
+| D5 | Diff library (`@codemirror/merge` vs home-grown `diff.ts`) | **Closed 2026-10-21 — settled by implementation.** The dependency-free `src/utils/diff.ts` (line LCS + `applyHunks`) shipped with F3.1 and is wired into `CoWriterDiff.tsx`. `@codemirror/merge` is not installed and is not planned. |
+| D6 | Audio playback dependency (`rodio` vs existing stack) | **Decided 2026-10-21 (owner): (b) WebView `<audio>` + scoped `assetProtocol`.** No new Rust dependency; the scope is limited to `<vault>/_assets/audio/**`. `symphonia` already decodes mp3/wav if Rust-side analysis is wanted later. Host-only playback keeps the plugin `media` contract intact (no plugin audio binding). **Later development (owner): a Subsonic/Navidrome client mode for ambience** — cue packs served from the home music library instead of vault files. Recorded as a future direction, not in scope for F6. |
+| D7 | Cross-world semantic search (global index vs per-world fan-out) | **Decided 2026-10-21 (owner): fan-out first.** F4.4 ships title/tag fan-out; semantic fan-out follows. Cheaper than the plan assumed: the embedding model is process-global (`app_data/models/all-MiniLM-L6-v2`), only the chunk vectors are per-vault (`note_chunks`), so a fan-out embeds the query once and dot-products each world's stored 384-d vectors — no re-embedding, no global index. |
+| D8 | Continuity LLM pass (send findings + citations to provider) | **Decided 2026-10-21 (owner): opt-in, local-first, `bonsai-2:9b`.** Default to the local provider so nothing egresses unnoticed. The model default must **not** be `llama3:8b` — it is unreliable for this judgement; test on `bonsai-2:9b` (fast). Sends findings + cited snippets only, never the vault. Findings remain suggestions. |
 
 ## Verification Gates (every wave)
 

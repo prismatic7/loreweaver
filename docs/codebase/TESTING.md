@@ -18,7 +18,7 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**41 Vitest suites / 264 tests** pass (as of 2026-10-03). Note: `npm run test`
+**60 Vitest suites / 347 tests** pass (as of 2026-10-21). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
@@ -34,7 +34,7 @@ aspirational numbers that fail on day one.
 
 ### Notable Suites
 
-(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 41 suites as of 2026-10-03.
+(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 60 suites as of 2026-10-21.
 Notable ones:)
 
 - [App.test.tsx](src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
@@ -91,6 +91,7 @@ Currently **127 Rust tests** pass (as of 2026-10-21: 125 unit + 2 integration). 
 CI runs on every push/PR via [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (added 2026-08-27, Increment F):
 
 - **Frontend job** (Node 22, `npm ci`): `npm run lint` → `npm run build` (tsc strict + vite) → `npm run test` → `npm run coverage` → `npm run verify-docs`.
+- **`verify-docs` scope:** `docs/verify.mjs` checks that every `#[tauri::command]` is documented in `docs/developer/API.md`, and that every `invoke("…")` under `src/App.tsx`, `src/components/`, `src/hooks/` and `src/utils/` names a command that exists in `lib.rs`. Hooks were outside the scan until 2026-10-21, which left most of the frontend↔backend surface unchecked; the gate now covers 76 unique invokes.
 - **Backend job** (Rust stable, `cargo test --locked` from `src-tauri/`). `test_api_key_round_trip` self-skips headless (no OS keyring), so plain `cargo test` is expected to pass on runners.
 - **Coverage policy:** thresholds live in `vite.config.ts`, set to the measured baseline minus a small buffer. They block PRs that drop coverage; they are tightened in follow-up increments, not loosened.
 

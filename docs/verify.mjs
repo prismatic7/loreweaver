@@ -103,7 +103,10 @@ for (const cmd of rustCommands) {
   }
 }
 
-// 4. Verify all invoke() calls in App.tsx and components correspond to Rust commands
+// 4. Verify every invoke() call under src/ corresponds to a Rust command.
+//    Scans App.tsx, components/, hooks/ and utils/ — hooks are where most
+//    invoke() calls actually live, so scanning only the first two left the
+//    check blind to the majority of the frontend↔backend surface.
 console.log("Verifying frontend invoke() call destinations...");
 
 function getFilesRecursively(dir, extensions) {
@@ -126,7 +129,9 @@ function getFilesRecursively(dir, extensions) {
 
 const frontendFiles = [
   resolvePath("src/App.tsx"),
-  ...getFilesRecursively(resolvePath("src/components"), [".tsx", ".ts"])
+  ...getFilesRecursively(resolvePath("src/components"), [".tsx", ".ts"]),
+  ...getFilesRecursively(resolvePath("src/hooks"), [".tsx", ".ts"]),
+  ...getFilesRecursively(resolvePath("src/utils"), [".tsx", ".ts"]),
 ].filter(file => !file.endsWith(".test.tsx") && !file.endsWith(".test.ts"));
 
 const invokeRegex = /invoke(?:<[^>]+>)?\(\s*["']([^"']+)["']/g;

@@ -125,6 +125,20 @@ fn engine() -> &'static Mutex<Option<SearchEngine>> {
     ENGINE.get_or_init(|| Mutex::new(None))
 }
 
+/// Whether the local embedding engine is loaded, i.e. whether semantic search
+/// is available right now.
+///
+/// `false` means `search_vault` degrades to FTS5 keyword matching: the model is
+/// still downloading, the download failed (offline first run), or the ONNX
+/// session failed to load. Reads the process-global engine guard only — no I/O,
+/// no model touch, safe to poll.
+pub fn engine_ready() -> bool {
+    engine()
+        .lock()
+        .map(|guard| guard.is_some())
+        .unwrap_or_else(|e| e.into_inner().is_some())
+}
+
 /// Sets the current DB path for embedding provider preference lookups.
 /// Overwrites any previously set path; called during search engine initialization
 /// and again by `switch_vault` when the active vault changes.

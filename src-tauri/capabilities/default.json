@@ -74,6 +74,7 @@
     "allow-export-world",
     "allow-import-world",
     "allow-create-snapshot",
+    "allow-search-engine-ready",
     "allow-list-snapshots",
     "allow-snapshot-diff",
     "allow-restore-note-from-snapshot",
