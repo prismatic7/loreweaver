@@ -41,6 +41,8 @@ export type AppView =
   | "time-machine";
 
 export interface AppShellProps {
+  /** Title-bar slot for the activity centre (F4.5). */
+  activitySlot?: React.ReactNode;
   activeView: AppView;
   setActiveView: (view: AppView) => void;
   theme: ThemePreference;
@@ -77,6 +79,7 @@ export interface AppShellProps {
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
+  activitySlot,
   activeView,
   setActiveView,
   theme,
@@ -317,6 +320,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           </div>
 
           <div className="toolbar-actions">
+            {activitySlot}
             <button
               className="btn btn-sm"
               onClick={onOpenCommandPalette}

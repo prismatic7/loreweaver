@@ -328,9 +328,9 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src/components/ActivityCentre.tsx` (new), `src/AppShell.tsx`.
 
-- [ ] **Step 1:** Consume the event bus (watcher, plugin, agent, image) into a bounded in-memory log.
-- [ ] **Step 2:** Badge + panel; no blocking toasts for routine events.
-- [ ] **Step 3:** Test — an event appears in the log once.
+- [x] **Step 1:** Consume the event bus (watcher, plugin, agent, image) into a bounded in-memory log. *`event_bus::emit` now mirrors every app event to the webview as `loreweaver://activity` with `{ event, at, payload }` (registered via a `OnceLock<AppHandle>`, so tests and headless runs emit to plugins exactly as before and mirror nowhere). `useActivityLog` keeps a 200-entry ring buffer, newest first; `vault-changed` is included but coalesced — consecutive syncs inside 2 s fold into one row with a ×count, because the watcher fires several times per save and an unreadable log is not a log.*
+- [x] **Step 2:** Badge + panel; no blocking toasts for routine events. *`ActivityCentre` sits in the toolbar: unread badge (capped at 99+) that resets when the panel opens, panel with time · label · detail and a Clear. Nothing here steals focus or interrupts play — the point of the centre is that routine activity has somewhere to go that is not a toast.*
+- [x] **Step 3:** Test — an event appears in the log once. *9 `useActivityLog` cases (appears once, envelope without an event ignored, vault-burst coalescing, separate events stay separate rows, ring-buffer bound, unread reset on open, clear, unsubscribe on unmount) + 9 `ActivityCentre` cases + 2 Rust tests for the wire envelope shape.*
 
 ---
 

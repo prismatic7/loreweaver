@@ -3863,6 +3863,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle();
+            // Mirror app events into the webview for the activity centre.
+            event_bus::set_app_handle(app_handle.clone());
             let err = |msg: String| -> Box<dyn std::error::Error> {
                 msg.into()
             };

@@ -27,6 +27,35 @@
 use crate::plugins;
 use serde_json::Value;
 
+/// Tauri event name the webview listens on for the activity centre.
+pub const ACTIVITY_EVENT: &str = "loreweaver://activity";
+
+/// Handle used to mirror app events into the webview. Set once during `run()`.
+///
+/// Deliberately a `OnceLock` rather than a field on `AppState`: the bus is
+/// called from detached threads and from modules that never see `AppState`
+/// (watcher, agent loop), and an unset handle must be harmless — tests and
+/// headless runs emit to plugins exactly as before and simply mirror nowhere.
+static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// Registers the handle used to mirror events into the webview.
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+/// The envelope sent to the webview for one app event.
+///
+/// Kept as a pure function so the wire shape is testable without a Tauri app:
+/// `{ event, at, payload }` — the activity centre needs a timestamp it can trust
+/// more than its own receive time (events are mirrored from a detached thread).
+pub fn activity_envelope(event: &str, payload: &Value) -> Value {
+    serde_json::json!({
+        "event": event,
+        "at": chrono::Utc::now().timestamp_millis(),
+        "payload": payload,
+    })
+}
+
 /// Fired after a successful image generation call (`generate_image`).
 ///
 /// Payload summary: `{ prompt, style, provider, model }` — never the image bytes.
@@ -100,6 +129,16 @@ pub fn emit_sync(vault_path: &str, event: &str, payload: Value) -> Vec<String> {
 /// Failures are logged via `eprintln!`; callers that need the result should use
 /// `emit_sync` instead.
 pub fn emit(vault_path: &str, event: &str, payload: Value) {
+    // Mirror to the webview first: the activity centre must record the event
+    // even if a plugin then fails or hangs (plugin execution is capped at 5 s).
+    if let Some(handle) = APP_HANDLE.get() {
+        let _ = tauri::Emitter::emit(
+            handle,
+            ACTIVITY_EVENT,
+            activity_envelope(event, &payload),
+        );
+    }
+
     let vault_path_owned = vault_path.to_string();
     let event_owned = event.to_string();
     std::thread::spawn(move || {
@@ -115,6 +154,32 @@ mod tests {
     use super::*;
     use crate::plugins::{load_all_plugins, plugin_state, plugin_test_guard};
     use std::fs;
+
+    #[test]
+    fn activity_envelope_carries_event_timestamp_and_payload() {
+        let payload = serde_json::json!({ "title": "Vex", "path": "Characters/Vex.md" });
+        let envelope = activity_envelope(EVENT_NOTE_SAVED, &payload);
+
+        assert_eq!(envelope["event"], EVENT_NOTE_SAVED);
+        // The payload travels verbatim — the activity centre renders from it.
+        assert_eq!(envelope["payload"]["title"], "Vex");
+        // A timestamp the frontend can order by, in milliseconds.
+        let at = envelope["at"].as_i64().expect("timestamp missing");
+        assert!(at > 1_600_000_000_000, "timestamp should be unix ms, got {}", at);
+    }
+
+    #[test]
+    fn activity_envelope_rejects_nothing_and_stays_small() {
+        // Even a large summary must not smuggle bytes into the webview event.
+        let envelope = activity_envelope(EVENT_IMAGE_GENERATED, &serde_json::json!({
+            "prompt": "a ruined lighthouse",
+            "style": "ink",
+            "provider": "comfyui",
+        }));
+        let serialized = serde_json::to_string(&envelope).unwrap();
+        assert!(serialized.len() < 1024, "envelope unexpectedly large: {}", serialized.len());
+        assert!(!serialized.contains("base64"));
+    }
 
     fn write_test_plugin(plugins_dir: &std::path::Path, id: &str, script: &str) {
         let dir = plugins_dir.join(id);

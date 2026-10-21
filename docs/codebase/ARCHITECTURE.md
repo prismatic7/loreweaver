@@ -29,7 +29,7 @@ Loreweaver is a Tauri desktop app: a React frontend drives user interaction, and
 - `ingest.rs` converts Markdown SRD text into rule rows and vector chunks.
 - `agent.rs` assembles RAG context, runs the streaming agent loop (`run_agent_turn`), and executes vault tools (`roll_dice`, `search_vault`, `read_note`, `list_notes`, `save_note`) bounded to `MAX_TOOL_ROUNDS`; it delegates provider calls to `providers/llm.rs`.
 - `plugins.rs` loads plugin manifests and runs Boa-based hook functions.
-- `event_bus.rs` fans app events (image generated, note saved, world state changed) out to plugins as named hook calls (`on_<event>`), reusing the plugin host's permission guard, payload cap, and 5 s timeout.
+- `event_bus.rs` fans app events (image generated, note saved, world state changed, dice roll, session event) out to plugins as named hook calls (`on_<event>`), reusing the plugin host's permission guard, payload cap, and 5 s timeout. Every event is also mirrored to the webview as `loreweaver://activity` (`{ event, at, payload }`; the handle is registered once in `run()`), which is what the activity centre consumes. The mirror happens *before* plugin dispatch, so a plugin timeout cannot cost the event.
 - `providers/` centralizes AI provider HTTP logic: `llm.rs` (chat), `image.rs` (image generation), `speech.rs` (TTS), `models.rs` (model listing).
 
 ## Provenance, Bible Conditioning, and Capture (phase 2)

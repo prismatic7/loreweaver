@@ -46,6 +46,8 @@ import { useContinuity } from "./hooks/useContinuity";
 import { useSnapshots } from "./hooks/useSnapshots";
 import { useSavedSearches } from "./hooks/useSavedSearches";
 import { useCrossWorldSearch } from "./hooks/useCrossWorldSearch";
+import { useActivityLog } from "./hooks/useActivityLog";
+import { ActivityCentre } from "./components/ActivityCentre";
 import type { CrossWorldHit } from "./bindings";
 import { useSettings } from "./hooks/useSettings";
 import { useDialogs } from "./hooks/useDialogs";
@@ -150,6 +152,7 @@ function App() {
   // `useNotes` — a filter-kind search never touches the backend to run.
   const savedSearches = useSavedSearches(notes, vaultPath);
   const crossWorld = useCrossWorldSearch();
+  const activity = useActivityLog();
   const [crossWorldScope, setCrossWorldScope] = useState(false);
   // A note to open once a world switch has finished loading the new vault.
   const pendingOpenRef = useRef<string | null>(null);
@@ -1006,6 +1009,16 @@ function App() {
       onLoadTrash={loadTrashNotes}
       onClipUrl={handleToolbarClipUrl}
       onOpenCommandPalette={() => setPaletteOpen(true)}
+      activitySlot={
+        <ActivityCentre
+          entries={activity.entries}
+          unread={activity.unread}
+          open={activity.open}
+          onToggle={activity.toggle}
+          onClose={activity.close}
+          onClear={activity.clear}
+        />
+      }
       statusStrip={
         <StatusStrip
           provider={llmProvider}

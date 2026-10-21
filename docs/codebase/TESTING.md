@@ -18,7 +18,7 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**66 Vitest suites / 414 tests** pass (as of 2026-10-21). Note: `npm run test`
+**68 Vitest suites / 433 tests** pass (as of 2026-10-21). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
@@ -34,7 +34,7 @@ aspirational numbers that fail on day one.
 
 ### Notable Suites
 
-(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 66 suites as of 2026-10-21.
+(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 68 suites as of 2026-10-21.
 Notable ones:)
 
 - [App.test.tsx](src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
