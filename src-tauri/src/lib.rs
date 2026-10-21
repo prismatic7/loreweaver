@@ -818,8 +818,23 @@ async fn rename_note(
     new_path: &str,
 ) -> Result<CampaignNote, String> {
     let vault_path = state.vault_path.lock().await;
-    let old_file = validate_safe_path(&vault_path, old_path)?;
-    let new_file = validate_safe_path(&vault_path, new_path)?;
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    rename_note_impl(&vault_path, &conn, old_path, new_path)
+}
+
+/// Renames/moves one note on disk and re-points its DB row.
+///
+/// Split out of the command so bulk operations (`move_notes`) reuse the exact
+/// same path validation, existence checks and id-preserving upsert.
+fn rename_note_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    old_path: &str,
+    new_path: &str,
+) -> Result<CampaignNote, String> {
+    let old_file = validate_safe_path(vault_path, old_path)?;
+    let new_file = validate_safe_path(vault_path, new_path)?;
 
     if !old_file.exists() {
         return Err(format!("Source note '{}' does not exist", old_path));
@@ -837,22 +852,19 @@ async fn rename_note(
 
     let (title, content, frontmatter) = watcher::parse_markdown_file(&new_file)?;
 
-    let conn_guard = state.conn.lock().await;
-    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
-
     // Check if an existing note ID can be preserved
-    let existing_notes = db::load_all_notes(&conn).map_err(|e| e.to_string())?;
+    let existing_notes = db::load_all_notes(conn).map_err(|e| e.to_string())?;
     let existing_id = existing_notes
         .iter()
         .find(|n| n.path == old_path)
         .map(|n| n.id.clone())
         .unwrap_or_else(|| format!("note-{}", uuid::Uuid::new_v4()));
 
-    let _ = db::delete_note_by_path(&conn, old_path);
+    let _ = db::delete_note_by_path(conn, old_path);
     let frontmatter_map = frontmatter;
 
     let _ = db::upsert_note(
-        &conn,
+        conn,
         new_path,
         &title,
         &content,
@@ -889,6 +901,239 @@ async fn move_note(
         format!("{}/{}", clean_folder, filename)
     };
     rename_note(state, note_path, &new_path).await
+}
+
+// --- Bulk operations ------------------------------------------------------
+//
+// Each batch is atomic **per note**, never across the batch: one bad path must
+// not cost the other 40. Every helper returns a `BulkResult` so the UI can
+// report exactly what landed and what did not. All writes go through
+// `validate_safe_path` (trash/rename via their impls, tagging directly).
+
+/// Normalises a user-supplied tag: trims whitespace, drops a leading `#`, and
+/// rejects anything that would corrupt the frontmatter (commas separate the
+/// legacy string form, empty strings are meaningless).
+fn normalise_tag(tag: &str) -> Result<String, String> {
+    let cleaned = tag.trim().trim_start_matches('#').trim();
+    if cleaned.is_empty() {
+        return Err("Tag is empty".to_string());
+    }
+    if cleaned.contains(',') {
+        return Err("Tag must not contain a comma".to_string());
+    }
+    Ok(cleaned.to_string())
+}
+
+/// Existing tags on a note as a flat list, accepting both the array form and the
+/// legacy comma-separated string form (`parseNoteTags` in the frontend does the
+/// same normalisation for display).
+fn existing_tags(frontmatter: &HashMap<String, Value>) -> Vec<String> {
+    match frontmatter.get("tags") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| s.trim().trim_start_matches('#').to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Some(Value::String(raw)) => raw
+            .split(',')
+            .map(|s| s.trim().trim_start_matches('#').to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Adds `tag` to one note's frontmatter and re-indexes it.
+///
+/// Returns the updated note. If the file write succeeds but the index upsert
+/// fails, the error says so explicitly — the vault *did* change, and a reindex
+/// is the fix, so reporting it as a plain failure would be misleading.
+fn tag_note_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    note_path: &str,
+    tag: &str,
+    ids_by_path: &HashMap<String, String>,
+) -> Result<CampaignNote, String> {
+    let clean_path = note_path
+        .trim_start_matches('/')
+        .trim_start_matches("./")
+        .trim();
+    let file_path = validate_safe_path(vault_path, clean_path)?;
+    if !file_path.exists() {
+        return Err(format!("Note not found at '{}'", clean_path));
+    }
+
+    let (title, content, mut frontmatter) = watcher::parse_markdown_file(&file_path)?;
+    let mut tags = existing_tags(&frontmatter);
+    if !tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
+        tags.push(tag.to_string());
+    }
+    frontmatter.insert(
+        "tags".to_string(),
+        Value::Array(tags.into_iter().map(Value::String).collect()),
+    );
+
+    write_note_to_disk(&file_path, &content, &frontmatter)?;
+
+    let id = ids_by_path
+        .get(clean_path)
+        .cloned()
+        .unwrap_or_else(|| format!("note-{}", uuid::Uuid::new_v4()));
+    db::upsert_note(conn, clean_path, &title, &content, &frontmatter, Some(&id))
+        .map_err(|e| format!("file updated but index update failed: {}", e))?;
+
+    Ok(CampaignNote {
+        id,
+        title,
+        path: clean_path.to_string(),
+        frontmatter,
+        content,
+    })
+}
+
+/// Trashes every path it can, reporting the ones it cannot.
+fn trash_notes_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    paths: &[String],
+) -> BulkResult {
+    let mut result = BulkResult::default();
+    for path in paths {
+        match trash_note_impl(vault_path, conn, path) {
+            Ok(_) => result.succeeded.push(path.clone()),
+            Err(e) => result.failed.push(BulkFailure {
+                path: path.clone(),
+                error: e,
+            }),
+        }
+    }
+    search::invalidate_cache();
+    result
+}
+
+/// Moves every path into `target_folder`, keeping file names.
+fn move_notes_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    paths: &[String],
+    target_folder: &str,
+) -> BulkResult {
+    let clean_folder = target_folder.trim_matches('/');
+    let mut result = BulkResult::default();
+    for path in paths {
+        let filename = match std::path::Path::new(path).file_name() {
+            Some(name) => name.to_string_lossy().to_string(),
+            None => {
+                result.failed.push(BulkFailure {
+                    path: path.clone(),
+                    error: "invalid note path".to_string(),
+                });
+                continue;
+            }
+        };
+        let new_path = if clean_folder.is_empty() || clean_folder == "Root" {
+            filename
+        } else {
+            format!("{}/{}", clean_folder, filename)
+        };
+        if &new_path == path {
+            // Already there — nothing to do, and rename would report a conflict
+            // with itself on case-insensitive filesystems.
+            result.succeeded.push(path.clone());
+            continue;
+        }
+        match rename_note_impl(vault_path, conn, path, &new_path) {
+            Ok(_) => result.succeeded.push(path.clone()),
+            Err(e) => result.failed.push(BulkFailure {
+                path: path.clone(),
+                error: e,
+            }),
+        }
+    }
+    result
+}
+
+/// Adds one tag to every path it can, reporting the ones it cannot.
+fn tag_notes_impl(
+    vault_path: &str,
+    conn: &rusqlite::Connection,
+    paths: &[String],
+    tag: &str,
+) -> BulkResult {
+    let mut result = BulkResult::default();
+    let tag = match normalise_tag(tag) {
+        Ok(tag) => tag,
+        Err(e) => {
+            // A bad tag fails the whole batch identically; don't pretend each
+            // note was the problem.
+            for path in paths {
+                result.failed.push(BulkFailure {
+                    path: path.clone(),
+                    error: e.clone(),
+                });
+            }
+            return result;
+        }
+    };
+
+    let ids_by_path: HashMap<String, String> = db::load_all_notes(conn)
+        .map(|notes| notes.into_iter().map(|n| (n.path, n.id)).collect())
+        .unwrap_or_default();
+
+    for path in paths {
+        match tag_note_impl(vault_path, conn, path, &tag, &ids_by_path) {
+            Ok(_) => result.succeeded.push(path.clone()),
+            Err(e) => result.failed.push(BulkFailure {
+                path: path.clone(),
+                error: e,
+            }),
+        }
+    }
+    search::invalidate_cache();
+    result
+}
+
+/// Trashes several notes. Partial success is a normal outcome.
+#[tauri::command]
+async fn trash_notes(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<BulkResult, String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    Ok(trash_notes_impl(&vault_path, &conn, &paths))
+}
+
+/// Moves several notes into one folder. Partial success is a normal outcome.
+#[tauri::command]
+async fn move_notes(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+    target_folder: &str,
+) -> Result<BulkResult, String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    Ok(move_notes_impl(&vault_path, &conn, &paths, target_folder))
+}
+
+/// Adds one tag to several notes. Partial success is a normal outcome.
+///
+/// No `note_saved` event is emitted per note: a bulk tag is one authorial
+/// action, and firing 40 plugin hooks for it would be noise, not signal.
+#[tauri::command]
+async fn tag_notes(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+    tag: &str,
+) -> Result<BulkResult, String> {
+    let vault_path = state.vault_path.lock().await;
+    let conn_guard = state.conn.lock().await;
+    let conn = conn_guard.lock().map_err(|e| e.to_string())?;
+    Ok(tag_notes_impl(&vault_path, &conn, &paths, tag))
 }
 
 /// Creates a new directory inside the vault.
@@ -3874,6 +4119,9 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             import_world,
             create_snapshot,
             search_engine_ready,
+            trash_notes,
+            move_notes,
+            tag_notes,
             list_snapshots,
             snapshot_diff,
             restore_note_from_snapshot,
@@ -4571,6 +4819,204 @@ mod liminal_tests {
         let notes = list_liminal_notes_impl(&root).unwrap();
         assert_eq!(notes.len(), 1);
         assert_eq!(notes[0].title, "Real");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    // --- Bulk operations (F4.2) ------------------------------------------
+
+    /// A temp vault + initialised DB, for the bulk helpers which need both.
+    fn bulk_fixture(name: &str) -> (std::path::PathBuf, rusqlite::Connection) {
+        let root = std::env::temp_dir().join(format!("loreweaver_bulk_{}", name));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("Worldbuilding")).unwrap();
+        std::fs::create_dir_all(root.join("Characters")).unwrap();
+        std::fs::write(
+            root.join("Worldbuilding/Oslo.md"),
+            "---\ntitle: Oslo\ntags: [city, north]\n---\n# Oslo\nbody",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("Characters/Vex.md"),
+            "---\ntitle: Vex\ntags: captain, loyal\n---\n# Vex\nbody",
+        )
+        .unwrap();
+        std::fs::write(root.join("Characters/Kade.md"), "# Kade\nno frontmatter").unwrap();
+
+        let db_path = root.join("bulk.db");
+        let conn = db::init_db(db_path.to_str().unwrap()).unwrap();
+        (root, conn)
+    }
+
+    #[test]
+    fn test_tag_notes_applies_tag_to_array_and_string_forms() {
+        let (root, conn) = bulk_fixture("tag");
+        let paths = vec![
+            "Worldbuilding/Oslo.md".to_string(),
+            "Characters/Vex.md".to_string(),
+            "Characters/Kade.md".to_string(),
+        ];
+
+        let result = tag_notes_impl(root.to_str().unwrap(), &conn, &paths, "#heist");
+        assert!(result.failed.is_empty(), "unexpected failures: {:?}", result.failed);
+        assert_eq!(result.succeeded.len(), 3);
+
+        // Array form keeps its existing tags and gains the new one.
+        let oslo = std::fs::read_to_string(root.join("Worldbuilding/Oslo.md")).unwrap();
+        assert!(oslo.contains("- city") && oslo.contains("- north") && oslo.contains("- heist"),
+            "array-form tags not merged: {}", oslo);
+
+        // Legacy comma-separated string form is normalised into an array.
+        let vex = std::fs::read_to_string(root.join("Characters/Vex.md")).unwrap();
+        assert!(vex.contains("- captain") && vex.contains("- loyal") && vex.contains("- heist"),
+            "string-form tags not merged: {}", vex);
+        assert!(!vex.contains("tags: captain"), "string form should be normalised");
+
+        // No frontmatter at all still gains the tag.
+        let kade = std::fs::read_to_string(root.join("Characters/Kade.md")).unwrap();
+        assert!(kade.contains("- heist"), "tag missing from frontmatter-less note: {}", kade);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_tag_notes_is_idempotent() {
+        let (root, conn) = bulk_fixture("tag_idem");
+        let paths = vec!["Worldbuilding/Oslo.md".to_string()];
+
+        tag_notes_impl(root.to_str().unwrap(), &conn, &paths, "heist");
+        let second = tag_notes_impl(root.to_str().unwrap(), &conn, &paths, "heist");
+
+        assert_eq!(second.succeeded.len(), 1);
+        let oslo = std::fs::read_to_string(root.join("Worldbuilding/Oslo.md")).unwrap();
+        assert_eq!(oslo.matches("heist").count(), 1, "tag duplicated: {}", oslo);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_tag_notes_reports_partial_failure() {
+        let (root, conn) = bulk_fixture("tag_partial");
+        let paths = vec![
+            "Worldbuilding/Oslo.md".to_string(),
+            "Worldbuilding/Missing.md".to_string(),
+        ];
+
+        let result = tag_notes_impl(root.to_str().unwrap(), &conn, &paths, "heist");
+        assert_eq!(result.succeeded, vec!["Worldbuilding/Oslo.md".to_string()]);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0].path, "Worldbuilding/Missing.md");
+        assert!(result.failed[0].error.contains("not found"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_tag_notes_rejects_a_bad_tag_for_the_whole_batch() {
+        let (root, conn) = bulk_fixture("tag_bad");
+        let paths = vec![
+            "Worldbuilding/Oslo.md".to_string(),
+            "Characters/Vex.md".to_string(),
+        ];
+
+        let result = tag_notes_impl(root.to_str().unwrap(), &conn, &paths, "   ");
+        assert!(result.succeeded.is_empty());
+        assert_eq!(result.failed.len(), 2);
+        assert!(result.failed.iter().all(|f| f.error == "Tag is empty"));
+        // Nothing was written.
+        let oslo = std::fs::read_to_string(root.join("Worldbuilding/Oslo.md")).unwrap();
+        assert!(oslo.contains("tags: [city, north]"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_move_notes_moves_files_and_keeps_partial_failures() {
+        let (root, conn) = bulk_fixture("move");
+        let paths = vec![
+            "Worldbuilding/Oslo.md".to_string(),
+            "Characters/Vex.md".to_string(),
+            "Characters/Ghost.md".to_string(),
+        ];
+
+        let result = move_notes_impl(root.to_str().unwrap(), &conn, &paths, "Worldbuilding");
+        assert!(root.join("Worldbuilding/Oslo.md").is_file());
+        assert!(root.join("Worldbuilding/Vex.md").is_file());
+        assert!(!root.join("Characters/Vex.md").exists());
+        assert_eq!(result.succeeded.len(), 2);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0].path, "Characters/Ghost.md");
+
+        // The DB follows the file, so the note is not orphaned in the index.
+        let notes = db::load_all_notes(&conn).unwrap();
+        assert!(notes.iter().any(|n| n.path == "Worldbuilding/Vex.md"));
+        assert!(!notes.iter().any(|n| n.path == "Characters/Vex.md"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_move_notes_to_root_is_a_noop_not_a_conflict() {
+        let (root, conn) = bulk_fixture("move_root");
+        let paths = vec!["Worldbuilding/Oslo.md".to_string()];
+
+        let result = move_notes_impl(root.to_str().unwrap(), &conn, &paths, "Root");
+        assert_eq!(result.succeeded.len(), 1);
+        assert!(result.failed.is_empty());
+        assert!(root.join("Oslo.md").is_file());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_trash_notes_reports_partial_failure() {
+        let (root, conn) = bulk_fixture("trash");
+        let paths = vec![
+            "Worldbuilding/Oslo.md".to_string(),
+            "Characters/Vex.md".to_string(),
+            "Worldbuilding/Nope.md".to_string(),
+        ];
+
+        let result = trash_notes_impl(root.to_str().unwrap(), &conn, &paths);
+        assert_eq!(result.succeeded.len(), 2);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0].path, "Worldbuilding/Nope.md");
+        assert!(root.join(".trash").is_dir());
+        assert!(!root.join("Worldbuilding/Oslo.md").exists());
+        // Untouched note survives.
+        assert!(root.join("Characters/Kade.md").is_file());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_rename_note_impl_preserves_note_id() {
+        let (root, conn) = bulk_fixture("rename_id");
+        let notes = db::load_all_notes(&conn).unwrap();
+        // Seed the index so the id lookup has something to find.
+        let (title, content, frontmatter) =
+            watcher::parse_markdown_file(&root.join("Worldbuilding/Oslo.md")).unwrap();
+        db::upsert_note(
+            &conn,
+            "Worldbuilding/Oslo.md",
+            &title,
+            &content,
+            &frontmatter,
+            Some("note-fixed-id"),
+        )
+        .unwrap();
+        let _ = notes;
+
+        let renamed = rename_note_impl(
+            root.to_str().unwrap(),
+            &conn,
+            "Worldbuilding/Oslo.md",
+            "Characters/Oslo.md",
+        )
+        .unwrap();
+
+        assert_eq!(renamed.id, "note-fixed-id");
+        assert!(root.join("Characters/Oslo.md").is_file());
+        assert!(!root.join("Worldbuilding/Oslo.md").exists());
 
         let _ = std::fs::remove_dir_all(&root);
     }

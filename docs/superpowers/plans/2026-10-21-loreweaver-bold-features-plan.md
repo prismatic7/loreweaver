@@ -302,9 +302,9 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src/components/VaultTree.tsx`, `src-tauri/src/lib.rs`.
 
-- [ ] **Step 1:** Multi-select (⌘/⇧ click) with a selection action bar.
-- [ ] **Step 2:** Commands `trash_notes(ids)`, `move_notes(ids, dest)`, `tag_notes(ids, tag)` — each batched, each `validate_safe_path`, each atomic per note with a summary result.
-- [ ] **Step 3:** Tests for partial failure reporting.
+- [x] **Step 1:** Multi-select (⌘/⇧ click) with a selection action bar. *`src/utils/selection.ts` holds the modifier rules as a pure function (⌘ toggles, ⇧ ranges from a stable anchor, hidden/collapsed notes never enter a range); `BulkActionBar` renders count + Trash / Move-to / Tag and disables itself mid-batch. The tree keeps the selection after a batch — a cancelled confirm must not cost the user their selection — and prunes it when notes disappear.*
+- [x] **Step 2:** Commands `trash_notes(ids)`, `move_notes(ids, dest)`, `tag_notes(ids, tag)` — each batched, each `validate_safe_path`, each atomic per note with a summary result. *Shipped as `BulkResult { succeeded, failed: [{ path, error }] }`. Trash and move reuse the extracted `trash_note_impl` / `rename_note_impl` (id-preserving); tagging normalises both frontmatter forms into an array and is idempotent. A bad tag fails the batch before any write, with the tag as the reason rather than blaming each note.*
+- [x] **Step 3:** Tests for partial failure reporting. *8 Rust tests (partial trash/move/tag, idempotent tagging, bad-tag batch rejection, Root move, id preservation) + 12 `selection` cases + 8 `BulkActionBar` cases + 6 `VaultTree` integration cases.*
 
 ### F4.3 — Saved searches / smart folders
 

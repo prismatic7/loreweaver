@@ -59,12 +59,38 @@ commands = { allow = [
   "import_world",
   "create_snapshot",
   "search_engine_ready",
+  "trash_notes",
+  "move_notes",
+  "tag_notes",
   "list_snapshots",
   "snapshot_diff",
   "restore_note_from_snapshot",
   "list_liminal_notes",
   "claim_liminal_note",
   "make_world_from_liminal",
+  "rename_note",
+  "move_note",
+  "create_folder",
+  "rename_folder",
+  "import_file_to_vault",
+  "run_schedule_now",
+  "evaluate_expression",
+  "nearest_notes",
+  "log_session_event",
+  "list_session_events",
+  "get_run_state",
+  "set_run_state",
+  "audit_continuity",
+  "merge_entities",
+  "list_bible_files",
+  "update_bible_files",
+  "revise_text",
+  "extract_session_memories",
+  "orchestrate_agent_stream",
+  "approve_agent_tool",
+  "reject_agent_tool",
+  "cancel_agent_stream",
+  "scaffold_plugin",
 ] }
 
 [[permission]]
@@ -496,3 +522,18 @@ commands = { allow = ["restore_note_from_snapshot"] }
 identifier = "allow-search-engine-ready"
 description = "Allows the search_engine_ready command to be invoked by the frontend"
 commands = { allow = ["search_engine_ready"] }
+
+[[permission]]
+identifier = "allow-trash-notes"
+description = "Allows the trash_notes command to be invoked by the frontend"
+commands = { allow = ["trash_notes"] }
+
+[[permission]]
+identifier = "allow-move-notes"
+description = "Allows the move_notes command to be invoked by the frontend"
+commands = { allow = ["move_notes"] }
+
+[[permission]]
+identifier = "allow-tag-notes"
+description = "Allows the tag_notes command to be invoked by the frontend"
+commands = { allow = ["tag_notes"] }

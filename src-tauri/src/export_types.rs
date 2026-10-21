@@ -69,6 +69,28 @@ pub struct SnapshotInfo {
     pub vault: String,
 }
 
+/// One note that a bulk operation could not complete, with the reason.
+///
+/// Bulk operations are atomic **per note**, never across the batch: a failure
+/// names the note it happened to and the rest of the batch proceeds.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct BulkFailure {
+    /// Vault-relative path the operation was attempted on.
+    pub path: String,
+    pub error: String,
+}
+
+/// Outcome of a bulk note operation (`trash_notes`, `move_notes`, `tag_notes`).
+///
+/// `succeeded` holds paths that completed; `failed` holds the rest with reasons.
+/// The caller reports the counts and lists the failures — a partially applied
+/// batch is a normal result, not an error.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct BulkResult {
+    pub succeeded: Vec<String>,
+    pub failed: Vec<BulkFailure>,
+}
+
 /// One entry in a snapshot ↔ live-vault diff. `kind` is `added`, `modified`, or
 /// `removed`, always described from the vault's point of view.
 #[derive(Serialize, Deserialize, Clone, Debug, Type)]
@@ -456,6 +478,8 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<SessionEvent>()
         .typ::<SnapshotInfo>()
         .typ::<FileChange>()
+        .typ::<BulkFailure>()
+        .typ::<BulkResult>()
         .typ::<RunState>()
         .typ::<Entity>()
         .typ::<Finding>()

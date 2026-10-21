@@ -369,6 +369,24 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<Vec<SnapshotInfo>, String>`
 - **Description:** Lists the active vault's snapshots, newest first. Sidecars are read rather than archives; a missing sidecar degrades to filesystem metadata instead of failing the listing.
 
+### `trash_notes`
+
+- **Arguments:** `paths: Vec<String>`
+- **Returns:** `Result<BulkResult, String>`
+- **Description:** Trashes several notes in one call. Each note is atomic on its own — a path that fails is reported in `failed` with its reason and does not stop the batch. Every move goes through `validate_safe_path` via `trash_note_impl`; nothing is deleted, everything is recoverable from Trash.
+
+### `move_notes`
+
+- **Arguments:** `paths: Vec<String>`, `target_folder: &str`
+- **Returns:** `Result<BulkResult, String>`
+- **Description:** Moves several notes into one folder, keeping file names (`"Root"` or an empty folder means the vault top level). Reuses `rename_note_impl`, so the DB row follows the file and the note id is preserved. A note already at the destination counts as succeeded rather than as a self-conflict.
+
+### `tag_notes`
+
+- **Arguments:** `paths: Vec<String>`, `tag: &str`
+- **Returns:** `Result<BulkResult, String>`
+- **Description:** Adds one tag to several notes' frontmatter, normalising both the array form and the legacy comma-separated string form into an array. Idempotent (a tag already present is not duplicated, case-insensitively); a leading `#` is stripped; empty tags or tags containing a comma fail the batch before anything is written. No `note_saved` event is emitted per note — a bulk tag is one authorial action, not forty edits.
+
 ### `search_engine_ready`
 
 - **Arguments:** None.

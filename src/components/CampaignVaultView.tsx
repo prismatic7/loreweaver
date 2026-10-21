@@ -66,6 +66,10 @@ export interface CampaignVaultViewProps {
   isGeneratingImage?: boolean;
   renderFolderDropdown: (folderName: string, isRulebook?: boolean) => React.ReactNode;
   handleNewNote: (folder?: string, templateType?: string) => void;
+  /** Bulk actions for the tree's multi-selection (F4.2). */
+  onBulkTrashNotes?: (paths: string[]) => Promise<void> | void;
+  onBulkMoveNotes?: (paths: string[], targetFolder: string) => Promise<void> | void;
+  onBulkTagNotes?: (paths: string[], tag: string) => Promise<void> | void;
   handleNewFolder: (parentFolder?: string) => void;
   handleTrashNote: (path: string) => void;
   renderMarkdown: (content: string) => React.ReactNode;
@@ -131,6 +135,9 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   renderFolderDropdown,
   handleNewNote,
   handleNewFolder,
+  onBulkTrashNotes,
+  onBulkMoveNotes,
+  onBulkTagNotes,
   handleTrashNote,
   renderMarkdown,
   currentCanvasFolder,
@@ -277,6 +284,9 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
               }));
             }}
             selectedNoteId={selectedNoteId}
+            onBulkTrash={onBulkTrashNotes}
+            onBulkMove={onBulkMoveNotes}
+            onBulkTag={onBulkTagNotes}
             onSelectNote={(noteId) => {
               setSelectedNoteId(noteId);
               const targetNote = effectiveNotes.find((n) => n.id === noteId);

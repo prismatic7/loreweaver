@@ -152,6 +152,66 @@ for (const inv of frontendInvokes) {
 }
 logSuccess(`Verified ${frontendInvokes.size} unique invoke calls across ${frontendFiles.length} files`);
 
+// 5. Every command must be reachable: registered in `generate_handler!`, given a
+//    permission block in permissions/allow-all.toml, and added to the active
+//    capability. Missing any one of the three fails at RUNTIME with a rejected
+//    invoke (silent in tests, loud in the app), so it is checked here instead.
+console.log("Verifying command permissions and capabilities...");
+
+const allowAllPath = resolvePath("src-tauri/permissions/allow-all.toml");
+const allowAllContent = fs.readFileSync(allowAllPath, "utf-8");
+const capabilityPath = resolvePath("src-tauri/capabilities/default.json");
+const capabilityContent = fs.readFileSync(capabilityPath, "utf-8");
+const capabilityPermissions = new Set(
+  (JSON.parse(capabilityContent).permissions ?? []).map((p) => String(p)),
+);
+
+// Permission identifiers declared as `identifier = "allow-<kebab>"`.
+const declaredPermissions = new Set(
+  [...allowAllContent.matchAll(/identifier\s*=\s*"([^"]+)"/g)].map((m) => m[1]),
+);
+
+// Names listed in the catch-all `allow-all-commands` block: from its identifier
+// line to the next `[[permission]]` header.
+const allowAllStart = allowAllContent.indexOf('identifier = "allow-all-commands"');
+const allowAllEnd = allowAllContent.indexOf("[[permission]]", allowAllStart + 1);
+const allowAllBlock = allowAllContent.slice(
+  allowAllStart,
+  allowAllEnd === -1 ? undefined : allowAllEnd,
+);
+const allowAllCommands = new Set(
+  [...allowAllBlock.matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]),
+);
+
+const handlerBlock = libRsContent.slice(
+  libRsContent.indexOf("tauri::generate_handler!"),
+);
+
+for (const cmd of rustCommands) {
+  const kebab = cmd.replace(/_/g, "-");
+  const permission = `allow-${kebab}`;
+
+  if (!handlerBlock.includes(`${cmd},`) && !handlerBlock.includes(`${cmd})\n`)) {
+    logError(`Command "${cmd}" is not registered in generate_handler!`);
+  }
+  if (!declaredPermissions.has(permission)) {
+    logError(
+      `Command "${cmd}" has no "${permission}" permission block in src-tauri/permissions/allow-all.toml`,
+    );
+  }
+  if (!capabilityPermissions.has(permission)) {
+    logError(
+      `Command "${cmd}" is missing "${permission}" in src-tauri/capabilities/default.json`,
+    );
+  }
+  if (!allowAllCommands.has(cmd)) {
+    logError(`Command "${cmd}" is missing from the allow-all-commands list`);
+  }
+}
+logSuccess(
+  `Checked ${rustCommands.size} commands against the permission + capability surface`,
+);
+
 if (hasError) {
   console.log("\n\x1b[31m[FAILURE]\x1b[0m Documentation verification failed with errors.");
   process.exit(1);

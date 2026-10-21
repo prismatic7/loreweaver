@@ -55,6 +55,7 @@ import { useCaptureInbox } from "./hooks/useCaptureInbox";
 import { findBacklinks } from "./utils/links";
 
 import { RuleEntry, SearchResult, WebClip, WorldInfo } from "./types";
+import type { BulkResult } from "./bindings";
 import { CommandPalette, type PaletteSelection } from "./components/CommandPalette";
 import { type Intent } from "./utils/intent";
 import { StatusStrip } from "./components/StatusStrip";
@@ -686,6 +687,73 @@ function App() {
     [confirm, restoreSnapshot, loadNotes, showToast],
   );
 
+  /**
+   * One-line summary of a bulk result. Partial success is normal, so the count
+   * always appears and the first few failures are named rather than swallowed.
+   */
+  const describeBulk = useCallback((verb: string, result: BulkResult) => {
+    const ok = result.succeeded.length;
+    const failed = result.failed.length;
+    if (failed === 0) return `${verb} ${ok} note${ok === 1 ? "" : "s"}`;
+    const named = result.failed
+      .slice(0, 3)
+      .map((f) => f.path)
+      .join(", ");
+    const more = failed > 3 ? `, +${failed - 3} more` : "";
+    return `${verb} ${ok}, ${failed} failed: ${named}${more}`;
+  }, []);
+
+  const handleBulkTrashNotes = useCallback(
+    async (paths: string[]) => {
+      confirm(
+        `Move ${paths.length} note${paths.length === 1 ? "" : "s"} to the trash? They can be restored from Trash.`,
+        async () => {
+          try {
+            const result = await invoke<BulkResult>("trash_notes", { paths });
+            await loadNotes();
+            await loadTrashNotes();
+            showToast(describeBulk("Trashed", result));
+          } catch (err) {
+            showToast("Bulk trash failed: " + err);
+          }
+        },
+      );
+    },
+    [confirm, loadNotes, loadTrashNotes, showToast, describeBulk],
+  );
+
+  const handleBulkMoveNotes = useCallback(
+    async (paths: string[], targetFolder: string) => {
+      try {
+        const result = await invoke<BulkResult>("move_notes", {
+          paths,
+          targetFolder,
+        });
+        await loadNotes();
+        await loadFolders();
+        showToast(
+          `${describeBulk("Moved", result)} → ${targetFolder || "Root"}`,
+        );
+      } catch (err) {
+        showToast("Bulk move failed: " + err);
+      }
+    },
+    [loadNotes, loadFolders, showToast, describeBulk],
+  );
+
+  const handleBulkTagNotes = useCallback(
+    async (paths: string[], tag: string) => {
+      try {
+        const result = await invoke<BulkResult>("tag_notes", { paths, tag });
+        await loadNotes();
+        showToast(describeBulk(`Tagged with #${tag}:`, result));
+      } catch (err) {
+        showToast("Bulk tag failed: " + err);
+      }
+    },
+    [loadNotes, showToast, describeBulk],
+  );
+
   const handleDropNoteOnTimeline = useCallback(
     async (notePath: string) => {
       const date = await showPrompt(
@@ -1017,6 +1085,9 @@ function App() {
           setActiveFolderDropdown={setActiveFolderDropdown}
           renderFolderDropdown={renderFolderDropdown}
           handleNewNote={(folder) => handleNewNote(folder)}
+          onBulkTrashNotes={handleBulkTrashNotes}
+          onBulkMoveNotes={handleBulkMoveNotes}
+          onBulkTagNotes={handleBulkTagNotes}
           handleNewFolder={(parentFolder) => handleNewFolder(parentFolder)}
           handleTrashNote={vaultActions.handleTrashNote}
           renderMarkdown={renderMarkdown}

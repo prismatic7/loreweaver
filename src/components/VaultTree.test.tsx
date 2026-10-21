@@ -237,4 +237,124 @@ describe("VaultTree Component", () => {
     expect(screen.getByText("Castle Raven")).toBeInTheDocument();
     expect(screen.queryByText("Campaign Intro")).not.toBeInTheDocument();
   });
+
+  describe("bulk selection (F4.2)", () => {
+    const baseProps = {
+      notes: mockNotes,
+      discoveredFolders: ["Act 1", "Act 1/Locations"],
+      collapsedFolders: {},
+      onToggleFolder: vi.fn(),
+      selectedNoteId: "",
+      onSelectNote: vi.fn(),
+      onNewNote: vi.fn(),
+      onNewFolder: vi.fn(),
+      onRenameNote: vi.fn(),
+      onRenameFolder: vi.fn(),
+      onMoveNote: vi.fn(),
+      onTrashNote: vi.fn(),
+      onTrashFolder: vi.fn(),
+    };
+
+    it("stays single-select and shows no action bar without bulk handlers", () => {
+      render(<VaultTree {...baseProps} />);
+      fireEvent.click(screen.getByTestId("tree-note-note-1"));
+      expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+    });
+
+    it("adds notes to the selection with ⌘/Ctrl and shows the bar", () => {
+      render(
+        <VaultTree
+          {...baseProps}
+          onBulkTrash={vi.fn()}
+          onBulkMove={vi.fn()}
+          onBulkTag={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId("tree-note-note-1"));
+      expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("tree-note-note-3"), { metaKey: true });
+      expect(screen.getByText("2 selected")).toBeInTheDocument();
+    });
+
+    it("selects a visible range with ⇧ and ignores collapsed folders", () => {
+      render(
+        <VaultTree
+          {...baseProps}
+          collapsedFolders={{ "Act 1": true }}
+          onBulkTrash={vi.fn()}
+          onBulkMove={vi.fn()}
+          onBulkTag={vi.fn()}
+        />,
+      );
+
+      // Act 1 is collapsed, so only the root note is rendered; shift from it
+      // cannot reach a hidden note and degrades to that one note.
+      fireEvent.click(screen.getByTestId("tree-note-note-3"));
+      fireEvent.click(screen.getByTestId("tree-note-note-3"), { shiftKey: true });
+      expect(screen.getByText("1 selected")).toBeInTheDocument();
+    });
+
+    it("passes the selected note paths to the bulk handlers", () => {
+      const onBulkTag = vi.fn();
+      render(
+        <VaultTree
+          {...baseProps}
+          onBulkTrash={vi.fn()}
+          onBulkMove={vi.fn()}
+          onBulkTag={onBulkTag}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId("tree-note-note-1"));
+      fireEvent.click(screen.getByTestId("tree-note-note-3"), { metaKey: true });
+
+      fireEvent.change(screen.getByLabelText("Tag to add"), {
+        target: { value: "heist" },
+      });
+      fireEvent.click(screen.getByText("Tag"));
+
+      expect(onBulkTag).toHaveBeenCalledWith(
+        ["Act 1/Intro.md", "Overview.md"],
+        "heist",
+      );
+    });
+
+    it("does not change the open note on a modifier click", () => {
+      const onSelectNote = vi.fn();
+      render(
+        <VaultTree
+          {...baseProps}
+          onSelectNote={onSelectNote}
+          onBulkTrash={vi.fn()}
+          onBulkMove={vi.fn()}
+          onBulkTag={vi.fn()}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId("tree-note-note-1"));
+      expect(onSelectNote).toHaveBeenCalledWith("note-1");
+
+      fireEvent.click(screen.getByTestId("tree-note-note-3"), { metaKey: true });
+      // Still only the first click opened a note.
+      expect(onSelectNote).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears the selection from the action bar", () => {
+      render(
+        <VaultTree
+          {...baseProps}
+          onBulkTrash={vi.fn()}
+          onBulkMove={vi.fn()}
+          onBulkTag={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByTestId("tree-note-note-1"));
+      expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByLabelText("Clear selection"));
+      expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+    });
+  });
 });

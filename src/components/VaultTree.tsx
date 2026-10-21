@@ -19,6 +19,14 @@ import {
 import { CampaignNote } from "../types";
 import { NoteIcon, FolderIcon } from "./VaultIcons";
 import { IconPickerModal } from "./IconPickerModal";
+import { BulkActionBar } from "./BulkActionBar";
+import {
+  applySelection,
+  clearSelection,
+  pruneSelection,
+  EMPTY_SELECTION,
+  type SelectionState,
+} from "../utils/selection";
 
 export type SortMode = "name-asc" | "name-desc" | "date-desc" | "date-asc";
 
@@ -60,6 +68,14 @@ export interface VaultTreeProps {
   title?: string;
   className?: string;
   style?: React.CSSProperties;
+  /**
+   * Bulk actions for the current multi-selection (⌘/Ctrl-click to toggle,
+   * ⇧-click for a range). Each receives vault-relative note paths. Omit them and
+   * the tree stays single-select with no action bar.
+   */
+  onBulkTrash?: (paths: string[]) => Promise<void> | void;
+  onBulkMove?: (paths: string[], targetFolder: string) => Promise<void> | void;
+  onBulkTag?: (paths: string[], tag: string) => Promise<void> | void;
 }
 
 interface ContextMenuState {
@@ -243,11 +259,19 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
   title = "Campaign Notes",
   className,
   style,
+  onBulkTrash,
+  onBulkMove,
+  onBulkTag,
 }) => {
   const [sortMode, setSortMode] = useState<SortMode>("name-asc");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+
+  // Multi-select state (F4.2). Only meaningful when the parent supplies bulk
+  // handlers; without them the tree stays single-select.
+  const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   // Inline editing state
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -276,6 +300,51 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
   const rootTree = useMemo(() => {
     return buildTree(notes, discoveredFolders, sortMode, searchQuery);
   }, [notes, discoveredFolders, sortMode, searchQuery]);
+
+  // Note ids in the order they are actually rendered (collapsed folders and the
+  // tree filter respected) — this is what ⇧-range selection walks.
+  const visibleNoteIds = useMemo(() => {
+    const ids: string[] = [];
+    const walk = (node: TreeNode) => {
+      if (node.kind === "note") {
+        if (node.note) ids.push(node.note.id);
+        return;
+      }
+      const isRoot = node.id === "Root" || node.path === "";
+      const collapsed = !isRoot && !!collapsedFolders[node.path || node.name];
+      if (collapsed && !isRoot) return;
+      node.children.forEach(walk);
+    };
+    rootTree.children.forEach(walk);
+    return ids;
+  }, [rootTree, collapsedFolders]);
+
+  // Keep the selection honest when notes disappear (trashed elsewhere, filtered
+  // out, or moved) without disturbing the remaining order.
+  useEffect(() => {
+    setSelection((prev) => pruneSelection(prev, visibleNoteIds));
+  }, [visibleNoteIds]);
+
+  const selectedPaths = useMemo(
+    () =>
+      selection.ids
+        .map((id) => notes.find((n) => n.id === id)?.path)
+        .filter((path): path is string => Boolean(path)),
+    [selection.ids, notes],
+  );
+
+  // The selection is *not* cleared here: the parent may open a confirm dialog
+  // that outlives this promise, and a cancelled batch should leave the user's
+  // selection intact. Trashed notes prune out on the next notes refresh; for
+  // move/tag the same selection is usually still wanted.
+  const runBulk = async (action: () => Promise<void> | void) => {
+    setBulkBusy(true);
+    try {
+      await action();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const handleStartRename = (node: TreeNode) => {
     setEditingNodeId(node.id);
@@ -547,7 +616,21 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
     // Render Note Leaf Item
     const note = node.note!;
     const isSelected = selectedNoteId === note.id;
+    const isMultiSelected = selection.ids.includes(note.id);
     const customIcon = note.frontmatter?.icon;
+
+    const handleNoteClick = (event: React.MouseEvent) => {
+      const meta = event.metaKey || event.ctrlKey;
+      const shift = event.shiftKey;
+      // Without bulk handlers the tree keeps its plain single-select behaviour.
+      if (!onBulkTrash && !onBulkMove && !onBulkTag) {
+        onSelectNote(note.id);
+        return;
+      }
+      setSelection((prev) => applySelection(prev, visibleNoteIds, note.id, { meta, shift }));
+      // A modifier click shapes the selection; it does not change the open note.
+      if (!meta && !shift) onSelectNote(note.id);
+    };
 
     return (
       <div
@@ -564,8 +647,8 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
             targetNode: node,
           });
         }}
-        className={`nav-item ${isSelected ? "active" : ""}`}
-        onClick={() => onSelectNote(note.id)}
+        className={`nav-item ${isSelected || isMultiSelected ? "active" : ""}`}
+        onClick={handleNoteClick}
         onKeyDown={(e) => {
           if (e.key === "F2") {
             e.preventDefault();
@@ -582,8 +665,13 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
           paddingLeft: `${Math.max(8, node.depth * 8)}px`,
           cursor: "pointer",
           fontSize: "12px",
-          color: isSelected ? "var(--fg)" : "var(--muted)",
-          background: isSelected ? "var(--surface-hover, rgba(255, 255, 255, 0.05))" : "transparent",
+          color: isSelected || isMultiSelected ? "var(--fg)" : "var(--muted)",
+          background: isSelected
+            ? "var(--surface-hover, rgba(255, 255, 255, 0.05))"
+            : isMultiSelected
+              ? "var(--selection-bg, rgba(120, 160, 255, 0.14))"
+              : "transparent",
+          boxShadow: isMultiSelected && !isSelected ? "inset 2px 0 0 var(--accent)" : "none",
           border: "none",
           width: "100%",
           textAlign: "left",
@@ -968,6 +1056,24 @@ export const VaultTree: React.FC<VaultTreeProps> = ({
           </div>
         )}
       </div>
+
+      {(onBulkTrash || onBulkMove || onBulkTag) && selection.ids.length > 0 && (
+        <BulkActionBar
+          count={selection.ids.length}
+          folders={discoveredFolders}
+          busy={bulkBusy}
+          onClear={() => setSelection(clearSelection())}
+          onTrash={() => {
+            if (onBulkTrash) void runBulk(() => onBulkTrash(selectedPaths));
+          }}
+          onMove={(folder) => {
+            if (onBulkMove) void runBulk(() => onBulkMove(selectedPaths, folder));
+          }}
+          onTag={(tag) => {
+            if (onBulkTag) void runBulk(() => onBulkTag(selectedPaths, tag));
+          }}
+        />
+      )}
 
       {title && (
         <span

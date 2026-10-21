@@ -60,6 +60,30 @@ export type AppSettings = {
 	font_scale?: number | null,
 };
 
+/**
+ *  One note that a bulk operation could not complete, with the reason.
+ * 
+ *  Bulk operations are atomic **per note**, never across the batch: a failure
+ *  names the note it happened to and the rest of the batch proceeds.
+ */
+export type BulkFailure = {
+	/**  Vault-relative path the operation was attempted on. */
+	path: string,
+	error: string,
+};
+
+/**
+ *  Outcome of a bulk note operation (`trash_notes`, `move_notes`, `tag_notes`).
+ * 
+ *  `succeeded` holds paths that completed; `failed` holds the rest with reasons.
+ *  The caller reports the counts and lists the failures — a partially applied
+ *  batch is a normal result, not an error.
+ */
+export type BulkResult = {
+	succeeded: string[],
+	failed: BulkFailure[],
+};
+
 export type CampaignNote = {
 	id: string,
 	title: string,
