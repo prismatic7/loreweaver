@@ -116,4 +116,105 @@ describe("CommandPalette", () => {
     });
     expect(screen.getByText("No matches.")).toBeInTheDocument();
   });
+
+  describe("cross-world scope (F4.4)", () => {
+    const hit = {
+      world: "Eldoria",
+      world_id: "eldoria",
+      world_path: "/campaigns/eldoria",
+      path: "Characters/Vex.md",
+      title: "Vex",
+      tags: ["captain"],
+      kind: "title",
+      score: 1,
+    };
+
+    it("shows no scope toggle when the feature is not wired", () => {
+      render(<CommandPalette {...makeProps()} />);
+      expect(screen.queryByText("All worlds")).not.toBeInTheDocument();
+    });
+
+    it("toggles the scope and reports what the fan-out covered", () => {
+      const onToggle = vi.fn();
+      render(
+        <CommandPalette
+          {...makeProps()}
+          crossWorldScope
+          onToggleCrossWorldScope={onToggle}
+          crossWorldHits={[hit]}
+          crossWorldWorldsScanned={4}
+          crossWorldSemanticUsed
+          onSelectCrossWorld={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("4 worlds · titles, tags & meaning")).toBeInTheDocument();
+      fireEvent.click(screen.getByText("All worlds"));
+      expect(onToggle).toHaveBeenCalled();
+    });
+
+    it("says titles and tags only when the semantic pass did not run", () => {
+      render(
+        <CommandPalette
+          {...makeProps()}
+          crossWorldScope
+          onToggleCrossWorldScope={vi.fn()}
+          crossWorldHits={[]}
+          crossWorldWorldsScanned={2}
+          crossWorldSemanticUsed={false}
+          onSelectCrossWorld={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("2 worlds · titles & tags only")).toBeInTheDocument();
+    });
+
+    it("badges a cross-world hit with its world and opens it", () => {
+      const onSelectCrossWorld = vi.fn();
+      render(
+        <CommandPalette
+          {...makeProps()}
+          crossWorldScope
+          onToggleCrossWorldScope={vi.fn()}
+          crossWorldHits={[hit]}
+          onSelectCrossWorld={onSelectCrossWorld}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("Palette query"), {
+        target: { value: "vex" },
+      });
+
+      expect(screen.getByText(/Eldoria · Characters\/Vex.md/)).toBeInTheDocument();
+      fireEvent.click(screen.getByText("🌍 Vex"));
+      expect(onSelectCrossWorld).toHaveBeenCalledWith(hit);
+    });
+
+    it("pushes the typed query up only while the scope is on", () => {
+      const onCrossWorldSearch = vi.fn();
+      const { rerender } = render(
+        <CommandPalette
+          {...makeProps()}
+          crossWorldScope={false}
+          onToggleCrossWorldScope={vi.fn()}
+          onCrossWorldSearch={onCrossWorldSearch}
+          onSelectCrossWorld={vi.fn()}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Palette query"), {
+        target: { value: "vex" },
+      });
+      expect(onCrossWorldSearch).not.toHaveBeenCalled();
+
+      rerender(
+        <CommandPalette
+          {...makeProps()}
+          crossWorldScope
+          onToggleCrossWorldScope={vi.fn()}
+          onCrossWorldSearch={onCrossWorldSearch}
+          onSelectCrossWorld={vi.fn()}
+        />,
+      );
+      // The query survives the rerender (the palette keeps its own input state).
+      expect(onCrossWorldSearch).toHaveBeenCalledWith("vex");
+    });
+  });
 });

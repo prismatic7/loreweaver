@@ -316,13 +316,13 @@ Run Mode is the information architecture everything else hangs off.
 
 ### F4.4 — Cross-world search
 
-**Files:** `src-tauri/src/search.rs`, `src-tauri/src/worlds.rs`, `src/components/AppShell.tsx`.
+**Files:** `src-tauri/src/crossworld.rs` (new), `src-tauri/src/search.rs`, `src/components/CommandPalette.tsx`, `src/hooks/useCrossWorldSearch.ts`.
 
 > **Architectural note:** each world has its own SQLite DB (re-initialised on switch), so cross-world search needs a *fan-out* that opens each world's DB read-only, or a small global title/tag index. Plan the **fan-out, titles+tags only** first; semantic cross-world search is a second step.
 
-- [ ] **Step 1:** `search_all_worlds(query)` fans out title/tag FTS per world, merges with world badges.
-- [ ] **Step 2:** UI result rows carry a world badge; clicking switches world + opens note.
-- [ ] **Step 3:** Test — two fixture worlds both contribute results.
+- [x] **Step 1:** `search_all_worlds(query)` → titles+tags across every world folder, with world badges. *`crossworld.rs`: reads each world's markdown directly (no index, so an unopened world cannot answer from stale data), matches title → tag → path, caps at 40 hits per world, skips `.trash`/`_assets`/non-markdown, and excludes `_liminal`. Hits carry world id, world path, tags and which field matched.*
+- [x] **Step 2:** UI result rows carry a world badge; clicking switches world + opens note. *Palette footer toggle with a live honesty line ("N worlds · titles, tags & meaning" vs "titles & tags only"). Hits pinned above local notes, capped at 4 — the palette is a jump list, not a results page. A cross-world hit switches worlds when needed and opens the note once the new vault's notes land; a same-world hit opens immediately. Semantic second pass runs after the structural one on the same query (debounced 250 ms, superseded responses dropped); each world DB is opened read-only and skipped with `semantic_used: false` when the engine is not loaded.*
+- [x] **Step 3:** Test — two fixture worlds both contribute results. *4 Rust tests (two worlds contribute, tag kind reported, path matching + per-world cap, empty query, `.trash`/`_liminal`/non-markdown excluded, semantic skip honesty), 5 `useCrossWorldSearch` cases, 5 palette scope cases.*
 
 ### F4.5 — Activity centre
 

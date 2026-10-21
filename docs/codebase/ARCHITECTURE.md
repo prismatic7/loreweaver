@@ -75,6 +75,12 @@ provenance taxonomy, and theme. Signed-off design: `DESIGN_SKETCH_WORLDS.md`.
   zips a world folder; `import_world` validates the embedded manifest and
   extracts to `campaigns/<id>` (zip-slip guarded); scaffold mirrors a source
   world's directory structure + manifest skeleton, no content.
+- **`crossworld.rs`** owns the cross-world fan-out (`search_all_worlds`): two
+  passes over every world folder — structural (titles/tags/paths read straight
+  from the files, so no stale index can answer) and semantic (the query embedded
+  once with the process-global model, dot-producted against each world's own
+  read-only `note_chunks`). No global index, and a search never creates a DB in a
+  world the user has not opened.
 - **`snapshots.rs`** owns the Vault Time Machine: `create_snapshot` zips the
   active vault to `<app_data>/snapshots/<vault>/<id>.zip` (excluding `.trash`, VCS
   metadata, and the SQLite index), writes a JSON sidecar, and prunes beyond

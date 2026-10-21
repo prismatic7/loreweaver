@@ -78,6 +78,7 @@
     "allow-trash-notes",
     "allow-move-notes",
     "allow-tag-notes",
+    "allow-search-all-worlds",
     "allow-list-saved-searches",
     "allow-save-saved-search",
     "allow-delete-saved-search",

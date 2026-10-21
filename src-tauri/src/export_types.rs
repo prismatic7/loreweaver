@@ -69,6 +69,38 @@ pub struct SnapshotInfo {
     pub vault: String,
 }
 
+/// One hit from a cross-world fan-out search.
+///
+/// `kind` says why it matched: `title`, `tag`, `path` (structural, certain) or
+/// `semantic` (vector similarity). `score` is `1.0` for a structural hit and the
+/// cosine similarity for a semantic one, so structural hits can be shown above
+/// semantic ones without the UI having to special-case them.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct CrossWorldHit {
+    /// World display name (manifest name, or the folder name when it has none).
+    pub world: String,
+    /// World folder name — the stable id, and what a world switch needs.
+    pub world_id: String,
+    /// Absolute path of the world folder.
+    pub world_path: String,
+    /// Note path relative to its world.
+    pub path: String,
+    pub title: String,
+    pub tags: Vec<String>,
+    pub kind: String,
+    pub score: f64,
+}
+
+/// Result of a cross-world fan-out.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Type)]
+pub struct CrossWorldResults {
+    pub hits: Vec<CrossWorldHit>,
+    /// Whether the semantic pass actually ran — `false` means it was skipped
+    /// because the embedding engine is not loaded, so the caller can say so.
+    pub semantic_used: bool,
+    pub worlds_scanned: i64,
+}
+
 /// A named, reusable vault query.
 ///
 /// `kind` is `"filter"` (structural predicates evaluated in the frontend — the
@@ -500,6 +532,8 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<SnapshotInfo>()
         .typ::<FileChange>()
         .typ::<SavedSearch>()
+        .typ::<CrossWorldHit>()
+        .typ::<CrossWorldResults>()
         .typ::<BulkFailure>()
         .typ::<BulkResult>()
         .typ::<RunState>()

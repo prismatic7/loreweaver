@@ -62,6 +62,7 @@ commands = { allow = [
   "trash_notes",
   "move_notes",
   "tag_notes",
+  "search_all_worlds",
   "list_saved_searches",
   "save_saved_search",
   "delete_saved_search",
@@ -555,3 +556,8 @@ commands = { allow = ["save_saved_search"] }
 identifier = "allow-delete-saved-search"
 description = "Allows the delete_saved_search command to be invoked by the frontend"
 commands = { allow = ["delete_saved_search"] }
+
+[[permission]]
+identifier = "allow-search-all-worlds"
+description = "Allows the search_all_worlds command to be invoked by the frontend"
+commands = { allow = ["search_all_worlds"] }

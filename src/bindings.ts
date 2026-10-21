@@ -118,6 +118,40 @@ export type ContinuityReport = {
 };
 
 /**
+ *  One hit from a cross-world fan-out search.
+ * 
+ *  `kind` says why it matched: `title`, `tag`, `path` (structural, certain) or
+ *  `semantic` (vector similarity). `score` is `1.0` for a structural hit and the
+ *  cosine similarity for a semantic one, so structural hits can be shown above
+ *  semantic ones without the UI having to special-case them.
+ */
+export type CrossWorldHit = {
+	/**  World display name (manifest name, or the folder name when it has none). */
+	world: string,
+	/**  World folder name — the stable id, and what a world switch needs. */
+	world_id: string,
+	/**  Absolute path of the world folder. */
+	world_path: string,
+	/**  Note path relative to its world. */
+	path: string,
+	title: string,
+	tags: string[],
+	kind: string,
+	score: number | null,
+};
+
+/**  Result of a cross-world fan-out. */
+export type CrossWorldResults = {
+	hits: CrossWorldHit[],
+	/**
+	 *  Whether the semantic pass actually ran — `false` means it was skipped
+	 *  because the embedding engine is not loaded, so the caller can say so.
+	 */
+	semantic_used: boolean,
+	worlds_scanned: number,
+};
+
+/**
  *  A campaign entity (person/place/faction/thing) and its aliases.
  * 
  *  Entities are extracted from note titles + `aliases` frontmatter; aliases

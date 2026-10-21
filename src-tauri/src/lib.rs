@@ -47,6 +47,7 @@ use tokio::sync::Mutex as TokioMutex;
 pub mod agent;
 mod bundles;
 mod continuity;
+mod crossworld;
 mod db;
 mod dice;
 mod event_bus;
@@ -1134,6 +1135,22 @@ async fn tag_notes(
     let conn_guard = state.conn.lock().await;
     let conn = conn_guard.lock().map_err(|e| e.to_string())?;
     Ok(tag_notes_impl(&vault_path, &conn, &paths, tag))
+}
+
+// --- Cross-world search (F4.4) --------------------------------------------
+
+/// Searches every world under the campaigns root for `query`.
+///
+/// `semantic` asks for the vector pass as well; it is silently skipped (and
+/// `semantic_used: false` returned) when the embedding engine is not loaded, so
+/// the caller never implies a semantic search that did not happen.
+#[tauri::command]
+async fn search_all_worlds(
+    state: State<'_, AppState>,
+    query: &str,
+    semantic: bool,
+) -> Result<CrossWorldResults, String> {
+    crossworld::search_all_worlds(&state.campaigns_root, query, semantic, 40)
 }
 
 // --- Saved searches (F4.3) ------------------------------------------------
@@ -4163,6 +4180,7 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             trash_notes,
             move_notes,
             tag_notes,
+            search_all_worlds,
             list_saved_searches,
             save_saved_search,
             delete_saved_search,

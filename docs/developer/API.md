@@ -369,6 +369,12 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<Vec<SnapshotInfo>, String>`
 - **Description:** Lists the active vault's snapshots, newest first. Sidecars are read rather than archives; a missing sidecar degrades to filesystem metadata instead of failing the listing.
 
+### `search_all_worlds`
+
+- **Arguments:** `query: &str`, `semantic: bool`
+- **Returns:** `Result<CrossWorldResults, String>`
+- **Description:** Fan-out search across every world folder under the campaigns root (excluding `_liminal`), capped at 40 hits per world. The structural pass matches the query against note titles, tags and vault-relative paths by reading the files directly, so a world not opened since editing still answers truthfully. `semantic: true` adds a vector pass: the query is embedded **once** with the process-global model, then dot-producted against each world's own `note_chunks` (each world DB opened **read-only** — a search never creates a DB). `semantic_used: false` means the pass was skipped because the embedding engine is not loaded, so callers can say "titles & tags only" rather than implying a meaning-based search that did not run.
+
 ### `list_saved_searches`
 
 - **Arguments:** None.

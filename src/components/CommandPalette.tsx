@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { parseIntent, describeIntent, type Intent } from "../utils/intent";
+import type { CrossWorldHit } from "../bindings";
 
 /* eslint-disable react-refresh/only-export-components -- fuzzyScore is exported alongside the palette it belongs to */
 
@@ -45,6 +46,20 @@ interface CommandPaletteProps {
   redoLabel?: string;
   /** Executes the parsed one-box intent (rendered as the first row when the query is non-empty). */
   onIntent?: (intent: Intent) => void;
+  /**
+   * Cross-world scope (F4.4). When enabled, the palette also searches every
+   * world and pins those hits above the local notes, each badged with its world.
+   */
+  crossWorldScope?: boolean;
+  onToggleCrossWorldScope?: () => void;
+  /** Called with the (debounced) query, but only while the scope is on. */
+  onCrossWorldSearch?: (query: string) => void;
+  crossWorldHits?: CrossWorldHit[];
+  crossWorldLoading?: boolean;
+  /** Whether the vector pass ran; `false` means titles/tags only. */
+  crossWorldSemanticUsed?: boolean;
+  crossWorldWorldsScanned?: number;
+  onSelectCrossWorld?: (hit: CrossWorldHit) => void;
 }
 
 /** Score a query against a target string. Infinity = no match; lower = better. */
@@ -67,12 +82,13 @@ export function fuzzyScore(query: string, target: string): number {
 
 interface Row {
   key: string;
-  kind: "view" | "note" | "undo" | "redo" | "intent";
+  kind: "view" | "note" | "undo" | "redo" | "intent" | "cross-world";
   id: string;
   label: string;
   detail: string;
   score: number;
   intent?: Intent;
+  hit?: CrossWorldHit;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -85,6 +101,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   undoLabel,
   redoLabel,
   onIntent,
+  crossWorldScope = false,
+  onToggleCrossWorldScope,
+  onCrossWorldSearch,
+  crossWorldHits = [],
+  crossWorldLoading = false,
+  crossWorldSemanticUsed = false,
+  crossWorldWorldsScanned = 0,
+  onSelectCrossWorld,
 }) => {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -150,6 +174,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         intent,
       });
     }
+    if (crossWorldScope && onSelectCrossWorld && trimmed) {
+      // Capped: the palette is a jump list, not a results page. Local notes stay
+      // reachable below, and the counts tell the user there are more worlds.
+      for (const hit of crossWorldHits.slice(0, 4)) {
+        pinned.push({
+          key: `cross:${hit.world_id}:${hit.path}`,
+          kind: "cross-world",
+          id: `${hit.world_id}::${hit.path}`,
+          label: hit.title,
+          detail: `${hit.world} · ${hit.path}`,
+          score: -2.5,
+          hit,
+        });
+      }
+    }
     if (undoLabel) {
       pinned.push({
         key: "undo",
@@ -171,7 +210,25 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     }
     return [...pinned, ...out].slice(0, 12);
-  }, [query, views, notes, recentNoteIds, undoLabel, redoLabel, onIntent]);
+  }, [
+    query,
+    views,
+    notes,
+    recentNoteIds,
+    undoLabel,
+    redoLabel,
+    onIntent,
+    crossWorldScope,
+    crossWorldHits,
+    onSelectCrossWorld,
+  ]);
+
+  // Only the palette knows what is being typed, so it pushes the query up while
+  // the cross-world scope is on. The hook debounces.
+  useEffect(() => {
+    if (!open || !crossWorldScope) return;
+    onCrossWorldSearch?.(query);
+  }, [open, crossWorldScope, query, onCrossWorldSearch]);
 
   useEffect(() => {
     setActiveIndex((i) => Math.min(i, Math.max(rows.length - 1, 0)));
@@ -191,6 +248,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     if (!row) return;
     if (row.kind === "intent") {
       if (row.intent) onIntent?.(row.intent);
+    } else if (row.kind === "cross-world") {
+      if (row.hit) onSelectCrossWorld?.(row.hit);
     } else {
       onSelect({ kind: row.kind, id: row.id });
     }
@@ -298,7 +357,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       ? "↪ "
                       : row.kind === "view"
                         ? "⌘ "
-                        : "📄 "}
+                        : row.kind === "cross-world"
+                          ? "🌍 "
+                          : "📄 "}
                 {row.label}
               </span>
               <span style={{ color: "var(--muted)", fontSize: 11, flexShrink: 0 }}>
@@ -307,6 +368,47 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </button>
           ))}
         </div>
+        {onToggleCrossWorldScope && (
+          <div
+            data-od-id="palette-cross-world"
+            style={{
+              padding: "6px 16px",
+              borderTop: "1px solid var(--border)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: 11,
+              color: "var(--muted)",
+            }}
+          >
+            <button
+              type="button"
+              onClick={onToggleCrossWorldScope}
+              aria-pressed={crossWorldScope}
+              data-od-id="palette-cross-world-toggle"
+              style={{
+                padding: "2px 8px",
+                fontSize: 11,
+                cursor: "pointer",
+                borderRadius: 0,
+                border: "1px solid var(--border)",
+                background: crossWorldScope ? "var(--accent)" : "transparent",
+                color: crossWorldScope ? "var(--bg)" : "var(--muted)",
+              }}
+            >
+              All worlds
+            </button>
+            {crossWorldScope && (
+              <span>
+                {crossWorldLoading
+                  ? "Searching…"
+                  : `${crossWorldWorldsScanned} worlds · ${
+                      crossWorldSemanticUsed ? "titles, tags & meaning" : "titles & tags only"
+                    }`}
+              </span>
+            )}
+          </div>
+        )}
         <div
           style={{
             padding: "8px 16px",

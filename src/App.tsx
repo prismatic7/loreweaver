@@ -45,6 +45,8 @@ import { useSessionLedger } from "./hooks/useSessionLedger";
 import { useContinuity } from "./hooks/useContinuity";
 import { useSnapshots } from "./hooks/useSnapshots";
 import { useSavedSearches } from "./hooks/useSavedSearches";
+import { useCrossWorldSearch } from "./hooks/useCrossWorldSearch";
+import type { CrossWorldHit } from "./bindings";
 import { useSettings } from "./hooks/useSettings";
 import { useDialogs } from "./hooks/useDialogs";
 import { useMarkdownRender } from "./hooks/useMarkdownRender";
@@ -147,6 +149,10 @@ function App() {
   // Saved searches are derived from the loaded notes, so they must come after
   // `useNotes` — a filter-kind search never touches the backend to run.
   const savedSearches = useSavedSearches(notes, vaultPath);
+  const crossWorld = useCrossWorldSearch();
+  const [crossWorldScope, setCrossWorldScope] = useState(false);
+  // A note to open once a world switch has finished loading the new vault.
+  const pendingOpenRef = useRef<string | null>(null);
   // While a smart folder is active the vault tree shows only its matches. An
   // unresolved full-text search shows nothing rather than everything: "no
   // filter" and "filter still resolving" must not look identical.
@@ -872,6 +878,41 @@ function App() {
     [handleSwitchWorld, alert],
   );
 
+  /**
+   * Opens a cross-world search hit. Same world → select immediately; another
+   * world → switch first, then open the note once the new vault's notes have
+   * loaded (the switch is async and the note id only exists after indexing).
+   */
+  const handleSelectCrossWorldHit = useCallback(
+    async (hit: CrossWorldHit) => {
+      if (hit.world_path === vaultPath) {
+        const note = notes.find((n) => n.path === hit.path);
+        if (note) {
+          guardedSetSelectedNoteId(note.id);
+          guardedSetActiveView("vault");
+        } else {
+          showToast(`That note is no longer at ${hit.path}`);
+        }
+        return;
+      }
+      pendingOpenRef.current = hit.path;
+      await handleSwitchWorld(hit.world_path);
+      showToast(`Switched to ${hit.world}`);
+    },
+    [vaultPath, notes, handleSwitchWorld, showToast, guardedSetSelectedNoteId, guardedSetActiveView],
+  );
+
+  // Completes a cross-world open once the switched-to world's notes arrive.
+  useEffect(() => {
+    const target = pendingOpenRef.current;
+    if (!target || notes.length === 0) return;
+    const note = notes.find((n) => n.path === target);
+    if (!note) return;
+    pendingOpenRef.current = null;
+    guardedSetSelectedNoteId(note.id);
+    guardedSetActiveView("vault");
+  }, [notes, guardedSetSelectedNoteId, guardedSetActiveView]);
+
   const handleExportWorld = useCallback(
     async (world: WorldInfo) => {
       try {
@@ -1561,6 +1602,19 @@ function App() {
         onIntent={handleExecuteIntent}
         undoLabel={undo.canUndo ? undo.undoLabel : undefined}
         redoLabel={undo.canRedo ? undo.redoLabel : undefined}
+        crossWorldScope={crossWorldScope}
+        onToggleCrossWorldScope={() => {
+          setCrossWorldScope((scope) => {
+            if (scope) crossWorld.clear();
+            return !scope;
+          });
+        }}
+        onCrossWorldSearch={crossWorld.search}
+        crossWorldHits={crossWorld.hits}
+        crossWorldLoading={crossWorld.loading}
+        crossWorldSemanticUsed={crossWorld.semanticUsed}
+        crossWorldWorldsScanned={crossWorld.worldsScanned}
+        onSelectCrossWorld={handleSelectCrossWorldHit}
       />
       {toast && <Toast message={toast} onDismiss={dismissToast} />}
     </AppShell>
