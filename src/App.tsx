@@ -44,6 +44,7 @@ import { useInitiative } from "./hooks/useInitiative";
 import { useSessionLedger } from "./hooks/useSessionLedger";
 import { useContinuity } from "./hooks/useContinuity";
 import { useSnapshots } from "./hooks/useSnapshots";
+import { useSavedSearches } from "./hooks/useSavedSearches";
 import { useSettings } from "./hooks/useSettings";
 import { useDialogs } from "./hooks/useDialogs";
 import { useMarkdownRender } from "./hooks/useMarkdownRender";
@@ -143,6 +144,13 @@ function App() {
     trashFolder,
     normalizeCampaignMarkdown,
   } = useNotes(vaultPath, undo.pushUndo);
+  // Saved searches are derived from the loaded notes, so they must come after
+  // `useNotes` — a filter-kind search never touches the backend to run.
+  const savedSearches = useSavedSearches(notes, vaultPath);
+  // While a smart folder is active the vault tree shows only its matches. An
+  // unresolved full-text search shows nothing rather than everything: "no
+  // filter" and "filter still resolving" must not look identical.
+  const vaultNotes = savedSearches.active ? (savedSearches.results ?? []) : notes;
   const {
     rules,
     setRules,
@@ -754,6 +762,34 @@ function App() {
     [loadNotes, showToast, describeBulk],
   );
 
+  const handleRunSavedSearch = useCallback(
+    (id: string) => {
+      void savedSearches.run(id);
+    },
+    [savedSearches],
+  );
+
+  const handleDeleteSavedSearch = useCallback(
+    (id: string) => {
+      const name = savedSearches.searches.find((s) => s.id === id)?.name ?? "this smart folder";
+      confirm(`Delete the smart folder "${name}"? The notes it matches are not touched.`, async () => {
+        const ok = await savedSearches.remove(id);
+        showToast(ok ? `Deleted "${name}"` : "Could not delete that smart folder");
+      });
+    },
+    [confirm, savedSearches, showToast],
+  );
+
+  const handleSaveSavedSearch = useCallback(
+    (name: string, query: string, kind: "filter" | "fts") => {
+      void (async () => {
+        const saved = await savedSearches.save({ name, kind, query });
+        showToast(saved ? `Saved "${saved.name}"` : "Could not save that smart folder");
+      })();
+    },
+    [savedSearches, showToast],
+  );
+
   const handleDropNoteOnTimeline = useCallback(
     async (notePath: string) => {
       const date = await showPrompt(
@@ -1088,6 +1124,13 @@ function App() {
           onBulkTrashNotes={handleBulkTrashNotes}
           onBulkMoveNotes={handleBulkMoveNotes}
           onBulkTagNotes={handleBulkTagNotes}
+          savedSearches={savedSearches.searches}
+          activeSavedSearchId={savedSearches.activeId}
+          savedSearchMatchCount={savedSearches.results?.length ?? null}
+          onRunSavedSearch={handleRunSavedSearch}
+          onClearSavedSearch={savedSearches.clear}
+          onDeleteSavedSearch={handleDeleteSavedSearch}
+          onSaveSavedSearch={handleSaveSavedSearch}
           handleNewFolder={(parentFolder) => handleNewFolder(parentFolder)}
           handleTrashNote={vaultActions.handleTrashNote}
           renderMarkdown={renderMarkdown}
@@ -1095,7 +1138,7 @@ function App() {
           setCurrentCanvasFolder={setCurrentCanvasFolder}
           handleNormalizeVaultMarkdown={vaultActions.handleNormalizeVaultMarkdown}
           triggerImmediateSave={immediateSave}
-          notes={notes}
+          notes={vaultNotes}
           setActiveView={guardedSetActiveView}
           onSelectNoteFromCanvas={vaultActions.handleSelectNoteFromCanvas}
           onSelectCanvas={vaultActions.handleSelectCanvas}

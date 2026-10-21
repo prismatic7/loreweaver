@@ -69,6 +69,27 @@ pub struct SnapshotInfo {
     pub vault: String,
 }
 
+/// A named, reusable vault query.
+///
+/// `kind` is `"filter"` (structural predicates evaluated in the frontend — the
+/// default, works offline over already-loaded notes) or `"fts"` (full-text, run
+/// through `search_vault`). `query` holds the text for both kinds: the predicate
+/// string for filters (`type:npc !faction`), the search string for fts. `filters`
+/// carries any extra structural predicates applied *on top of* an fts query.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct SavedSearch {
+    /// Empty on create — the backend generates one.
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub query: String,
+    #[serde(default)]
+    pub filters: String,
+    /// Unix milliseconds; 0 on create.
+    #[serde(default)]
+    pub created_at: i64,
+}
+
 /// One note that a bulk operation could not complete, with the reason.
 ///
 /// Bulk operations are atomic **per note**, never across the batch: a failure
@@ -478,6 +499,7 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<SessionEvent>()
         .typ::<SnapshotInfo>()
         .typ::<FileChange>()
+        .typ::<SavedSearch>()
         .typ::<BulkFailure>()
         .typ::<BulkResult>()
         .typ::<RunState>()

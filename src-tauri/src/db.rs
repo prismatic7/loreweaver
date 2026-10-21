@@ -162,6 +162,23 @@ pub fn init_db(db_path: &str) -> Result<Connection> {
         [],
     )?;
 
+    // 7b2. Saved Searches Table:
+    // Named, reusable queries (F4.3). `kind` is `fts` (run through `search_vault`)
+    // or `filter` (structural predicates over frontmatter/tags/path). Vault-scoped
+    // because the DB is re-initialised on vault switch — a saved search names
+    // this world's notes, so it belongs to this world.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS saved_searches (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            query TEXT NOT NULL,
+            filters TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        );",
+        [],
+    )?;
+
     // 7c. Sources Table:
     // Stores provenance records (canon, history, invention, or user-defined types)
     // that notes can link to via the `source_id` frontmatter key. Kept separate from
@@ -590,6 +607,58 @@ pub fn log_session_event(conn: &Connection, kind: &str, payload: &str) -> Result
         params![id, kind, payload, now],
     )?;
     Ok(id)
+}
+
+/// Inserts or replaces a saved search, generating an id when none is given.
+pub fn upsert_saved_search(conn: &Connection, search: &mut super::SavedSearch) -> Result<()> {
+    if search.id.trim().is_empty() {
+        search.id = Uuid::new_v4().to_string();
+    }
+    if search.created_at <= 0 {
+        search.created_at = chrono::Utc::now().timestamp_millis();
+    }
+    conn.execute(
+        "INSERT OR REPLACE INTO saved_searches (id, name, kind, query, filters, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            search.id,
+            search.name,
+            search.kind,
+            search.query,
+            search.filters,
+            search.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// Saved searches for this vault, by name.
+pub fn list_saved_searches(conn: &Connection) -> Result<Vec<super::SavedSearch>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, kind, query, filters, created_at FROM saved_searches
+         ORDER BY name COLLATE NOCASE ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(super::SavedSearch {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            kind: row.get(2)?,
+            query: row.get(3)?,
+            filters: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
+}
+
+/// Deletes one saved search. Returns whether a row was removed.
+pub fn delete_saved_search(conn: &Connection, id: &str) -> Result<bool> {
+    let removed = conn.execute("DELETE FROM saved_searches WHERE id = ?1", params![id])?;
+    Ok(removed > 0)
 }
 
 /// Returns session events newer than `since` (Unix seconds), oldest first.

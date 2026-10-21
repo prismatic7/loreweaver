@@ -1136,6 +1136,47 @@ async fn tag_notes(
     Ok(tag_notes_impl(&vault_path, &conn, &paths, tag))
 }
 
+// --- Saved searches (F4.3) ------------------------------------------------
+
+/// Lists this vault's saved searches, by name.
+#[tauri::command]
+async fn list_saved_searches(state: State<'_, AppState>) -> Result<Vec<SavedSearch>, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::list_saved_searches(&conn).map_err(|e| e.to_string())
+}
+
+/// Creates or updates a saved search, returning the stored record (with the
+/// generated id and timestamp when it was new).
+#[tauri::command]
+async fn save_saved_search(
+    state: State<'_, AppState>,
+    search: SavedSearch,
+) -> Result<SavedSearch, String> {
+    if search.name.trim().is_empty() {
+        return Err("A saved search needs a name".to_string());
+    }
+    if search.kind != "filter" && search.kind != "fts" {
+        return Err(format!("Unknown saved search kind: {}", search.kind));
+    }
+    if search.query.trim().is_empty() && search.filters.trim().is_empty() {
+        return Err("A saved search needs a query".to_string());
+    }
+    let mut search = search;
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::upsert_saved_search(&conn, &mut search).map_err(|e| e.to_string())?;
+    Ok(search)
+}
+
+/// Deletes a saved search. Returns whether a row was removed.
+#[tauri::command]
+async fn delete_saved_search(state: State<'_, AppState>, id: &str) -> Result<bool, String> {
+    let conn_arc = state.conn.lock().await;
+    let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+    db::delete_saved_search(&conn, id).map_err(|e| e.to_string())
+}
+
 /// Creates a new directory inside the vault.
 #[tauri::command]
 async fn create_folder(state: State<'_, AppState>, folder_path: &str) -> Result<(), String> {
@@ -4122,6 +4163,9 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             trash_notes,
             move_notes,
             tag_notes,
+            list_saved_searches,
+            save_saved_search,
+            delete_saved_search,
             list_snapshots,
             snapshot_diff,
             restore_note_from_snapshot,
@@ -5019,5 +5063,54 @@ mod liminal_tests {
         assert!(!root.join("Worldbuilding/Oslo.md").exists());
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+    // --- Saved searches (F4.3) -------------------------------------------
+
+    fn saved_search(name: &str, kind: &str, query: &str) -> SavedSearch {
+        SavedSearch {
+            id: String::new(),
+            name: name.to_string(),
+            kind: kind.to_string(),
+            query: query.to_string(),
+            filters: String::new(),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn test_saved_search_round_trip_and_delete() {
+        let temp = std::env::temp_dir().join("loreweaver_saved_searches");
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&temp).unwrap();
+        let conn = db::init_db(temp.join("ss.db").to_str().unwrap()).unwrap();
+
+        let mut deps = saved_search("Deposed NPCs", "filter", "type:npc !faction");
+        db::upsert_saved_search(&conn, &mut deps).unwrap();
+        assert!(!deps.id.is_empty(), "id should be generated");
+        assert!(deps.created_at > 0, "timestamp should be set");
+
+        let mut fts = saved_search("Grapple rules", "fts", "grapple");
+        db::upsert_saved_search(&conn, &mut fts).unwrap();
+
+        let listed = db::list_saved_searches(&conn).unwrap();
+        assert_eq!(listed.len(), 2);
+        // Ordered by name, case-insensitively.
+        assert_eq!(listed[0].name, "Deposed NPCs");
+        assert_eq!(listed[1].name, "Grapple rules");
+        assert_eq!(listed[1].kind, "fts");
+
+        // Re-saving the same id updates rather than duplicates.
+        let mut renamed = listed[0].clone();
+        renamed.name = "Deposed NPCs (act 1)".to_string();
+        db::upsert_saved_search(&conn, &mut renamed).unwrap();
+        let listed = db::list_saved_searches(&conn).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].name, "Deposed NPCs (act 1)");
+
+        assert!(db::delete_saved_search(&conn, &deps.id).unwrap());
+        assert!(!db::delete_saved_search(&conn, &deps.id).unwrap(), "second delete removes nothing");
+        assert_eq!(db::list_saved_searches(&conn).unwrap().len(), 1);
+
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

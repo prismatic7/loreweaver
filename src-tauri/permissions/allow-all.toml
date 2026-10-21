@@ -62,6 +62,9 @@ commands = { allow = [
   "trash_notes",
   "move_notes",
   "tag_notes",
+  "list_saved_searches",
+  "save_saved_search",
+  "delete_saved_search",
   "list_snapshots",
   "snapshot_diff",
   "restore_note_from_snapshot",
@@ -537,3 +540,18 @@ commands = { allow = ["move_notes"] }
 identifier = "allow-tag-notes"
 description = "Allows the tag_notes command to be invoked by the frontend"
 commands = { allow = ["tag_notes"] }
+
+[[permission]]
+identifier = "allow-list-saved-searches"
+description = "Allows the list_saved_searches command to be invoked by the frontend"
+commands = { allow = ["list_saved_searches"] }
+
+[[permission]]
+identifier = "allow-save-saved-search"
+description = "Allows the save_saved_search command to be invoked by the frontend"
+commands = { allow = ["save_saved_search"] }
+
+[[permission]]
+identifier = "allow-delete-saved-search"
+description = "Allows the delete_saved_search command to be invoked by the frontend"
+commands = { allow = ["delete_saved_search"] }

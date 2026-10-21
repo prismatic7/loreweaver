@@ -239,6 +239,26 @@ export type RunState = {
 };
 
 /**
+ *  A named, reusable vault query.
+ * 
+ *  `kind` is `"filter"` (structural predicates evaluated in the frontend — the
+ *  default, works offline over already-loaded notes) or `"fts"` (full-text, run
+ *  through `search_vault`). `query` holds the text for both kinds: the predicate
+ *  string for filters (`type:npc !faction`), the search string for fts. `filters`
+ *  carries any extra structural predicates applied *on top of* an fts query.
+ */
+export type SavedSearch = {
+	/**  Empty on create — the backend generates one. */
+	id: string,
+	name: string,
+	kind: string,
+	query: string,
+	filters?: string,
+	/**  Unix milliseconds; 0 on create. */
+	created_at?: number,
+};
+
+/**
  *  Wrapper returned by `search_vault`: the ranked results plus a flag telling
  *  the frontend whether the query was expanded (synonym/fuzzy layer) so it can
  *  show an expansion indicator.

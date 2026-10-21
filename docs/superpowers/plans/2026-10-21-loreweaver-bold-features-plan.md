@@ -310,9 +310,9 @@ Run Mode is the information architecture everything else hangs off.
 
 **Files:** `src-tauri/src/db.rs` (`saved_searches` table or `app_settings` JSON), `src/components/VaultTree.tsx`, `src/hooks/useSavedSearches.ts`.
 
-- [ ] **Step 1:** Query shape `{ name, kind: "fts"|"filter", query, filters }` (e.g. `type:npc AND !faction`).
-- [ ] **Step 2:** Render as a tree section; click runs it.
-- [ ] **Step 3:** Test — a saved filter returns the expected note set.
+- [x] **Step 1:** Query shape `{ name, kind: "fts"|"filter", query, filters }` (e.g. `type:npc AND !faction`). *Stored in a `saved_searches` table in the per-vault DB (`SavedSearch` type, three commands). The filter grammar lives in `src/utils/filter.ts` as a pure function: `field:value`, `!field`, `!field:value`, `tag:`, `title:`, `path:`, quoted values, bare terms against title/content. Terms are AND-ed; `AND`/`OR` are accepted as noise words because the semantics are always AND — a filter that guessed at OR would be worse than a second saved search.*
+- [x] **Step 2:** Render as a tree section; click runs it. *`SavedSearchesSection` sits above the tree in the vault sidebar (count shown on the active row, delete without running). Filter-kind runs entirely in the frontend over loaded notes — no IPC; fts-kind runs through the existing `search_vault` and maps hits back to notes by path, then applies its `filters` structurally. An unresolved fts search shows nothing, not everything: "no filter" and "still resolving" must not look alike.*
+- [x] **Step 3:** Test — a saved filter returns the expected note set. *15 `filter` cases (including the plan's `type:npc AND !faction`, both tag forms, case-insensitive keys, missing keys), 9 section cases, 7 hook cases (local filtering makes no IPC call at all), 1 Rust round-trip (create/update/list-order/delete).*
 
 ### F4.4 — Cross-world search
 

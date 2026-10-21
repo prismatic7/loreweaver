@@ -13,6 +13,7 @@ import { NoteOutline } from "./NoteOutline";
 import { parseNoteTags } from "../utils/tags";
 import { VaultTree } from "./VaultTree";
 import { CoWriterDiff } from "./CoWriterDiff";
+import { SavedSearchesSection } from "./SavedSearchesSection";
 
 export interface TemplateProperty {
   type: "number" | "boolean" | "string";
@@ -66,6 +67,14 @@ export interface CampaignVaultViewProps {
   isGeneratingImage?: boolean;
   renderFolderDropdown: (folderName: string, isRulebook?: boolean) => React.ReactNode;
   handleNewNote: (folder?: string, templateType?: string) => void;
+  /** Saved searches / smart folders (F4.3). */
+  savedSearches?: import("../bindings").SavedSearch[];
+  activeSavedSearchId?: string | null;
+  savedSearchMatchCount?: number | null;
+  onRunSavedSearch?: (id: string) => void;
+  onClearSavedSearch?: () => void;
+  onDeleteSavedSearch?: (id: string) => void;
+  onSaveSavedSearch?: (name: string, query: string, kind: "filter" | "fts") => void;
   /** Bulk actions for the tree's multi-selection (F4.2). */
   onBulkTrashNotes?: (paths: string[]) => Promise<void> | void;
   onBulkMoveNotes?: (paths: string[], targetFolder: string) => Promise<void> | void;
@@ -138,6 +147,13 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   onBulkTrashNotes,
   onBulkMoveNotes,
   onBulkTagNotes,
+  savedSearches = [],
+  activeSavedSearchId = null,
+  savedSearchMatchCount = null,
+  onRunSavedSearch,
+  onClearSavedSearch,
+  onDeleteSavedSearch,
+  onSaveSavedSearch,
   handleTrashNote,
   renderMarkdown,
   currentCanvasFolder,
@@ -211,7 +227,7 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
   };
 
   const effectiveNotes = useMemo(() => {
-    if (notes && notes.length > 0) return notes;
+    if (notes) return notes;
     if (notesByFolder) {
       return Object.values(notesByFolder).flat();
     }
@@ -273,6 +289,17 @@ export const CampaignVaultView: React.FC<CampaignVaultViewProps> = ({
             overflow: "hidden",
           }}
         >
+          {onRunSavedSearch && (
+            <SavedSearchesSection
+              searches={savedSearches}
+              activeId={activeSavedSearchId}
+              matchCount={savedSearchMatchCount}
+              onRun={onRunSavedSearch}
+              onClear={onClearSavedSearch ?? (() => {})}
+              onDelete={onDeleteSavedSearch ?? (() => {})}
+              onSave={onSaveSavedSearch ?? (() => {})}
+            />
+          )}
           <VaultTree
             notes={effectiveNotes}
             discoveredFolders={effectiveFolders}

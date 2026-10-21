@@ -18,7 +18,7 @@ Run all frontend test suites using:
 npm run test
 ```
 
-**62 Vitest suites / 373 tests** pass (as of 2026-10-21). Note: `npm run test`
+**65 Vitest suites / 404 tests** pass (as of 2026-10-21). Note: `npm run test`
 sets `NODE_ENV=test` internally; if you run `vitest` directly in an environment
 where `NODE_ENV=production` is ambient (e.g. inside the Hermes TUI), prefix with
 `env -u NODE_ENV` or dev dependencies (`vitest`) will be missing and React will
@@ -34,7 +34,7 @@ aspirational numbers that fail on day one.
 
 ### Notable Suites
 
-(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 62 suites as of 2026-10-21.
+(Vitest picks up all `src/**/*.test.{ts,tsx}` files — 65 suites as of 2026-10-21.
 Notable ones:)
 
 - [App.test.tsx](src/App.test.tsx): Validates sidebar navigation click states, dashboard layout mounting, and initial data loading via a mocked `invoke`.
@@ -91,7 +91,7 @@ Currently **127 Rust tests** pass (as of 2026-10-21: 125 unit + 2 integration). 
 CI runs on every push/PR via [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (added 2026-08-27, Increment F):
 
 - **Frontend job** (Node 22, `npm ci`): `npm run lint` → `npm run build` (tsc strict + vite) → `npm run test` → `npm run coverage` → `npm run verify-docs`.
-- **`verify-docs` scope:** `docs/verify.mjs` checks (a) that every `#[tauri::command]` is documented in `docs/developer/API.md`; (b) that every `invoke("…")` under `src/App.tsx`, `src/components/`, `src/hooks/` and `src/utils/` names a command that exists in `lib.rs` (hooks were outside the scan until 2026-10-21, which left most of the frontend↔backend surface unchecked — it now covers 79 unique invokes); and (c) that every command is registered in `generate_handler!`, has an `allow-*` permission block in `src-tauri/permissions/allow-all.toml`, appears in the `allow-all-commands` list, and is listed in `src-tauri/capabilities/default.json`. Part (c) exists because a missing permission or capability rejects the invoke at *runtime* — tests pass and the app fails, which is exactly the class of bug a gate should own. It immediately found 23 commands missing from the catch-all list.
+- **`verify-docs` scope:** `docs/verify.mjs` checks (a) that every `#[tauri::command]` is documented in `docs/developer/API.md`; (b) that every `invoke("…")` under `src/App.tsx`, `src/components/`, `src/hooks/` and `src/utils/` names a command that exists in `lib.rs` (hooks were outside the scan until 2026-10-21, which left most of the frontend↔backend surface unchecked — it now covers 82 unique invokes); and (c) that every command is registered in `generate_handler!`, has an `allow-*` permission block in `src-tauri/permissions/allow-all.toml`, appears in the `allow-all-commands` list, and is listed in `src-tauri/capabilities/default.json`. Part (c) exists because a missing permission or capability rejects the invoke at *runtime* — tests pass and the app fails, which is exactly the class of bug a gate should own. It immediately found 23 commands missing from the catch-all list.
 - **Backend job** (Rust stable, `cargo test --locked` from `src-tauri/`). `test_api_key_round_trip` self-skips headless (no OS keyring), so plain `cargo test` is expected to pass on runners.
 - **Coverage policy:** thresholds live in `vite.config.ts`, set to the measured baseline minus a small buffer. They block PRs that drop coverage; they are tightened in follow-up increments, not loosened.
 

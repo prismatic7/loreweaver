@@ -369,6 +369,24 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<Vec<SnapshotInfo>, String>`
 - **Description:** Lists the active vault's snapshots, newest first. Sidecars are read rather than archives; a missing sidecar degrades to filesystem metadata instead of failing the listing.
 
+### `list_saved_searches`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<SavedSearch>, String>`
+- **Description:** Lists this vault's saved searches (smart folders), ordered by name case-insensitively. Stored in the per-vault DB, so a smart folder belongs to the world whose notes it names.
+
+### `save_saved_search`
+
+- **Arguments:** `search: SavedSearch`
+- **Returns:** `Result<SavedSearch, String>`
+- **Description:** Creates or updates a saved search and returns the stored record with its generated id and timestamp. Rejects an empty name, an empty query, or a kind other than `filter` / `fts`.
+
+### `delete_saved_search`
+
+- **Arguments:** `id: &str`
+- **Returns:** `Result<bool, String>`
+- **Description:** Deletes one saved search, returning whether a row was removed. Notes are never touched — a smart folder is a saved view, not a container.
+
 ### `trash_notes`
 
 - **Arguments:** `paths: Vec<String>`
