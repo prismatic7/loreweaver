@@ -33,6 +33,11 @@ export interface RunModeViewProps {
   /** Presentation ("read aloud") mode: chrome hidden, scene only, large type. */
   presentation?: boolean;
   onTogglePresentation?: () => void;
+  /**
+   * Ends the session: the host snapshots the vault (Vault Time Machine) and
+   * leaves Run Mode. Optional — the view renders no affordance when absent.
+   */
+  onEndSession?: () => void;
 }
 
 export const RunModeView: React.FC<RunModeViewProps> = ({
@@ -49,6 +54,7 @@ export const RunModeView: React.FC<RunModeViewProps> = ({
   rollDice,
   presentation = false,
   onTogglePresentation,
+  onEndSession,
 }) => {
   const pinCandidates = availableRules.filter(
     (rule) => !pinnedRuleIds.includes(rule.id),
@@ -314,7 +320,28 @@ export const RunModeView: React.FC<RunModeViewProps> = ({
           background: "var(--surface)",
         }}
       >
-        <PanelTitle>Session Ledger</PanelTitle>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "8px",
+          }}
+        >
+          <PanelTitle>Session Ledger</PanelTitle>
+          {onEndSession && (
+            <button
+              className="btn btn-sm"
+              type="button"
+              onClick={onEndSession}
+              title="Snapshot the vault, then leave Run Mode"
+              style={{ fontSize: "11px", cursor: "pointer", padding: "3px 8px" }}
+              data-od-id="run-end-session"
+            >
+              Snapshot &amp; end session
+            </button>
+          )}
+        </div>
         {ledgerEvents.length === 0 ? (
           <EmptyHint>No events yet — rolls and saves appear here.</EmptyHint>
         ) : (

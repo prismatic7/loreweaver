@@ -58,6 +58,7 @@ mod plugins;
 pub mod providers;
 mod scheduler;
 mod search;
+mod snapshots;
 mod watcher;
 mod webclip;
 mod worlds;
@@ -258,7 +259,13 @@ async fn load_notes(state: State<'_, AppState>) -> Result<Vec<CampaignNote>, Str
 /// 2. Iterates over path components using a `VecDeque` stack to resolve relative `.` and `..` segments.
 /// 3. Normalizes both the target path and vault path.
 /// 4. Enforces that `normalized.starts_with(&normalized_vault)`, returning an error if traversal is detected.
-fn validate_safe_path(vault_path: &str, note_path: &str) -> Result<std::path::PathBuf, String> {
+///
+/// `pub(crate)` so module-level writers (`snapshots`) reuse this single guard
+/// instead of re-implementing the boundary check.
+pub(crate) fn validate_safe_path(
+    vault_path: &str,
+    note_path: &str,
+) -> Result<std::path::PathBuf, String> {
     let vault = std::path::Path::new(vault_path);
     let target = vault.join(note_path);
     let canonical_vault = std::fs::canonicalize(vault)
@@ -1889,6 +1896,75 @@ async fn export_world(
 #[tauri::command]
 async fn import_world(state: State<'_, AppState>, zip_path: &str) -> Result<String, String> {
     bundles::import_world_impl(&state.campaigns_root, zip_path)
+}
+
+// --- Vault Time Machine ---------------------------------------------------
+
+/// Creates a snapshot of the active vault and returns its metadata.
+///
+/// Retention is read from the `snapshots.retention` setting (default
+/// `snapshots::DEFAULT_RETENTION`) so disk use stays bounded without a second
+/// code path; pruning happens inside `create_snapshot_impl` after the write.
+#[tauri::command]
+async fn create_snapshot(
+    state: State<'_, AppState>,
+    label: Option<String>,
+) -> Result<SnapshotInfo, String> {
+    let vault_path = state.vault_path.lock().await.clone();
+    if vault_path.is_empty() {
+        return Err("No vault is open".to_string());
+    }
+    validate_campaigns_path(&state.campaigns_root, &vault_path)?;
+
+    let keep = {
+        let conn_arc = state.conn.lock().await;
+        let conn = conn_arc.lock().map_err(|e| e.to_string())?;
+        db::get_setting(&conn, snapshots::RETENTION_SETTING_KEY)
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(snapshots::DEFAULT_RETENTION)
+    };
+
+    let snapshots_root = snapshots::snapshots_root_for(&state.campaigns_root);
+    snapshots::create_snapshot_impl(
+        &vault_path,
+        &snapshots_root,
+        label.as_deref().unwrap_or(""),
+        keep,
+    )
+}
+
+/// Lists the active vault's snapshots, newest first.
+#[tauri::command]
+async fn list_snapshots(state: State<'_, AppState>) -> Result<Vec<SnapshotInfo>, String> {
+    let vault_path = state.vault_path.lock().await.clone();
+    let snapshots_root = snapshots::snapshots_root_for(&state.campaigns_root);
+    snapshots::list_snapshots_impl(&vault_path, &snapshots_root)
+}
+
+/// Diffs a snapshot against the live vault (`added` / `modified` / `removed`).
+#[tauri::command]
+async fn snapshot_diff(
+    state: State<'_, AppState>,
+    id: &str,
+) -> Result<Vec<FileChange>, String> {
+    let vault_path = state.vault_path.lock().await.clone();
+    let snapshots_root = snapshots::snapshots_root_for(&state.campaigns_root);
+    snapshots::snapshot_diff_impl(&vault_path, &snapshots_root, id)
+}
+
+/// Restores one file from a snapshot. The write goes through
+/// `validate_safe_path`, and only ever touches the single requested file.
+#[tauri::command]
+async fn restore_note_from_snapshot(
+    state: State<'_, AppState>,
+    id: &str,
+    path: &str,
+) -> Result<(), String> {
+    let vault_path = state.vault_path.lock().await.clone();
+    let snapshots_root = snapshots::snapshots_root_for(&state.campaigns_root);
+    snapshots::restore_note_from_snapshot_impl(&vault_path, &snapshots_root, id, path)
 }
 
 /// Lists the markdown notes currently held in the `_liminal/Captures/` holding
@@ -3788,6 +3864,10 @@ Lord Malakor is the ruler of the Shadow Keep, a forbidding fortress built into t
             create_world,
             export_world,
             import_world,
+            create_snapshot,
+            list_snapshots,
+            snapshot_diff,
+            restore_note_from_snapshot,
             list_liminal_notes,
             claim_liminal_note,
             make_world_from_liminal,

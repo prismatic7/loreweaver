@@ -42,6 +42,7 @@ import { useRunMode } from "./hooks/useRunMode";
 import { useInitiative } from "./hooks/useInitiative";
 import { useSessionLedger } from "./hooks/useSessionLedger";
 import { useContinuity } from "./hooks/useContinuity";
+import { useSnapshots } from "./hooks/useSnapshots";
 import { useSettings } from "./hooks/useSettings";
 import { useDialogs } from "./hooks/useDialogs";
 import { useMarkdownRender } from "./hooks/useMarkdownRender";
@@ -58,6 +59,7 @@ import { type Intent } from "./utils/intent";
 import { StatusStrip } from "./components/StatusStrip";
 import { RunModeView } from "./components/RunModeView";
 import { ContinuityView } from "./components/ContinuityView";
+import { TimeMachineView } from "./components/TimeMachineView";
 import { Toast, useToast } from "./components/Toast";
 
 // Views offered by the Ctrl/Cmd+K palette, in nav order.
@@ -73,6 +75,7 @@ const PALETTE_VIEWS: Array<{ id: AppView; label: string }> = [
   { id: "graph", label: "Entity Graph" },
   { id: "timeline", label: "Timeline" },
   { id: "continuity", label: "Continuity" },
+  { id: "time-machine", label: "Time Machine" },
   { id: "trash", label: "Trash" },
   { id: "settings", label: "Settings" },
 ];
@@ -91,6 +94,10 @@ function App() {
   const initiative = useInitiative(vaultPath);
   const ledger = useSessionLedger(vaultPath);
   const continuity = useContinuity(vaultPath);
+  const snapshots = useSnapshots(vaultPath);
+  // Stable callbacks for the memoised handlers below (the hook object itself is
+  // rebuilt on every render).
+  const { create: takeSnapshot, restore: restoreSnapshot } = snapshots;
   const {
     notes,
     notesByFolder,
@@ -646,6 +653,37 @@ function App() {
     [confirm, showToast, continuity],
   );
 
+  const handleCreateSnapshot = useCallback(
+    async (label?: string) => {
+      const info = await takeSnapshot(label);
+      showToast(
+        info
+          ? `Snapshot taken — ${info.file_count} files, ${info.label || info.id}`
+          : "Snapshot failed",
+      );
+      return info;
+    },
+    [takeSnapshot, showToast],
+  );
+
+  const handleRestoreFromSnapshot = useCallback(
+    (id: string, path: string) => {
+      confirm(
+        `Restore "${path}" from this snapshot? The live copy is overwritten; files added since the snapshot are left alone.`,
+        async () => {
+          const ok = await restoreSnapshot(id, path);
+          if (ok) {
+            await loadNotes();
+            showToast(`Restored ${path}`);
+          } else {
+            showToast("Restore failed — see the Time Machine panel");
+          }
+        },
+      );
+    },
+    [confirm, restoreSnapshot, loadNotes, showToast],
+  );
+
   const handleDropNoteOnTimeline = useCallback(
     async (notePath: string) => {
       const date = await showPrompt(
@@ -1139,6 +1177,21 @@ function App() {
         />
       )}
 
+      {!liminalOpen && activeView === "time-machine" && (
+        <TimeMachineView
+          snapshots={snapshots.snapshots}
+          loading={snapshots.loading}
+          error={snapshots.error}
+          selectedId={snapshots.selectedId}
+          changes={snapshots.changes}
+          diffLoading={snapshots.diffLoading}
+          onRefresh={snapshots.refresh}
+          onCreate={handleCreateSnapshot}
+          onSelect={snapshots.diff}
+          onRestore={handleRestoreFromSnapshot}
+        />
+      )}
+
       {!liminalOpen && activeView === "run" && (
         <RunModeView
           sceneNote={
@@ -1172,6 +1225,12 @@ function App() {
           ledgerEvents={ledger.events}
           presentation={presentationMode}
           onTogglePresentation={() => setPresentationMode((p) => !p)}
+          onEndSession={() => {
+            void handleCreateSnapshot(
+              `Session — ${new Date().toLocaleDateString()}`,
+            );
+            requestViewChange("dashboard");
+          }}
         />
       )}
 

@@ -357,6 +357,30 @@ This document catalogs all registered `#[tauri::command]` functions defined in t
 - **Returns:** `Result<String, String>`
 - **Description:** Imports a campaign world bundle from a ZIP archive into the campaign directories.
 
+### `create_snapshot`
+
+- **Arguments:** `label: Option<String>`
+- **Returns:** `Result<SnapshotInfo, String>`
+- **Description:** Snapshots the active vault into `<app_data>/snapshots/<vault>/<id>.zip` (excluding `.trash` and the SQLite index) and prunes beyond the `snapshots.retention` setting (default 20). The zip is written to a `.part` file and renamed into place, so a crash never leaves a truncated archive. Metadata goes in a JSON sidecar beside the zip.
+
+### `list_snapshots`
+
+- **Arguments:** None.
+- **Returns:** `Result<Vec<SnapshotInfo>, String>`
+- **Description:** Lists the active vault's snapshots, newest first. Sidecars are read rather than archives; a missing sidecar degrades to filesystem metadata instead of failing the listing.
+
+### `snapshot_diff`
+
+- **Arguments:** `id: &str`
+- **Returns:** `Result<Vec<FileChange>, String>`
+- **Description:** Compares a snapshot against the live vault and returns `added` / `modified` / `removed` entries. Both sides are hashed in-process (FNV-1a 64 plus length) — this is change detection, not a security boundary.
+
+### `restore_note_from_snapshot`
+
+- **Arguments:** `id: &str`, `path: &str`
+- **Returns:** `Result<(), String>`
+- **Description:** Restores a single file from a snapshot over the live copy. The write goes through `validate_safe_path`, the entry name is re-validated against zip-slip, and nothing is deleted — restoring is additive. The frontend confirms before calling.
+
 ### `list_liminal_notes`
 
 - **Arguments:** None.

@@ -49,6 +49,35 @@ pub struct SessionEvent {
     pub created_at: i64,
 }
 
+/// One Vault Time Machine snapshot of the active vault.
+///
+/// Snapshots live under `<app_data>/snapshots/<vault>/<id>.zip` with a JSON
+/// sidecar holding this metadata, so listing never has to open an archive.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct SnapshotInfo {
+    /// Snapshot id (also the zip's file stem): `YYYYMMDDTHHMMSS`, `-2` on collision.
+    pub id: String,
+    /// Author's label; empty when the snapshot was taken without one.
+    pub label: String,
+    /// Unix seconds when the snapshot was taken.
+    pub created_at: i64,
+    /// Size of the zip on disk, in bytes.
+    pub size_bytes: i64,
+    /// Number of vault files captured (excludes `.trash` and the SQLite index).
+    pub file_count: i64,
+    /// Vault folder slug the snapshot belongs to.
+    pub vault: String,
+}
+
+/// One entry in a snapshot ↔ live-vault diff. `kind` is `added`, `modified`, or
+/// `removed`, always described from the vault's point of view.
+#[derive(Serialize, Deserialize, Clone, Debug, Type)]
+pub struct FileChange {
+    /// Vault-relative path, forward-slash separated.
+    pub path: String,
+    pub kind: String,
+}
+
 /// Run Mode's vault-scoped live-play state.
 ///
 /// `scene_note_id` is the note currently "on stage"; `pinned_rule_ids` are the
@@ -425,6 +454,8 @@ pub fn export_bindings_to(path: impl AsRef<std::path::Path>) {
         .typ::<SearchResponse>()
         .typ::<SourceEntry>()
         .typ::<SessionEvent>()
+        .typ::<SnapshotInfo>()
+        .typ::<FileChange>()
         .typ::<RunState>()
         .typ::<Entity>()
         .typ::<Finding>()

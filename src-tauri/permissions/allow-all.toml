@@ -57,6 +57,10 @@ commands = { allow = [
   "create_world",
   "export_world",
   "import_world",
+  "create_snapshot",
+  "list_snapshots",
+  "snapshot_diff",
+  "restore_note_from_snapshot",
   "list_liminal_notes",
   "claim_liminal_note",
   "make_world_from_liminal",
@@ -466,3 +470,23 @@ commands = { allow = ["nearest_notes"] }
 identifier = "allow-revise-text"
 description = "Allows the revise_text command to be invoked by the frontend"
 commands = { allow = ["revise_text"] }
+
+[[permission]]
+identifier = "allow-create-snapshot"
+description = "Allows the create_snapshot command to be invoked by the frontend"
+commands = { allow = ["create_snapshot"] }
+
+[[permission]]
+identifier = "allow-list-snapshots"
+description = "Allows the list_snapshots command to be invoked by the frontend"
+commands = { allow = ["list_snapshots"] }
+
+[[permission]]
+identifier = "allow-snapshot-diff"
+description = "Allows the snapshot_diff command to be invoked by the frontend"
+commands = { allow = ["snapshot_diff"] }
+
+[[permission]]
+identifier = "allow-restore-note-from-snapshot"
+description = "Allows the restore_note_from_snapshot command to be invoked by the frontend"
+commands = { allow = ["restore_note_from_snapshot"] }

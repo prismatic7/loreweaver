@@ -291,12 +291,12 @@ Run Mode is the information architecture everything else hangs off.
 
 **Interfaces:** `create_snapshot(label) -> Result<String,String>`, `list_snapshots() -> Vec<SnapshotInfo>`, `snapshot_diff(id) -> Vec<FileChange>`, `restore_note_from_snapshot(id, path) -> Result<(),String>`.
 
-- [ ] **Step 1:** Snapshot = zip of the vault under `<app_data>/snapshots/<vault>/<timestamp>.zip` (exclude `.trash`, `_assets` optionally).
-- [ ] **Step 2:** Retention setting (default keep last 20); prune oldest.
-- [ ] **Step 3:** Diff = compare file hashes between snapshot and current vault → `added/modified/removed`.
-- [ ] **Step 4:** Restore writes **only** through `validate_safe_path`, to a single file, with confirmation.
-- [ ] **Step 5:** "Snapshot on session end" hook wired from Run Mode.
-- [ ] **Step 6:** Test — create → mutate → diff → restore round-trip in a temp vault.
+- [x] **Step 1:** Snapshot = zip of the vault under `<app_data>/snapshots/<vault>/<timestamp>.zip` (exclude `.trash`, `_assets` optionally). *Shipped as `snapshots.rs`: excludes `.trash`, `.git`, `node_modules`, the SQLite index and its WAL sidecars; `_assets` stays in (restores need it). Zip written to `.part` then renamed; metadata lives in a per-snapshot JSON sidecar.*
+- [x] **Step 2:** Retention setting (default keep last 20); prune oldest. *Read from `snapshots.retention` in `app_settings`; pruning deletes the sidecar too.*
+- [x] **Step 3:** Diff = compare file hashes between snapshot and current vault → `added/modified/removed`. *FNV-1a 64 + length, computed in-process; `FileChange { path, kind }`.*
+- [x] **Step 4:** Restore writes **only** through `validate_safe_path`, to a single file, with confirmation. *Zip entry names re-validated against zip-slip; `validate_safe_path` widened to `pub(crate)` so the module reuses the one guard.*
+- [x] **Step 5:** "Snapshot on session end" hook wired from Run Mode. *Run Mode's ledger panel now carries "Snapshot & end session" (`onEndSession`): snapshot, then back to the dashboard. The Debrief half of F1.4 Step 2 stays deferred — no Debrief feature is defined.*
+- [x] **Step 6:** Test — create → mutate → diff → restore round-trip in a temp vault. *5 Rust tests (round-trip, retention prune, traversal rejection, missing entry, `.trash`/db exclusion) + 7 `useSnapshots` + 8 `TimeMachineView` Vitest cases.*
 
 ### F4.2 — Bulk operations
 

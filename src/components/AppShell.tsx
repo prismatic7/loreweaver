@@ -4,6 +4,7 @@ import {
   Brain,
   Compass,
   FolderOpen,
+  History,
   Layers,
   Link2,
   Map as MapIcon,
@@ -36,7 +37,8 @@ export type AppView =
   | "map"
   | "graph"
   | "timeline"
-  | "continuity";
+  | "continuity"
+  | "time-machine";
 
 export interface AppShellProps {
   activeView: AppView;
@@ -206,6 +208,13 @@ export const AppShell: React.FC<AppShellProps> = ({
             icon={<ShieldCheck size={18} />}
             onClick={() => setActiveView("continuity")}
           />
+          <RibbonButton
+            activeView={activeView}
+            target="time-machine"
+            title="Time Machine (snapshots)"
+            icon={<History size={18} />}
+            onClick={() => setActiveView("time-machine")}
+          />
         </div>
 
         <div className="ribbon-footer">
@@ -281,6 +290,7 @@ export const AppShell: React.FC<AppShellProps> = ({
             {activeView === "graph" && "Entity Graph"}
             {activeView === "timeline" && "Timeline"}
             {activeView === "continuity" && "Continuity"}
+            {activeView === "time-machine" && "Time Machine"}
 
             <div
               style={{

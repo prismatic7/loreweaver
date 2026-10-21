@@ -106,6 +106,16 @@ export type Entity = {
 	note_ids: string[],
 };
 
+/**
+ *  One entry in a snapshot ↔ live-vault diff. `kind` is `added`, `modified`, or
+ *  `removed`, always described from the vault's point of view.
+ */
+export type FileChange = {
+	/**  Vault-relative path, forward-slash separated. */
+	path: string,
+	kind: string,
+};
+
 /**  A continuity problem found by the audit (dead actor, date conflict, …). */
 export type Finding = {
 	id: string,
@@ -234,6 +244,27 @@ export type SessionEvent = {
 	kind: string,
 	payload: string,
 	created_at: number,
+};
+
+/**
+ *  One Vault Time Machine snapshot of the active vault.
+ * 
+ *  Snapshots live under `<app_data>/snapshots/<vault>/<id>.zip` with a JSON
+ *  sidecar holding this metadata, so listing never has to open an archive.
+ */
+export type SnapshotInfo = {
+	/**  Snapshot id (also the zip's file stem): `YYYYMMDDTHHMMSS`, `-2` on collision. */
+	id: string,
+	/**  Author's label; empty when the snapshot was taken without one. */
+	label: string,
+	/**  Unix seconds when the snapshot was taken. */
+	created_at: number,
+	/**  Size of the zip on disk, in bytes. */
+	size_bytes: number,
+	/**  Number of vault files captured (excludes `.trash` and the SQLite index). */
+	file_count: number,
+	/**  Vault folder slug the snapshot belongs to. */
+	vault: string,
 };
 
 export type SourceEntry = {
