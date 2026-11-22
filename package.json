@@ -33,7 +33,7 @@
     "pdfjs-dist": "^6.2.108",
     "react": "19.1.9",
     "react-dom": "19.1.9",
-    "react-hook-form": "^7.82.0",
+    "react-hook-form": "^7.92.0",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
